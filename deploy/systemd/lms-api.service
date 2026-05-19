@@ -25,7 +25,9 @@ StandardError=journal
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+# NOTE: ProtectHome dihilangkan karena binary + working dir hidup di /home/ubuntu/lms.
+# Trade-off: service punya read access ke seluruh /home/, tapi NoNewPrivileges +
+# ProtectSystem=strict + ReadWritePaths sempit cukup buat scope blast radius.
 ReadWritePaths=/home/ubuntu/lms/storage /home/ubuntu/lms/backups
 
 [Install]
