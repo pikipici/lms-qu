@@ -29,6 +29,9 @@ const (
 
 type userRepo interface {
 	ListUsers(ctx context.Context, f auth.UserListFilter, limit, offset int) ([]auth.User, int64, error)
+	ListUserSessions(ctx context.Context, userID uuid.UUID) ([]auth.RefreshToken, error)
+	ListAuditLogs(ctx context.Context, f auth.AuditLogFilter, limit, offset int) ([]auth.AuditLog, int64, error)
+	ListLoginAttempts(ctx context.Context, f auth.LoginAttemptFilter, limit, offset int) ([]auth.LoginAttempt, int64, error)
 	FindUserByEmail(ctx context.Context, email string) (*auth.User, error)
 	FindUserByID(ctx context.Context, id uuid.UUID) (*auth.User, error)
 	CreateUser(ctx context.Context, u *auth.User) error
@@ -63,6 +66,34 @@ type listUsersResponse struct {
 	TotalPages int         `json:"total_pages"`
 }
 
+type listTargetSessionsResponse struct {
+	Sessions []auth.RefreshToken `json:"sessions"`
+}
+
+type revokeTargetSessionsRequest struct {
+	Reason string `json:"reason"`
+}
+
+type revokeTargetSessionsResponse struct {
+	RevokedCount int64 `json:"revoked_count"`
+}
+
+type listAuditLogResponse struct {
+	Events     []auth.AuditLog `json:"events"`
+	Page       int             `json:"page"`
+	PageSize   int             `json:"page_size"`
+	Total      int64           `json:"total"`
+	TotalPages int             `json:"total_pages"`
+}
+
+type listLoginAttemptsResponse struct {
+	Attempts   []auth.LoginAttempt `json:"attempts"`
+	Page       int                 `json:"page"`
+	PageSize   int                 `json:"page_size"`
+	Total      int64               `json:"total"`
+	TotalPages int                 `json:"total_pages"`
+}
+
 // ListUsers handles GET /api/v1/admin/users.
 func (h *Handler) ListUsers(c *fiber.Ctx) error {
 	role := strings.ToLower(strings.TrimSpace(c.Query("role")))
@@ -80,7 +111,7 @@ func (h *Handler) ListUsers(c *fiber.Ctx) error {
 	}
 	pageSize := c.QueryInt("page_size", defaultPageSize)
 	if pageSize < 1 {
-		pageSize = defaultPageSize
+		pageSize = 1
 	}
 	if pageSize > maxPageSize {
 		pageSize = maxPageSize
@@ -108,6 +139,161 @@ func (h *Handler) ListUsers(c *fiber.Ctx) error {
 		PageSize:   pageSize,
 		Total:      total,
 		TotalPages: totalPages,
+	})
+}
+
+// ListTargetSessions handles GET /api/v1/admin/users/:id/sessions.
+func (h *Handler) ListTargetSessions(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	if _, err := h.repo.FindUserByID(c.UserContext(), targetID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	sessions, err := h.repo.ListUserSessions(c.UserContext(), targetID)
+	if err != nil {
+		slog.Error("admin list user sessions failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(listTargetSessionsResponse{Sessions: sessions})
+}
+
+// RevokeTargetSessions handles POST /api/v1/admin/users/:id/revoke-sessions.
+func (h *Handler) RevokeTargetSessions(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	var req revokeTargetSessionsRequest
+	if body := strings.TrimSpace(string(c.Body())); body != "" {
+		if err := c.BodyParser(&req); err != nil {
+			return adminError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+		}
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if len(reason) > 200 {
+		return adminError(c, fiber.StatusBadRequest, "reason must be at most 200 characters", "invalid_body")
+	}
+
+	if _, err := h.repo.FindUserByID(c.UserContext(), targetID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	revokedCount, err := h.repo.RevokeAllRefreshByUser(c.UserContext(), targetID, auth.AdminReset)
+	if err != nil {
+		slog.Error("admin revoke user sessions failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	h.logAudit(c, "admin_user_sessions_revoked", adminID, targetID, auditMeta(map[string]any{
+		"revoked_count": revokedCount,
+		"reason":        reason,
+	}))
+
+	return c.Status(fiber.StatusOK).JSON(revokeTargetSessionsResponse{RevokedCount: revokedCount})
+}
+
+// ListAuditLog handles GET /api/v1/admin/audit-log.
+func (h *Handler) ListAuditLog(c *fiber.Ctx) error {
+	var filter auth.AuditLogFilter
+
+	actorID := strings.TrimSpace(c.Query("actor_id"))
+	if actorID != "" {
+		id, err := uuid.Parse(actorID)
+		if err != nil {
+			return adminError(c, fiber.StatusBadRequest, "invalid actor id", "invalid_actor_id")
+		}
+		filter.ActorID = &id
+	}
+
+	targetID := strings.TrimSpace(c.Query("target_id"))
+	if targetID != "" {
+		id, err := uuid.Parse(targetID)
+		if err != nil {
+			return adminError(c, fiber.StatusBadRequest, "invalid target id", "invalid_target_id")
+		}
+		filter.TargetID = &id
+	}
+
+	filter.Action = strings.TrimSpace(c.Query("action"))
+
+	since, until, err := parseTimeRange(c)
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid time", "invalid_time")
+	}
+	filter.Since = since
+	filter.Until = until
+
+	page, pageSize := adminPagination(c)
+	events, total, err := h.repo.ListAuditLogs(c.UserContext(), filter, pageSize, (page-1)*pageSize)
+	if err != nil {
+		slog.Error("admin list audit log failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(listAuditLogResponse{
+		Events:     events,
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPageCount(total, pageSize),
+	})
+}
+
+// ListLoginAttempts handles GET /api/v1/admin/login-attempts.
+func (h *Handler) ListLoginAttempts(c *fiber.Ctx) error {
+	var filter auth.LoginAttemptFilter
+	filter.Email = strings.TrimSpace(c.Query("email"))
+
+	success := strings.ToLower(strings.TrimSpace(c.Query("success")))
+	if success != "" {
+		switch success {
+		case "true":
+			v := true
+			filter.Success = &v
+		case "false":
+			v := false
+			filter.Success = &v
+		default:
+			return adminError(c, fiber.StatusBadRequest, "invalid success", "invalid_success")
+		}
+	}
+
+	since, until, err := parseTimeRange(c)
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid time", "invalid_time")
+	}
+	filter.Since = since
+	filter.Until = until
+
+	page, pageSize := adminPagination(c)
+	attempts, total, err := h.repo.ListLoginAttempts(c.UserContext(), filter, pageSize, (page-1)*pageSize)
+	if err != nil {
+		slog.Error("admin list login attempts failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(listLoginAttemptsResponse{
+		Attempts:   attempts,
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: totalPageCount(total, pageSize),
 	})
 }
 
@@ -788,6 +974,52 @@ func auditMeta(fields map[string]any) datatypes.JSON {
 		return nil
 	}
 	return datatypes.JSON(b)
+}
+
+func adminPagination(c *fiber.Ctx) (int, int) {
+	page := c.QueryInt("page", 1)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := c.QueryInt("page_size", defaultPageSize)
+	if pageSize < 1 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+	return page, pageSize
+}
+
+func totalPageCount(total int64, pageSize int) int {
+	if total <= 0 {
+		return 0
+	}
+	return int((total + int64(pageSize) - 1) / int64(pageSize))
+}
+
+func parseTimeRange(c *fiber.Ctx) (*time.Time, *time.Time, error) {
+	since, err := parseOptionalRFC3339(c.Query("since"))
+	if err != nil {
+		return nil, nil, err
+	}
+	until, err := parseOptionalRFC3339(c.Query("until"))
+	if err != nil {
+		return nil, nil, err
+	}
+	return since, until, nil
+}
+
+func parseOptionalRFC3339(raw string) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 func strPtr(s string) *string {

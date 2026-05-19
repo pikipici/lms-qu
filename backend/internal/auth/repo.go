@@ -26,6 +26,23 @@ type UserListFilter struct {
 	SearchName  string // ILIKE match on name; empty=no filter
 }
 
+// AuditLogFilter narrows the audit log query. All fields optional.
+type AuditLogFilter struct {
+	ActorID  *uuid.UUID // exact match if set
+	TargetID *uuid.UUID // exact match if set
+	Action   string     // exact match if non-empty
+	Since    *time.Time // at >= since
+	Until    *time.Time // at < until
+}
+
+// LoginAttemptFilter narrows the login attempts query.
+type LoginAttemptFilter struct {
+	Email   string // case-insensitive ILIKE if non-empty
+	Success *bool  // exact match if set
+	Since   *time.Time
+	Until   *time.Time
+}
+
 // FindUserByEmail returns a user by email.
 func (r *Repo) FindUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
@@ -338,6 +355,37 @@ func (r *Repo) LogLoginAttempt(ctx context.Context, attempt *LoginAttempt) error
 	return r.db.WithContext(ctx).Create(attempt).Error
 }
 
+// ListLoginAttempts returns a page of login attempts matching the filter, ordered by at DESC.
+// limit must be >0; offset >=0.
+func (r *Repo) ListLoginAttempts(ctx context.Context, f LoginAttemptFilter, limit, offset int) ([]LoginAttempt, int64, error) {
+	query := r.db.WithContext(ctx).Model(&LoginAttempt{})
+
+	email := strings.TrimSpace(f.Email)
+	if email != "" {
+		query = query.Where("email ILIKE ?", "%"+email+"%")
+	}
+	if f.Success != nil {
+		query = query.Where("success = ?", *f.Success)
+	}
+	if f.Since != nil {
+		query = query.Where("at >= ?", *f.Since)
+	}
+	if f.Until != nil {
+		query = query.Where("at < ?", *f.Until)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var attempts []LoginAttempt
+	if err := query.Order("at DESC").Limit(limit).Offset(offset).Find(&attempts).Error; err != nil {
+		return nil, 0, err
+	}
+	return attempts, total, nil
+}
+
 // CountRecentFailedAttempts counts recent failed attempts by email or IP.
 func (r *Repo) CountRecentFailedAttempts(ctx context.Context, email string, ip *string, since time.Time) (int64, error) {
 	var count int64
@@ -351,6 +399,40 @@ func (r *Repo) CountRecentFailedAttempts(ctx context.Context, email string, ip *
 // LogAudit inserts an audit log entry.
 func (r *Repo) LogAudit(ctx context.Context, entry *AuditLog) error {
 	return r.db.WithContext(ctx).Create(entry).Error
+}
+
+// ListAuditLogs returns a page of audit events matching the filter, ordered by at DESC.
+// limit must be >0; offset >=0.
+func (r *Repo) ListAuditLogs(ctx context.Context, f AuditLogFilter, limit, offset int) ([]AuditLog, int64, error) {
+	query := r.db.WithContext(ctx).Model(&AuditLog{})
+
+	if f.ActorID != nil {
+		query = query.Where("actor_id = ?", *f.ActorID)
+	}
+	if f.TargetID != nil {
+		query = query.Where("target_id = ?", *f.TargetID)
+	}
+	action := strings.TrimSpace(f.Action)
+	if action != "" {
+		query = query.Where("action = ?", action)
+	}
+	if f.Since != nil {
+		query = query.Where("at >= ?", *f.Since)
+	}
+	if f.Until != nil {
+		query = query.Where("at < ?", *f.Until)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var logs []AuditLog
+	if err := query.Order("at DESC").Limit(limit).Offset(offset).Find(&logs).Error; err != nil {
+		return nil, 0, err
+	}
+	return logs, total, nil
 }
 
 // CountAdmins returns the number of admin users in the database.
