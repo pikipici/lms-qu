@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 0 DONE ✅ (deployed ke rdpkhorur, systemd active, schema_meta `000001_init` applied). Mulai eksekusi Fase 1 — task-by-task plan ada di Section 18.
+> Status: v0.7.2 — Fase 1 in progress: 1.A.1 + 1.A.2 done (auth schema + GORM models, build PASS). Berikut: Task 1.A.3 repo layer.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (v0.7.2 — Section 18 Task-by-Task Plan Fase 0-2 added, Section 16 Fase 0 marked done)
+> Last updated: 2026-05-19 (Section 18: Task 1.A.1 + 1.A.2 marked done)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1401,19 +1401,21 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.A Schema Auth (migration 000002)
 
-**Task 1.A.1 — Bikin migration `000002_auth_schema.up.sql`**
+**Task 1.A.1 — Bikin migration `000002_auth_schema.up.sql`** ✅ done (`e8df533`)
 - Files: `backend/migrations/000002_auth_schema.up.sql`, `backend/migrations/000002_auth_schema.down.sql`
 - Tables: `users`, `refresh_tokens`, `login_attempts`, `audit_logs`
 - Reference: Section 6 (User, RefreshToken, LoginAttempt, AuditLog) + Section 6.3 indexes
 - Verify: `migrate -database "$DATABASE_URL" -path migrations up` di server, `psql ... -c '\dt'` cek 4 table baru
 - Commit: `feat(migrations): 000002 auth schema (users, refresh_tokens, login_attempts, audit_logs)`
+- Done: schema_meta `schema_version=000002_auth_schema`, gen_random_uuid() (no uuid-ossp)
 
-**Task 1.A.2 — GORM models di `backend/internal/auth/model.go`**
+**Task 1.A.2 — GORM models di `backend/internal/auth/model.go`** ✅ done (`d80ed3b` + `478b4a5` lockfiles)
 - Files: `backend/internal/auth/model.go`
 - Models: `User`, `RefreshToken`, `LoginAttempt`, `AuditLog` (full field per Section 6)
 - Tag GORM: `column:`, `not null`, `default:`, `index:`, `uniqueIndex:`
 - Verify: `cd backend && go build ./...`
 - Commit: `feat(auth): GORM models User RefreshToken LoginAttempt AuditLog`
+- Done: gorm.io/datatypes v1.2.7 added; build + vet PASS at server; go.sum + package-lock.json now committed for reproducible builds
 
 **Task 1.A.3 — Repository layer**
 - Files: `backend/internal/auth/repo.go`
@@ -1726,6 +1728,8 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.A.1 — bikin migration `000002_auth_schema.up.sql`** (schema users + refresh_tokens + login_attempts + audit_logs).
+**Berikut: Task 1.A.3 — Repository layer (`backend/internal/auth/repo.go`)** — methods: FindUserByEmail, CreateUser, UpdateUserPassword, IncFailedLogin, ResetFailedLogin, LockUser, IssueRefresh, RotateRefresh, RevokeRefresh, RevokeAllRefreshByUser, FindRefreshByJTI, LogLoginAttempt, LogAudit.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
+
+> Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
