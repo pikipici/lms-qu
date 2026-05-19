@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B FULL + 1.C.1 done (semua auth endpoints LIVE: /login, /refresh, /logout, /logout-all, /sessions; bearer middleware ready). Berikut: Task 1.C.2 (role guard + force-change-password middleware) atau 1.E.1 (seed-admin full implementation) untuk bisa real-user E2E test.
+> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B FULL + 1.C FULL + 1.E.1 done. Real admin user `admin@sekolah.id` created, full auth flow E2E verified (login → /refresh → /sessions → /logout-all GREEN). Berikut: Task 1.D (self endpoints /auth/me + /auth/change-password) lalu wire ForceChangePassword middleware.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.B.6 + 1.C.1 marked done)
+> Last updated: 2026-05-19 (Section 18: Task 1.C.2 + 1.E.1 marked done)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1466,12 +1466,16 @@ Setelah tools jadi, runbook deploy jadi:
 - Whitelist via route placement (anonymous routes mounted on `authGroup` directly; protected on `authGroup.Group("", BearerAuth)`).
 - Server build PASS, E2E: no bearer → 401 unauthorized, bad bearer → 401, valid bearer akan kebuka di Task 1.E.1 setelah seed-admin jalan.
 
-**Task 1.C.2 — Role guard middleware (admin/guru/siswa) + ForceChangePassword middleware**
-- Files: `backend/internal/middleware/role.go`, `backend/internal/middleware/force_change.go`
-- ForceChange: if `user.MustChangePassword=true` → block kecuali `/auth/me`, `/auth/change-password`, `/auth/logout`
-- Order yang lock di Section 4.5: ratelimit → request-id → auth → role-guard → enrollment-guard
-- Verify: integration test middleware chain
-- Commit: `feat(middleware): role guard + force-change-password gate`
+**Task 1.C.2 — Role guard middleware (admin/guru/siswa) + ForceChangePassword middleware** ✅ DONE (commit `768333f`, 2026-05-19, bundled dgn 1.E.1)
+- Files: `backend/internal/middleware/role.go` + `role_test.go` (84+36 LOC) + `force_change.go` + `force_change_test.go` (80+42 LOC)
+- Done: `RoleGuard(allowedRoles ...string)` reads `LocalsUserRole`, 403 forbidden kalo tidak match. `ForceChangePassword()` reads `LocalsMustChangePassword` (new local), whitelist `/auth/me`, `/auth/change-password`, `/auth/logout`, `/auth/logout-all`. UserVerifier interface diperluas: `VerifyAccessToken` sekarang return `mustChange bool`. Helper `MustChangePasswordFromCtx(c)`.
+- ⚠️ ForceChangePassword middleware BELUM di-wire ke routes — sengaja menunggu Task 1.D.1+1.D.2 supaya whitelist bisa di-test proper (with /auth/me + /auth/change-password endpoints live).
+- Server build/vet/test PASS (`./internal/middleware/...` 0.014s).
+
+**Task 1.E.1 — Lengkapi `cmd/seed-admin/main.go`** ✅ DONE (commit `768333f`, 2026-05-19, bundled dgn 1.C.2)
+- Files: `backend/cmd/seed-admin/main.go` rewrite (drop stub, real flow) + `backend/internal/auth/repo.go` (+10 LOC `CountAdmins`)
+- Done: connect DB → `repo.CountAdmins` → reject if >0 → `auth.HashPassword` (cost from cfg) → `repo.CreateUser` (Admin/Active/MustChangePassword=true) → `repo.LogAudit` action="admin_seeded" actor=NULL target=&newUserID. Idempotent: rerun → exit 1 dengan pesan "an admin already exists".
+- E2E verified di server: seed-admin run pertama created `admin@sekolah.id` (UUID `8f6c7479-...`); rerun refused. POST /auth/login → 200 + real JWT tokens (`must_change_password=true`); /sessions w/ bearer → 200 (2 sessions setelah refresh); /refresh → 200 (new token pair, old rotated); /logout-all → 204; /sessions after → empty `[]`. **Full auth flow LIVE end-to-end.** ✅
 
 #### 1.D Self Endpoints (`/auth/me`, change-password, sessions)
 
@@ -1487,10 +1491,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.E Admin Bootstrap CLI (full implementation)
 
-**Task 1.E.1 — Lengkapi `cmd/seed-admin/main.go`**
-- Replace stub: connect DB → check no admin exists → prompt email/password (atau env vars) → `golang.org/x/term` untuk hide password → bcrypt hash → insert User role=admin status=active MustChangePassword=true → print success
-- Verify: run di server pakai env vars `ADMIN_EMAIL=admin@sekolah.id ADMIN_PASSWORD='temp123' /home/ubuntu/lms/backend/bin/seed-admin` → cek `SELECT email, role FROM users` di Postgres
-- Commit: `feat(cmd): seed-admin full implementation`
+**Task 1.E.1 — Lengkapi `cmd/seed-admin/main.go`** ✅ DONE — see Section 1.C above (bundled dgn 1.C.2 di commit `768333f`).
 
 **Task 1.E.2 — Lengkapi `cmd/reset-admin/main.go`**
 - Replace stub: flag `--email <email> --password <new>` (interactive kalau kosong) → find user role=admin → bcrypt new pass → update + revoke all refresh
@@ -1720,7 +1721,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: pilih lanjut antara Task 1.C.2 (role guard + force-change-password middleware), atau Task 1.E.1 (`cmd/seed-admin` full implementation supaya bisa real-user E2E test).** Rekomendasi: 1.E.1 dulu — bikin admin user via CLI, lalu real login → /refresh → /sessions → /logout E2E confirm sebelum scale ke role guard.
+**Berikut: Task 1.D.1 + 1.D.2 — Self endpoints `GET /auth/me` + `POST /auth/change-password`** dan WIRE `ForceChangePassword` middleware ke protected group. Setelah ini admin baru bisa proper login → ganti password → unblock semua route. Eksekusi via codex.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
