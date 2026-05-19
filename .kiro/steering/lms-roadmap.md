@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: Section 1.A FULL done (schema + models + repo, build PASS). Berikut: Section 1.B (Login + JWT + Rate Limit), bundle 1.B.1 + 1.B.2 lewat codex.
+> Status: v0.7.2 — Fase 1 in progress: Section 1.A FULL done + 1.B.1+1.B.2 done (crypto helpers, build/vet/test PASS). Berikut: Task 1.B.3 (Login service).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.A.3 marked done, point ke 1.B.1+1.B.2)
+> Last updated: 2026-05-19 (Section 18: Task 1.B.1 + 1.B.2 marked done, point ke 1.B.3)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1423,19 +1423,13 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.B Login + JWT + Rate Limit
 
-**Task 1.B.1 — bcrypt password helper**
-- Files: `backend/internal/auth/password.go` (Hash, Verify, cost 12 from config)
-- Test: `backend/internal/auth/password_test.go` (hash → verify roundtrip, wrong pass fails)
-- Verify: `go test ./internal/auth/`
-- Commit: `feat(auth): bcrypt password helper`
+**Task 1.B.1 — bcrypt password helper** ✅ DONE (commit `fa5ba82`, 2026-05-19)
+- Files: `backend/internal/auth/password.go` (30 LOC) + `password_test.go` (56 LOC)
+- Done: `HashPassword(plain, cost)` (cost 0 → DefaultCost, validates MinCost..MaxCost) + `VerifyPassword(hashed, plain)`. Tests: roundtrip, wrong password, default cost when 0, rejects invalid cost. golang.org/x/crypto promoted to direct.
 
-**Task 1.B.2 — JWT issue + verify**
-- Files: `backend/internal/auth/jwt.go`
-- Funcs: `IssueAccess(userID, role) (token, exp)`, `IssueRefresh(userID) (jti, token, exp)`, `VerifyAccess(token) (claims, err)`, `VerifyRefresh(token) (jti, userID, err)`
-- Algo HS256, secret dari config `JWT_SECRET_KEY`
-- Test: roundtrip + wrong secret fails + expired fails
-- Verify: `go test ./internal/auth/`
-- Commit: `feat(auth): JWT issue/verify access+refresh`
+**Task 1.B.2 — JWT issue + verify** ✅ DONE (commit `fa5ba82`, 2026-05-19)
+- Files: `backend/internal/auth/jwt.go` (117 LOC) + `jwt_test.go` (124 LOC)
+- Done: AccessClaims (UserID, Role, RegisteredClaims) + RefreshClaims (UserID + JTI in RegisteredClaims.ID). HS256 sign/verify, Issuer="lms-api", config-driven TTL. Sentinel `ErrInvalidSigningMethod`. Tests: roundtrip access+refresh, wrong secret, expired token, invalid signing method (alg=none). Dep added: github.com/golang-jwt/jwt/v5 v5.2.1. Server build/vet/test PASS.
 
 **Task 1.B.3 — Login service**
 - Files: `backend/internal/auth/service.go` (`Login(email, password, ip, ua)`)
@@ -1726,7 +1720,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.B.1 + 1.B.2 (bundle) — bcrypt password helper + JWT issue/verify** lewat codex sub-agent. File-file independen, satu commit gabungan `feat(auth): crypto helpers (bcrypt password + JWT)`.
+**Berikut: Task 1.B.3 — Login service (`backend/internal/auth/service.go`)** — rate-limit cek, find user, status check, bcrypt verify, log LoginAttempt, increment FailedLoginCount, lock at >=10, on success reset+issue tokens+save refresh+audit. Eksekusi via codex sub-agent.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
