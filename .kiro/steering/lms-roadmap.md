@@ -2,7 +2,7 @@
 
 > Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL DONE. Backend admin domain CLOSED (auth + bootstrap + recovery + user CRUD + lifecycle + role change + sessions/audit/login-attempts read endpoints). Berikut: Fase 1.G (frontend auth flow integration).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.F.4 marked done, Section 1.F closed)
+> Last updated: 2026-05-19 (Section 18: Section 1.F closed, FE inventory verified, 1.G strategy noted)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1725,7 +1725,17 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Section 1.G — Frontend Auth + Self.** Sub-tasks: 1.G.1 login page (Next.js `frontend/app/(auth)/login/page.tsx` + form + axios call + localStorage tokens + redirect dashboard), 1.G.2 axios interceptor (refresh-on-401 retry, logout-on-fail, must_change_password gate redirect), 1.G.3 force-change-password page, 1.G.4 self profile (/me + /change-password UI), 1.G.5 logout. Local Windows build via codex; deploy ke server lewat `git pull` + `npm run build` + Next static export ke `frontend/out/` yang udah di-mount via Fiber Static.
+**Berikut: Section 1.G — Frontend Auth + Self.** Tasks 1.G.1 (login wiring) → 1.G.2 (refresh interceptor + auth-guard) → 1.G.3 (/me + /me/security) → 1.G.4 (/me/perangkat).
+
+**FE Inventory verified (2026-05-19):**
+- ✅ Stack: Next.js 14.2.15 (App Router, `output:export`), TanStack Query 5, Zustand 4 + persist, Zod, react-hook-form, Tailwind, Radix primitives (dialog/dropdown/label/slot/toast)
+- ✅ `lib/api.ts` — fetch wrapper + ApiError class. Reads `localStorage.lms.access` (legacy key, perlu di-rewire ke Zustand store)
+- ✅ `lib/auth.ts` — Zustand AuthStore w/ AuthUser type + persist key `lms.auth` (state.access ada disitu)
+- ✅ Routes scaffold: `/`, `/login`, `/lupa-password`, `/me`, `/me/security` — semua disabled stub
+- ❌ No `components/` dir — perlu shadcn init untuk Button/Input/Label/Form/Card/Toast/Dialog (ada Radix deps tapi belum ada wrapper component)
+- ❌ No `(dashboard)/`, `/admin/` routes — Fase 1.H
+
+**Strategy untuk 1.G.1:** bundle dgn shadcn init (init shadcn, add Button/Input/Label/Form/Card/Toast components) + wire login form. ~1 codex run. Build verify di server (no local Node). Subsequent tasks (1.G.2 interceptor, 1.G.3 self pages) per task.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
