@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E FULL DONE. Bootstrap admin flow LIVE end-to-end + emergency reset CLI verified (admin_reset_via_cli audit row + revoke-all + re-login w/ new pass). Berikut: Task 1.F (admin user CRUD endpoints).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E FULL + 1.F.1 DONE. Admin user CRUD endpoints LIVE end-to-end (list/create/update/delete + audit log + role guard + last-admin/self-delete protection). Berikut: Task 1.F.2 (lifecycle: reset-password/suspend/unsuspend/unlock).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.E.2 marked done, reset-admin CLI live-verified)
+> Last updated: 2026-05-19 (Section 18: Task 1.F.1 marked done, admin user CRUD live-verified)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1504,13 +1504,13 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.F Admin Panel Endpoints
 
-**Task 1.F.1 — Admin user CRUD endpoints**
+**Task 1.F.1 — Admin user CRUD endpoints** ✅ DONE (commit `102d750`)
 - Routes: `GET /admin/users` (filter, search, paginate), `POST /admin/users` (toggle manual/generate password), `PATCH /admin/users/:id` (name only), `DELETE /admin/users/:id` (soft-suspend, gak hard delete)
 - Body POST: `{name, email, role, password_strategy: manual|generate, password?}`
 - Response POST: `{user, generated_password?}`
-- Audit log per aksi
-- Verify: integration test + curl
-- Commit: `feat(admin): user CRUD endpoints`
+- Audit log per aksi (admin_user_created/admin_user_name_updated/admin_user_suspended) — actor_id + target_id + meta (role, strategy, old_name/new_name, previous_status)
+- Implementation: new pkg `internal/admin` (handler.go 409 LOC + handler_test.go 622 LOC). New repo methods di `internal/auth/repo.go`: `ListUsers(filter, limit, offset)`, `UpdateUserName`, `SuspendUser`. 16-char crypto/rand password generator (charset stripped of ambiguous 0/O/1/l). Last-admin protection (cannot delete last admin) + cannot-delete-self. Mounted dgn `RoleGuard("admin")` + `BearerAuth` + `ForceChangePassword`.
+- Live E2E verified: list (3 users), filter (?role=guru), search (?q=siswa), patch name, delete + status=suspended check, all 5 audit rows captured. Edge cases: last_admin_protected (400), email_already_exists (409), weak_password (400), invalid_role (400), invalid_id (400), no-bearer (401), siswa→/admin (403 insufficient_role).
 
 **Task 1.F.2 — Admin user lifecycle endpoints**
 - `POST /admin/users/:id/reset-password` (manual atau generate)
@@ -1725,7 +1725,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.F — Admin user CRUD endpoints** (GET/POST/PATCH/DELETE /admin/users + bulk CSV import per Fase 2). Sub-tasks: 1.F.1 list+filter, 1.F.2 create user, 1.F.3 update, 1.F.4 delete/disable, 1.F.5 reset-password endpoint (admin-side, parallel ke `cmd/reset-admin`).
+**Berikut: Task 1.F.2 — Admin user lifecycle endpoints** (POST /admin/users/:id/reset-password, /suspend, /unsuspend, /unlock). Semua aksi revoke all refresh user + audit log. Reset-password support manual atau generate (re-use 16-char generator dari 1.F.1). Unlock perlu repo method baru `UnlockUser` (set status=active + reset failed_login_count). Lalu 1.F.3 (role promote/demote with re-auth) + 1.F.4 (sessions/audit/login-attempts read endpoints).
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
