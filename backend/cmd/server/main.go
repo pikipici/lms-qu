@@ -1,0 +1,223 @@
+// cmd/server boots the LMS API server (Go Fiber).
+//
+// Fase 0 scope:
+//   - load config (TZ lock, DB conn, JWT secret, rate limit, storage)
+//   - init storage dirs
+//   - mount middleware: recover, request-id, logger, global rate limit
+//   - mount /api/v1/healthz + /api/v1/readyz
+//   - serve frontend/out static + SPA fallback
+//   - graceful shutdown on SIGINT/SIGTERM
+//
+// Domain endpoints (auth, admin, kelas, bab, ...) join in Fase 1+.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+
+	"github.com/pikip/lms/backend/internal/config"
+	"github.com/pikip/lms/backend/internal/db"
+	"github.com/pikip/lms/backend/internal/health"
+	"github.com/pikip/lms/backend/internal/middleware"
+	"github.com/pikip/lms/backend/internal/storage"
+	"gorm.io/gorm"
+)
+
+func main() {
+	if err := run(); err != nil {
+		slog.Error("server exit", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+
+	logger := newLogger(cfg)
+	slog.SetDefault(logger)
+
+	logger.Info("lms boot",
+		slog.String("env", cfg.Env),
+		slog.Int("port", cfg.Port),
+		slog.String("tz", cfg.Timezone.String()),
+		slog.String("frontend_dir", cfg.FrontendDir),
+		slog.Bool("automigrate", cfg.AutoMigrate),
+	)
+
+	if err := storage.Init(cfg.Storage.Dir); err != nil {
+		return err
+	}
+
+	rootCtx, cancel := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	gdb, closeDB, err := db.Open(rootCtx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = closeDB() }()
+
+	app := newFiberApp(cfg, logger)
+	mountRoutes(app, cfg, gdb)
+	mountStatic(app, cfg, logger)
+
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("listening", slog.String("addr", addr))
+		errCh <- app.Listen(addr)
+	}()
+
+	select {
+	case <-rootCtx.Done():
+		logger.Info("shutdown signal received")
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, fiber.ErrServiceUnavailable) {
+			return fmt.Errorf("listen: %w", err)
+		}
+	}
+
+	shutdownCtx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer scancel()
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+		logger.Warn("graceful shutdown failed", slog.String("err", err.Error()))
+	}
+	logger.Info("bye")
+	return nil
+}
+
+func newLogger(cfg *config.Config) *slog.Logger {
+	var level slog.Level
+	switch strings.ToLower(cfg.LogLevel) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+	opts := &slog.HandlerOptions{Level: level}
+	if cfg.IsProduction() {
+		return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, opts))
+}
+
+func newFiberApp(cfg *config.Config, log *slog.Logger) *fiber.App {
+	app := fiber.New(fiber.Config{
+		AppName:               "lms-api",
+		ServerHeader:          "lms-api",
+		DisableStartupMessage: true,
+		BodyLimit:             cfg.Storage.MaxTugasFileMB * 1024 * 1024, // hard ceiling; per-route limits stricter
+		ReadTimeout:           30 * time.Second,
+		WriteTimeout:          60 * time.Second,
+		IdleTimeout:           120 * time.Second,
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			code := fiber.StatusInternalServerError
+			if e, ok := err.(*fiber.Error); ok {
+				code = e.Code
+			}
+			rid := middleware.RequestIDFromFiber(c)
+			log.LogAttrs(c.UserContext(), slog.LevelWarn, "http error",
+				slog.String("request_id", rid),
+				slog.String("path", c.Path()),
+				slog.Int("status", code),
+				slog.String("err", err.Error()),
+			)
+			return c.Status(code).JSON(fiber.Map{
+				"error":      err.Error(),
+				"code":       fiberCode(code),
+				"request_id": rid,
+			})
+		},
+	})
+
+	// Order matters (#57): recover -> request-id -> logger -> rate-limit -> cors.
+	app.Use(middleware.Recover(log))
+	app.Use(middleware.RequestID())
+	app.Use(middleware.Logger(log))
+	app.Use(middleware.GlobalRateLimit(cfg.RateLimit.GlobalPerMin))
+
+	if len(cfg.CORS.AllowedOrigins) > 0 {
+		app.Use(cors.New(cors.Config{
+			AllowOrigins: strings.Join(cfg.CORS.AllowedOrigins, ","),
+			AllowHeaders: "Origin, Content-Type, Accept, Authorization, " + middleware.HeaderRequestID,
+		}))
+	}
+	return app
+}
+
+func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
+	api := app.Group("/api/v1")
+
+	hh := &health.Handler{Cfg: cfg, DB: gdb}
+	api.Get("/healthz", hh.Liveness)
+	api.Get("/readyz", hh.Readiness)
+}
+
+func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
+	if cfg.FrontendDir == "" {
+		return
+	}
+	if _, err := os.Stat(cfg.FrontendDir); err != nil {
+		log.Warn("frontend dir not found, skipping static",
+			slog.String("dir", cfg.FrontendDir),
+			slog.String("err", err.Error()),
+		)
+		return
+	}
+	app.Static("/", cfg.FrontendDir, fiber.Static{
+		Compress:      true,
+		CacheDuration: 60 * time.Second,
+	})
+	// SPA fallback for client-side routes (login, dashboard, etc.). API routes
+	// are matched first because they're registered before this Use().
+	app.Use(func(c *fiber.Ctx) error {
+		if strings.HasPrefix(c.Path(), "/api/") {
+			return fiber.ErrNotFound
+		}
+		index := filepath.Join(cfg.FrontendDir, "index.html")
+		if _, err := os.Stat(index); err != nil {
+			return fiber.ErrNotFound
+		}
+		return c.SendFile(index)
+	})
+}
+
+func fiberCode(status int) string {
+	switch status {
+	case fiber.StatusBadRequest:
+		return "bad_request"
+	case fiber.StatusUnauthorized:
+		return "unauthorized"
+	case fiber.StatusForbidden:
+		return "forbidden"
+	case fiber.StatusNotFound:
+		return "not_found"
+	case fiber.StatusConflict:
+		return "conflict"
+	case fiber.StatusTooManyRequests:
+		return "too_many_requests"
+	case fiber.StatusServiceUnavailable:
+		return "unavailable"
+	default:
+		return "internal"
+	}
+}

@@ -1,0 +1,16 @@
+# Normalize line endings so cross-OS work doesn't churn diffs.
+# Default: text files use LF in repo, native on checkout.
+* text=auto eol=lf
+
+# Shell + service files MUST be LF (run on Linux).
+*.sh         text eol=lf
+*.service    text eol=lf
+
+# Binary / lockfiles — leave alone.
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.webp       binary
+*.pdf        binary
+*.zip        binary

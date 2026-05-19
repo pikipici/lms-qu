@@ -1,0 +1,1360 @@
+# LMS Project — Roadmap & Living Plan
+
+> Status: v0.7.2 — operational pass: admin lock-out recovery, multi-admin promote w/ re-auth, CSV import preview persistence, feed cursor pagination, concurrent edit version, auth boundary explicit, storage path convention, guru audit scope, frontend env strategy.
+> Owner: User (guru) + Apis (assistant)
+> Last updated: 2026-05-18 (v0.7.2)
+
+## Daftar Isi
+- [0. Locked Decisions](#0-locked-decisions-v072)
+- [1. Goal](#1-goal)
+- [2. Target Users](#2-target-users)
+- [3. Tech Stack](#3-tech-stack)
+- [4. Core Features (MVP)](#4-core-features-mvp)
+- [5. User Flows](#5-user-flows)
+- [6. Data Model (GORM)](#6-data-model-gorm)
+- [7. API Endpoints](#7-api-endpoints-apiv1)
+- [8. Routes / Screens (Next.js)](#8-routes--screens-nextjs)
+- [9. Project Structure](#9-project-structure)
+- [10. Phasing / Roadmap](#10-phasing--roadmap)
+- [11. Risks / Concerns](#11-risks--concerns)
+- [12. Open Decisions Tersisa](#12-open-decisions-tersisa-v072)
+- [13. Deploy Strategy](#13-deploy-strategy-mengikuti-pola-fb-bot)
+- [14. Frontend Development Arsenal](#14-frontend-development-arsenal--skills--agents)
+- [15. Implementation Notes](#15-implementation-notes)
+- [16. Current Next Step](#16-current-next-step)
+- [17. First Admin Bootstrap](#17-first-admin-bootstrap)
+
+---
+
+## 0. Locked Decisions (v0.7.2)
+
+| # | Keputusan | Pilihan |
+|---|-----------|---------|
+| 1 | Skala guru | Multi-teacher (flat, no multi-tenant) |
+| 2 | Backend | Go + **Fiber** + GORM + PostgreSQL |
+| 3 | Frontend | Next.js 14 + TS + Tailwind + shadcn/ui + Zustand + TanStack Query |
+| 4 | Frontend build mode | **Static export** (`output: 'export'`) — di-serve oleh Go Fiber sebagai static, mirip fb-bot |
+| 5 | Jenis soal ujian | Pilihan Ganda (MCQ) saja |
+| 6 | Storage materi | Local disk (`./storage/uploads/`) di rdpkhorur |
+| 7 | Anti-cheat MVP | Timer server-side + shuffle soal/opsi + log tab-switch (tanpa hard lock) |
+| 8 | Auth | JWT (access 15m + refresh 7d), bcrypt password |
+| 9 | Deploy target | rdpkhorur, mengikuti pola fb-bot (lihat Section 13) |
+| 10 | Deadline | Tidak ada — santai |
+| 11 | User lifecycle | **Admin-controlled, no public self-register** |
+| 12 | Roles | `admin` \| `guru` \| `siswa` (3 role flat) |
+| 13 | Siswa join kelas | Hybrid: admin import/create + assign, atau via kode |
+| 14 | Bulk import siswa | YA di MVP (Fase 2), via CSV |
+| 15 | Struktur kelas | **Berbasis Bab** — kelas terdiri dari banyak Bab, materi/soal/tugas nempel ke bab |
+| 16 | Soal Bab — mode | Dual: Latihan (retry unlimited, no nilai) + Ulangan Bab (sekali, masuk nilai bab) |
+| 17 | Nilai Bab — formula | Rata-rata tertimbang: `(SoalUlanganBab × bobot1 + Tugas × bobot2) / total bobot` — bobot diset guru per kelas |
+| 18 | Latihan mandiri | TIDAK masuk hitungan nilai bab (formative only) |
+| 19 | Ulangan harian (lintas bab) | Berdiri sendiri di "rapor kelas", tidak masuk nilai bab tertentu |
+| 20 | Materi & Tugas | Boleh punya `BabID` (nullable) — bisa nempel ke bab atau berdiri bebas |
+| 21 | Ulangan recovery | Resume support — siswa boleh re-login + lanjut, timer server-side jalan terus, jawaban yang udah ke-save kepake |
+| 22 | Soal dengan gambar | Tiap soal boleh punya `GambarSoal` (1 gambar) + tiap opsi A-E boleh punya gambar (untuk soal "pilih gambar") |
+| 23 | Edit/resubmit tugas | Siswa boleh resubmit selama belum lewat deadline & belum di-grade |
+| 24 | Late submission | Per-tugas: `IzinkanLate` + `PenaltyPersen`. Default: tolak setelah deadline |
+| 25 | Mark materi as read | Track via tabel `MateriRead`, untuk progress per bab |
+| 26 | Remedial / reset attempt | Guru bisa reset HasilSoalBab/HasilUjian per siswa supaya bisa start ulang |
+| 27 | Pengumuman per kelas | Ada — bisa per-kelas atau per-bab |
+| 28 | Preview ulangan untuk guru | Ada — render mode read-only sebelum publish |
+| 29 | Timezone | Server lock ke `Asia/Jakarta` (WIB). Frontend tampilkan WIB explicit |
+| 30 | Soft delete | Kelas + Bab pakai `ArchivedAt` (archive); hard delete cuma admin |
+| 31 | Password awal user baru | Admin bisa ketik manual ATAU klik "Generate" (8 char acak alfanumerik). Password ditampilkan SEKALI di modal sukses, admin kasih tau user manual (chat/papan tulis/print). Plaintext gak disimpan, langsung di-hash bcrypt. |
+| 32 | Force change password | User wajib ganti password pas login pertama. Field `MustChangePassword` di User. Set `true` saat admin create / reset password. Login sukses tapi semua endpoint kecuali `/auth/me` & `/auth/change-password` return 403 sampai diganti. Frontend redirect paksa ke `/me/security`. |
+| 33 | Review jawaban setelah ulangan submitted | Per-ulangan setting: `IzinkanReviewSetelahSubmit` (bool, default `false`) + `WaktuBukaReview` (nullable timestamp). Logika: kalau `true` -> review terbuka langsung setelah submit. Kalau ada `WaktuBukaReview` -> review terbuka setelah waktu itu. Default: cuma tampil skor total. |
+| 34 | Random pool — Ulangan Bab | Tambah `JumlahSoalRandom` (nullable int) di UlanganBabSetting. Kalau diisi: per siswa cuma dapat N soal random dari pool mode=ulangan. Kalau null: semua soal mode=ulangan (default). |
+| 35 | Database migration | **golang-migrate/migrate** (versioned SQL files di `backend/migrations/`). Production: `migrate up`. Dev: GORM AutoMigrate diaktifkan via flag (`-automigrate=true`) untuk iterasi cepat. Setiap perubahan schema = 1 migration file commit. |
+| 36 | Login security | Rate limit 5 gagal/15 menit per `(IP, email)` pakai Fiber middleware (in-memory store cukup untuk MVP). Akun `locked` setelah 10 gagal kumulatif (admin reset). Tiap login attempt (success + fail) masuk `AuditLog` dengan IP + UserAgent. |
+| 37 | Status Bab | Field `Status` di Bab: `draft` (default) / `published` / `archived`. Siswa cuma lihat `published`. Guru bisa transisi: draft -> published -> archived (atau back ke draft). |
+| 38 | Duplicate kelas/bab/ulangan | Endpoint `POST /kelas/:id/duplicate`, `POST /bab/:id/duplicate`, `POST /ulangan/:id/duplicate`. Copy isi (materi, soal, tugas tanpa submission, ulangan tanpa hasil). Kelas: regenerate kode invite, no enrollment carry. Status hasil duplicate: `draft`. |
+| 39 | Activity feed guru | Polling 30s di dashboard guru: GET `/guru/feed?since=...` -> 20 event terbaru (submission masuk, ulangan selesai, siswa join). |
+| 40 | Pending counters | Sidebar guru badge: `ungraded_submissions`, `pending_review_ulangan`. Dipakai untuk pengingat. GET `/guru/pending-counts`. |
+| 41 | Forgot password | Halaman `/lupa-password`: cuma instruksi "Hubungi admin sekolah/guru wali kelas untuk reset password". Tidak ada PasswordResetRequest table di MVP — admin reset manual via dashboard. |
+| 42 | Session/JWT revocation | Refresh token disimpan di DB (`RefreshToken { jti, user_id, issued_at, expires_at, revoked_at, ip, user_agent }`). Access token tetap stateless 15m. Logout / suspend / lock / change-password / admin reset password → revoke semua refresh token user (kecuali current device saat self change-password, opsional). Refresh request cek `revoked_at IS NULL` + rotate (issue jti baru, mark old revoked). Compromised token mitigation. |
+| 43 | Submit concurrency | Transition `HasilSoalBab` / `HasilUjian` dari `berlangsung → submitted/expired` pakai `SELECT ... FOR UPDATE` di dalam transaction + cek status sebelum update. Auto-grade jalan dalam transaction yang sama. Idempotent: kalau status udah `submitted/expired`, return hasil yang ada (no double grade). Background job timer-expire pakai advisory lock per row. |
+| 44 | Health/readiness split | `/api/v1/healthz` (liveness, return 200 selalu kalau process hidup, no DB) + `/api/v1/readyz` (readiness, cek DB ping + storage dir writable + return 503 kalau ada yang fail). systemd `ExecStartPost` pakai readyz. Loadbalancer/uptime monitor pakai readyz. |
+| 45 | Remedial snapshot policy | Saat reset attempt: HasilSoalBab/HasilUjian + JawabanBab/Jawaban + SoalAssignment di-soft-delete (`DeletedAt`). Attempt baru bikin **assignment baru fresh** (refetch SoalBab/Soal aktif sekarang). AuditLog catat: actor, target_siswa, target_bab/ujian, reason, jumlah_soal_lama, jumlah_soal_baru, soal_diff (added/removed IDs). Siswa lihat soal baru — penting kalau guru udah edit/tambah soal antar attempt. |
+| 46 | File upload hardening | (1) Mime detect via `http.DetectContentType` (sniff isi, jangan trust client `Content-Type`). (2) Allowlist eksplisit per kategori: tugas (pdf, docx, jpg, png, zip), gambar soal (jpg, png, webp). (3) Filename sanitize: simpan sebagai `<uuid>.<ext>`, original name di DB column terpisah. (4) Gambar soal: resize on upload (max 1920px, quality 85) pake `disintegration/imaging` atau `nfnt/resize`. (5) PDF tugas max 20MB, gambar 5MB. (6) Block executable mime explicit (application/x-executable, application/x-msdownload, application/x-sh). (7) Upload dir di luar `frontend/out/` — di-serve via authenticated endpoint, bukan static. |
+| 47 | Global rate limit | Selain `/auth/login` (5/15m per IP+email), tambahin: per-IP global 120 req/menit (Fiber `limiter` middleware), `/auth/refresh` 10/menit per refresh token, `/kelas/join` 10/menit per IP (cegah brute force kode invite), upload endpoints 30/menit per user. In-memory store cukup MVP. |
+| 48 | Bab progress formula | Per siswa per bab: `progress_persen = round( (w_materi × pct_materi + w_latihan × pct_latihan + w_ulangan × pct_ulangan + w_tugas × pct_tugas) / total_w )` dengan default bobot equal (25/25/25/25), skip komponen yang gak ada (mis. bab tanpa tugas → bobot tugas dropped, sisanya re-normalize). pct_materi = `materi_dibaca / total_materi`. pct_latihan = `1 if ada attempt latihan else 0`. pct_ulangan = `1 if HasilSoalBab(mode=ulangan, status=submitted/expired) ada else 0`. pct_tugas = `submission_graded / total_tugas`. Display: progress bar + tooltip breakdown. |
+| 49 | Request ID & observability | Middleware bikin `X-Request-ID` (UUID v4 atau dari header kalau ada) di semua request, propagate ke slog context (`request_id`, `user_id`, `path`, `method`). Response header echo balik. Error response include `request_id` supaya user bisa report ke admin. Dipasang dari Fase 0, bukan Fase 8. |
+| 50 | Test coverage target | Per package backend: auth/admin/soalbab/ujian/nilai minimal 70% line coverage. Frontend critical path (login, form bikin user, kerjain ulangan, submit tugas) wajib ada Vitest unit + Playwright E2E (Fase 8). CI gate: `go test -cover ./...` fail kalau di bawah threshold. |
+| 51 | Data retention policy | LoginAttempt 30 hari (auto-cleanup). AuditLog **forever** (compliance, kalau perlu archive ke cold storage di v1). Submission file: retain sampai kelas di-archive + 1 tahun, lalu hard-delete file (DB row tetap untuk nilai history). HasilSoalBab/HasilUjian deleted_at: hard delete setelah 1 tahun + audit log. Backup pg_dump: retain 30 hari rolling, monthly archive 1 tahun. Cleanup task daily cron di server. |
+| 52 | Multi-admin promotion | Admin baru bisa dibikin via `/admin/users` create form (role=admin). Tapi promote/demote dari guru→admin atau sebaliknya wajib **re-auth**: admin yang melakukan harus re-input password sendiri di modal (POST `/admin/users/:id/role` { role, current_password }). AuditLog catat actor + target + role_lama + role_baru. Tidak ada self-demote (admin gak bisa demote dirinya sendiri kalau dia satu-satunya admin). |
+| 53 | Admin lock-out recovery | `cmd/seed-admin` cuma jalan kalau belum ada admin. Kalau admin satu-satunya kena lock/forget password: `cmd/reset-admin` CLI minta email + password baru, override lewat akses fisik server. Production: butuh SSH access. AuditLog: `actor_id=NULL` + `action='admin_reset_via_cli'`. Tidak ada self-service recovery — by design (akses fisik = trust boundary). |
+| 54 | CSV import preview persistence | Upload CSV → ImportJob status=`preview` (PreviewRowsJSON jsonb + valid_count + invalid_count). Confirm → status=`processing` → `completed`. Cancel atau timeout 1 jam tanpa confirm → status=`expired`, cleanup file + row. Admin bisa close tab tanpa lose preview state — reload `/admin/pengguna/import` resume preview kalau status=preview. |
+| 55 | Activity feed cursor | `GET /guru/feed?cursor=BASE64&limit=20` pakai opaque cursor `(at_unix_micro, id)` di-base64. Default 20 item. Response: `{ events: [...], next_cursor }`. Polling 30s pakai `cursor=null` (latest 20) buat refresh; load-more pakai cursor. Cegah duplicate/skip kalau dua event timestamp sama. |
+| 56 | Concurrent edit version | Tambah field `Version int default 1` di Bab, Kelas, SoalBab, Soal, UlanganBabSetting, Ujian. Increment tiap update. Request PATCH wajib include `version` di body, backend cek match → reject 409 + `{ error, current_version }` kalau mismatch. UI tampil "Konten ini diubah orang lain — refresh dulu". Cegah dua tab/device guru sama overwrite tanpa sadar. |
+| 57 | Auth boundary explicit | **Endpoint tanpa auth (anon allowed):** `/auth/login`, `/auth/refresh`, `/healthz`, `/readyz`, static files (`/`, `/login`, `/lupa-password`). **Semua lain butuh auth.** Tambahan: enrollment check di endpoint kelas-scope (siswa hanya akses kelas yang dia enrolled, guru hanya akses kelas yang dia owner). Middleware order: ratelimit → request-id → auth → role-guard → enrollment-guard. |
+| 58 | Storage path convention | Flat structure dengan kategori prefix: `./storage/uploads/<kategori>/<uuid>.<ext>` dimana kategori = `tugas`, `soal`, `materi`, `submission`, `import`. Tidak hierarki by bab/kelas — orphan cleanup lebih simple via "select uuid not in (select file_path from <ref tables>)". `OriginalFilename` disimpan di DB column terpisah untuk download UX. Saat duplicate kelas/bab → copy file ke uuid baru (jangan share). |
+| 59 | Guru audit scope | `GET /guru/kelas/:id/audit?action=<filter>&limit=50` — guru bisa lihat audit log yang berkaitan kelas miliknya: action subset (`hasil_reset`, `bab_archived`, `bab_published`, `siswa_kicked`, `tugas_deleted`). Hanya entry dengan `target_kelas_id=<id>`. Berguna untuk transparansi kalau admin bantu reset attempt. |
+| 60 | Frontend env strategy | `NEXT_PUBLIC_API_BASE` di-bake at build time (static export limit). **Production**: rebuild dengan `NEXT_PUBLIC_API_BASE=/api/v1` (same-origin). **Dev**: `.env.development.local` set `NEXT_PUBLIC_API_BASE=http://localhost:8200/api/v1`. Dokumentasikan di `docs/DEPLOY.md`: kalau base URL berubah, FE wajib rebuild. |
+
+**Open (perlu sesi terpisah):**
+- Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
+
+---
+
+## 1. Goal
+
+LMS multi-guru, admin-controlled, **berbasis Bab**:
+- **Admin**: manage user (guru, siswa), reset password, bulk import via CSV, audit log
+- **Guru**: manage kelas + bab (materi, soal latihan, ulangan bab, tugas), ulangan harian lintas bab, penilaian
+- **Siswa**: akses bab di kelas (lihat materi, kerjain latihan, ikut ulangan bab, submit tugas), kerjain ulangan harian, lihat nilai transparan per bab
+
+---
+
+## 2. Target Users
+
+| Role  | Akses |
+|-------|-------|
+| Admin | Manage semua user (CRUD), reset password, suspend, bulk import siswa via CSV, lihat audit log |
+| Guru  | Manage kelas yang dia bikin, bab + materi + soal + tugas, ulangan harian, nilai siswa di kelasnya |
+| Siswa | Join kelas via kode (atau di-assign admin), akses bab + materi, kerjain latihan/ulangan, submit tugas, lihat nilai transparan |
+
+**Akses register publik:** TIDAK ADA. Semua akun harus di-create oleh admin.
+
+---
+
+## 3. Tech Stack
+
+### Backend (Go)
+- **Framework**: Fiber v2
+- **ORM**: GORM + AutoMigrate (awal), pindah `golang-migrate` kalau prod stabil
+- **DB**: PostgreSQL 15+
+- **Auth**: JWT (`github.com/golang-jwt/jwt/v5`), bcrypt (`golang.org/x/crypto/bcrypt`)
+- **Validation**: `go-playground/validator/v10`
+- **Config**: `.env` via `joho/godotenv` + `os.Getenv`
+- **Logging**: `slog` (stdlib)
+- **File upload**: Fiber multipart -> disk
+- **Test**: stdlib + `testify`
+- **Static serve**: Fiber `app.Static("/", "./frontend/out")` + SPA fallback
+
+### Frontend (Next.js — static export)
+- Next.js 14 App Router + TypeScript
+- `output: 'export'` -> hasilnya di `frontend/out/` (HTML + JS + assets)
+- Tailwind CSS + shadcn/ui (komponen siap pake)
+- Zustand (global state ringan) + TanStack Query (server state)
+- React Hook Form + Zod
+- Auth: JWT disimpan di localStorage (atau cookie non-httpOnly karena static export gak bisa set cookie server-side)
+- HTTP: fetch wrapper sederhana
+- API base URL: same-origin (`/api/v1`) karena Go yang serve
+
+**Catatan static export limits (gak masalah untuk LMS):**
+- Gak ada API routes Next.js (gak perlu, Go handle)
+- Gak ada ISR / server actions (gak perlu)
+- Gak ada `next/image` optimizer di runtime (pake `unoptimized: true`)
+
+### Storage & Infra
+- File: `./storage/uploads/<kategori>/<uuid>.<ext>`
+- DB: PostgreSQL lokal di rdpkhorur (DB user/pass di `.env`)
+- Tidak ada Nginx — Go Fiber langsung listen `0.0.0.0:8200` (mirip fb-bot di 8100)
+- Akses via SSH tunnel: `ssh -L 8200:127.0.0.1:8200 rdpkhorur`
+- systemd unit: `lms-api.service` (1 service, simpler dari fb-bot)
+
+---
+
+## 4. Core Features (MVP)
+
+### 4.0 Konsep Hierarki
+
+```
+Kelas
+ └── Bab (1, 2, 3, ... — dengan urutan, judul, deskripsi)
+      ├── Materi  (PDF / link YouTube / teks markdown — banyak per bab)
+      ├── Soal Bab
+      │     ├── Mode "Latihan" (retry unlimited, jawaban benar muncul setelah submit, TIDAK masuk nilai)
+      │     └── Mode "Ulangan Bab" (1x kerja, masuk nilai bab)
+      └── Tugas (opsional — bisa nempel ke bab atau berdiri sendiri)
+
+Kelas (lintas bab)
+ └── Ulangan Harian — assessment besar lintas-bab, di rapor kelas, TIDAK masuk nilai bab
+```
+
+Materi & Tugas punya field `BabID` nullable — kalau diisi, dia bagian dari bab itu; kalau null, dia berdiri bebas di kelas (legacy / pengumuman umum).
+
+### 4.1 Admin
+- Manage user (CRUD), reset password, suspend
+- Bikin user: input nama+email+role, password bisa **ketik manual atau klik "Generate"** (8 char acak alfanumerik) — password ditampilkan SEKALI di modal sukses, admin kasih tahu user manual. `MustChangePassword=true` otomatis di-set
+- Reset password user: sama flow dengan create — `MustChangePassword=true` di-set ulang
+- Bulk import siswa via CSV — generate password per siswa, kasih file CSV download "credentials_<job_id>.csv" sekali
+- Suspend / unlock akun (kalau locked karena gagal login berkali-kali)
+- Lihat semua kelas (read-only)
+- Audit log
+
+### 4.2 Guru
+- Login (akun dibuat admin) + force change password kalau pertama kali
+- Dashboard: ringkasan, **activity feed** (polling 30s — submission masuk, ulangan selesai, siswa join), **pending counters** (badge tugas belum dinilai, ulangan belum di-review)
+- Kelas: CRUD + archive + **duplicate (copy ke tahun ajaran baru)**, kode invite, list/kick siswa, set bobot nilai bab (Soal vs Tugas)
+- Bab: CRUD + drag-and-drop urutan + **status (draft/published/archived)** + duplicate, per-bab tab (Materi / Soal / Tugas / Pengumuman / Pengaturan Ulangan Bab)
+- Materi: upload PDF, link YouTube, teks markdown — per bab atau kelas
+- Soal Bab: editor (form + bulk paste), set mode (latihan / ulangan), poin, gambar soal & gambar opsi (opsional)
+- Pengaturan Ulangan Bab per bab: durasi, jadwal, shuffle, **JumlahSoalRandom (random N dari pool)**, **IzinkanReviewSetelahSubmit + WaktuBukaReview**
+- Preview ulangan: render persis kayak siswa (mode read-only) sebelum publish
+- Tugas: CRUD + deadline + max nilai + attachment + izinkan late + penalty persen, review submission, grade + feedback
+- Remedial: reset attempt siswa untuk Ulangan Bab atau Ulangan Harian (bikin siswa bisa kerjain lagi, soft-delete + audit log dengan reason)
+- Pengumuman: bikin pengumuman per-kelas atau per-bab
+- Ulangan Harian (MCQ lintas bab): bank soal pribadi, buat ulangan + duplicate, auto-grade, rekap, `IzinkanReviewSetelahSubmit`
+- Lihat rekap nilai per kelas: tabel siswa × bab + ulangan harian
+- Export nilai CSV
+
+### 4.3 Siswa
+- Login (akun dibuat admin) + force change password kalau pertama kali
+- Lupa password: halaman `/lupa-password` -> instruksi "Hubungi admin"
+- Dashboard: list kelas + **banner "Lanjutkan ulangan"** kalau ada sesi berlangsung + button "Gabung Kelas"
+- Join kelas via kode 6 char (kalau belum di-assign admin)
+- Buka kelas -> lihat list bab (cuma yang `published`) + progress per bab + section ulangan harian + pengumuman
+- Buka bab -> tab: Materi / Latihan / Tugas / Hasil
+  - Materi: list materi (badge "sudah dibaca"), klik buat baca/embed -> auto mark-read
+  - Latihan: kerjain soal mode latihan, retry unlimited, lihat jawaban benar
+  - Tugas: submit tugas yang nempel di bab itu, boleh resubmit selama belum graded & belum lewat deadline
+  - Hasil: breakdown transparan nilai bab — Ulangan Bab xx, Tugas xx, Bobot xx, Total xx. **Review jawaban ulangan** muncul kalau guru izinin (langsung atau setelah `WaktuBukaReview`)
+- Submit tugas (file/teks). Kalau lewat deadline & guru izinin late: submission masuk dengan flag `LATE` + nilai max akan di-penalty
+- Kerjain Ulangan Bab atau Ulangan Harian
+  - Recovery / resume: kalau browser crash atau internet putus, siswa login lagi -> dashboard tampilin "Ulangan sedang berlangsung" -> klik resume -> lanjut dengan jawaban yang udah ke-save (timer server-side terus jalan, gak di-pause)
+- Halaman Nilai (`/siswa/nilai`): full transparansi per kelas + lintas kelas
+
+### 4.4 Anti-cheat (locked)
+- Timer server-side autoritatif (berlaku untuk Ulangan Bab dan Ulangan Harian)
+- Shuffle soal & shuffle opsi (per siswa, deterministik dari `mulai_at` + `siswa_id`)
+- Random N dari pool (untuk Ulangan Bab + Ulangan Harian) — masing-masing siswa dapat soal yang beda
+- Log event tab-switch & window-blur
+- Tidak ada fullscreen lock
+
+### 4.5 Login Security (locked)
+- Rate limit: 5 gagal/15 menit per (IP + email) untuk `/auth/login`
+- Global rate limit: 120 req/menit per IP (Fiber `limiter` middleware)
+- `/auth/refresh` 10/menit per refresh token (cegah replay)
+- `/kelas/join` 10/menit per IP (cegah brute force kode invite 6-char)
+- Upload endpoints 30/menit per user
+- Lockout: 10 gagal kumulatif -> akun `locked` (admin reset)
+- Audit log semua login attempt (success + fail) dengan IP + UserAgent
+- Bcrypt cost 12 untuk password hash
+- JWT: access token 15m (stateless), refresh 7d (stateful, tracked di DB `RefreshToken`)
+- Refresh token rotation tiap refresh (old jti revoked, new jti issued); reuse detection → revoke-all-chain
+- Suspend / lock / change-password / admin reset → revoke semua refresh token user
+- `MustChangePassword=true` -> semua endpoint return 403 kecuali `/auth/me`, `/auth/change-password`, `/auth/logout`
+
+### 4.6 Notifikasi (TUNDA — bedah di v0.8)
+Akan dibedah terpisah setelah Fase 0-3 jalan. Sementara: tidak ada placeholder UI bell, tidak ada notif store di FE/BE. Pengumuman pakai polling refresh biasa di dashboard kelas. Activity feed guru pakai polling 30s.
+
+### 4.7 YAGNI
+Tipe soal selain MCQ, video conference, forum, mobile app, AI grading, payment, multi-tenant, profile picture, komentar di submission, search global, bulk grade, soal LaTeX/MathJax, activity log siswa untuk guru, co-teacher 1 kelas, fitur "tahun ajaran/semester" terstruktur, konversi nilai ke huruf, print/export rapor PDF, maintenance mode, self-service forgot password (chat admin dulu), email notification.
+
+---
+
+## 5. User Flows
+
+### 5.0 Landing Page & Auth Entry Flow
+
+**No public self-register.** Semua user dibikin oleh admin. Landing page cuma punya 1 jalur masuk.
+
+Landing page (`/`):
+- Hero singkat (judul + tagline LMS) + 1 CTA: **"Masuk"** -> `/login`
+- Footer kecil: link kontak admin/sekolah kalau user lupa kredensial
+
+Login flow (`/login`):
+1. User isi email + password
+2. POST `/auth/login` -> backend response `{ access, refresh, user: { role, status } }`
+3. Kalau `status = suspended` -> tolak + pesan "Akun dinonaktifkan, hubungi admin"
+4. Frontend cek `user.role`:
+   - `admin` -> redirect `/admin`
+   - `guru`  -> redirect `/guru`
+   - `siswa` -> redirect `/siswa`
+5. Token disimpan di localStorage, Zustand store update
+
+**Tidak ada `/register` publik.** Endpoint `/auth/register` juga tidak diekspose.
+
+Reset password (MVP):
+- User klik "Lupa password?" di `/login` -> tampil pesan "Hubungi admin sekolah untuk reset"
+- Admin reset dari panel admin: pilih user -> klik "Reset Password" -> dapet password sementara untuk dikasih ke user
+
+Self-change password (setelah login):
+- User bisa ganti password sendiri di `/me/security` (semua role)
+- Wajib re-input password lama
+
+### 5.0a Flow Admin — Bikin Akun Guru / Siswa
+1. Login admin -> `/admin`
+2. Tab "Pengguna" -> "Tambah Pengguna"
+3. Pilih role (guru/siswa) -> isi nama, email, password awal
+4. (Opsional, kalau siswa) langsung assign ke kelas
+5. Save -> akun aktif, kasih kredensial ke user via cara apa pun (chat/email manual)
+
+### 5.0b Flow Admin — Bulk Import Siswa via CSV
+1. `/admin/pengguna` -> "Import CSV"
+2. Download template CSV (`name,email,password,kode_kelas?`)
+3. Upload file CSV
+4. Backend parse + validate per baris -> tampilkan preview (N valid, M error)
+5. Konfirmasi -> backend insert massal dalam transaction
+6. Hasil: ringkasan (X siswa di-create, Y enrolled ke kelas, Z error dengan alasan)
+
+### 5.0c Flow Siswa — Join Kelas
+Dua cara, tergantung apa yang admin lakukan saat create akun:
+- **Cara A (admin assign langsung):** akun siswa udah pre-enrolled -> begitu login, kelas udah muncul
+- **Cara B (siswa pakai kode kelas):** siswa login, klik "Gabung Kelas" di dashboard, masukin kode 6 char -> backend POST `/kelas/join` -> enrolled
+
+### 5.1 Guru — Bikin Soal Bab (Latihan + Ulangan Bab)
+1. Login -> Dashboard -> pilih kelas -> tab "Bab"
+2. Pilih bab -> tab "Soal" -> "Tambah Soal"
+3. Isi: pertanyaan, opsi A-E, jawaban benar, poin, **mode (latihan / ulangan)**
+4. Repeat untuk soal lainnya, atau pakai "Bulk Paste"
+5. Kalau ada soal mode `ulangan`: buka tab "Pengaturan Ulangan Bab" -> set durasi, jadwal, shuffle, aktifkan
+
+### 5.2 Guru — Bikin Ulangan Harian (lintas bab)
+1. Login -> Dashboard -> pilih kelas -> tab "Ulangan Harian"
+2. "Buat Baru" -> isi judul, durasi, jadwal mulai/selesai
+3. Tambah soal: ketik manual / pilih dari Bank Soal / random N dari topik bank
+4. Setting: shuffle soal & opsi, tampilkan nilai langsung
+5. Publish
+
+### 5.3 Siswa — Latihan Soal Bab (formative, no nilai)
+1. Login -> kelas -> bab -> tab "Latihan"
+2. Klik "Mulai Latihan" -> server bikin attempt baru (`HasilSoalBab.mode=latihan`)
+3. Jawab soal-soal sesuai shuffle pribadi
+4. Submit -> auto-grade -> reveal jawaban benar + pembahasan
+5. Boleh retry sebanyak yang siswa mau (attempt baru tiap retry)
+
+### 5.4 Siswa — Kerjain Ulangan Bab (1x, masuk nilai)
+1. Login -> kelas -> bab -> tab "Hasil" atau notif -> klik "Ulangan Bab" (kalau aktif)
+2. Baca instruksi -> "Mulai" -> server cek belum pernah submit, bikin `HasilSoalBab.mode=ulangan` dengan `mulai_at = now`
+3. Halaman fokus full screen, timer countdown server-authoritative
+4. Tiap pilih jawaban -> debounced auto-save
+5. Submit / timer habis -> auto-grade -> tampilkan skor (kalau guru izinin)
+6. Nilai langsung masuk ke perhitungan Nilai Bab (lihat Section 6.2)
+
+### 5.5 Siswa — Kerjain Ulangan Harian (lintas bab)
+1. Login -> kelas -> section "Ulangan Harian" -> klik ulangan aktif
+2. Baca instruksi -> "Mulai" -> server bikin `HasilUjian` dengan urutan soal/opsi sesuai shuffle pribadi
+3. Halaman fokus + timer server-side
+4. Auto-save jawaban tiap pilih
+5. Submit / timer habis -> auto-grade -> nilai masuk section "Ulangan Harian" di rapor (TIDAK masuk Nilai Bab)
+
+### 5.6 Siswa — Lihat Nilai (transparansi)
+1. Login -> `/siswa/nilai` (lintas kelas) atau `/siswa/kelas/:id/nilai` (per kelas)
+2. Per kelas, lihat list bab dengan breakdown:
+   - Nilai Ulangan Bab (raw + skala 100)
+   - Nilai Tugas Bab (avg dari semua tugas di bab itu)
+   - Bobot yang dipake
+   - Total Nilai Bab
+3. Section terpisah: "Ulangan Harian" — list ulangan yang udah dikerjain + nilainya
+4. Total Kelas = rata-rata Nilai Bab (skip NULL)
+
+### 5.7 Guru — Review Tugas
+1. Dashboard -> Tugas -> N submission baru
+2. Buka submission -> download/lihat
+3. Input nilai + feedback -> save
+4. Status submission jadi "graded" -> nilai masuk hitungan Nilai Tugas Bab (kalau tugas itu nempel ke bab)
+
+### 5.8 Siswa — Resume Ulangan (recovery dari crash / disconnect)
+1. Siswa lagi kerjain Ulangan Bab / Harian -> browser crash, internet putus, atau laptop mati
+2. Siswa login lagi -> dashboard nampilin banner "Ulangan sedang berlangsung — sisa waktu xx menit"
+3. Klik "Lanjutkan" -> redirect ke `/play` ulangan tsb
+4. Server return jawaban yang udah ke-save + sisa waktu (`mulai_at + durasi - now`)
+5. Frontend render state, timer lanjut dari sisa waktu
+6. Kalau timer udah habis pas siswa offline -> auto-submit (status `expired`), siswa langsung dapet skor tanpa bisa lanjut
+
+### 5.9 Guru — Remedial (Reset Attempt)
+1. Buka rekap hasil ulangan (`/guru/kelas/.../bab/.../hasil` atau `/ulangan/.../hasil`)
+2. Pilih siswa yang mau direset -> klik "Reset Attempt"
+3. Konfirmasi (warning: nilai sebelumnya akan ke-soft-delete, masuk audit log)
+4. Backend: HasilSoalBab/HasilUjian + Jawaban-nya di-soft-delete (`DeletedAt`), siswa diijinkan start lagi
+5. Siswa dapet ulangan tsb muncul lagi sebagai "tersedia" di dashboard
+
+### 5.10 Guru — Bikin Pengumuman
+1. Pilih kelas -> tab "Pengumuman" atau di tab Bab tertentu -> "Buat Pengumuman"
+2. Isi: judul, isi (markdown), scope (kelas atau bab tertentu)
+3. Publish -> langsung muncul di dashboard siswa pas refresh
+4. Siswa lihat banner "Pengumuman baru" di dashboard kelas / bab
+
+### 5.12 Admin — Bikin User Baru (password lifecycle)
+1. Buka `/admin/pengguna` -> "Tambah Pengguna"
+2. Isi nama, email, role
+3. Pilih cara set password:
+   - **Ketik manual**: input langsung
+   - **Generate**: klik tombol "Generate" -> isi otomatis 8 char acak
+4. Submit -> backend bcrypt + simpan user dengan `MustChangePassword=true`, `Status=active`
+5. **Modal sukses**: tampil sekali "Password user X: `aB3xY9zK`" + tombol copy + warning "tutup modal = password gak bisa dilihat lagi, harus reset"
+6. Admin kasih tau user manual (chat, papan tulis, print)
+7. User login pertama kali -> dapat redirect paksa ke `/me/security` ganti password
+
+### 5.13 Admin — Bulk Import Siswa (CSV)
+1. Buka `/admin/pengguna/import` -> upload CSV (kolom: nama, email)
+2. Backend preview: validasi format, cek email duplicate, tampil tabel preview + jumlah valid/invalid
+3. Admin klik "Confirm Import" -> backend create user satu-per-satu, generate password 8 char per siswa, simpan dengan `MustChangePassword=true`
+4. Setelah selesai: ImportJob disimpan, **download file `credentials_<job_id>.csv`** dengan kolom (nama, email, password_awal). Admin distribute file ini ke wali kelas / siswa.
+5. File credentials cuma bisa di-download SEKALI dari modal sukses — gak ada ulang setelah modal ditutup. Kalau ketinggalan, harus reset password individual.
+
+### 5.14 User — Force Change Password (login pertama)
+1. User login dengan password awal dari admin -> sukses
+2. Backend response include `must_change_password: true`
+3. Frontend redirect paksa ke `/me/security`
+4. Form: password baru + konfirmasi (min 8 char, ada angka)
+5. Submit -> backend update password hash + set `MustChangePassword=false`
+6. Redirect ke dashboard sesuai role
+
+### 5.15 Siswa — Lihat Review Jawaban Ulangan
+1. Setelah submit Ulangan Bab/Harian, masuk ke halaman hasil
+2. Cek setting `IzinkanReviewSetelahSubmit` + `WaktuBukaReview`:
+   - Jika `IzinkanReviewSetelahSubmit=true`: review terbuka langsung, tampilkan tiap soal + jawaban siswa + jawaban benar + status (✓/✗)
+   - Jika `WaktuBukaReview` set & sudah lewat: review terbuka
+   - Else: cuma tampil "Skor: 80, review akan dibuka pada {WaktuBukaReview}" atau "Hubungi guru untuk review"
+
+### 5.16 Guru — Duplicate Kelas (re-use untuk tahun ajaran baru)
+1. Buka `/guru/kelas` -> klik tombol "Duplicate" di kelas existing
+2. Modal: input nama kelas baru
+3. Submit -> backend copy: kelas + bab (status=draft semua) + materi + soal bab + tugas (tanpa submission) + ulangan harian (tanpa hasil)
+4. Kode invite kelas baru di-regenerate, enrollment kosong
+5. Guru tinggal publish bab yang mau dipakai + invite siswa baru
+
+### 5.17 Forgot Password (siswa lupa)
+1. Siswa di halaman login klik "Lupa password?"
+2. Halaman `/lupa-password` menampilkan: "Hubungi admin sekolah/guru wali kelas Anda untuk minta reset password. Setelah reset, Anda akan dapat password sementara dan wajib ganti pas login pertama."
+3. Siswa chat admin, admin buka `/admin/pengguna` -> klik user -> "Reset Password" (flow sama dengan create) -> kasih tau siswa
+4. (Self-service forgot password ditunda — perlu email kalau mau ada)
+
+---
+
+## 6. Data Model (GORM)
+
+```go
+User       { ID, Name, Email(unique), PasswordHash, Role(admin|guru|siswa), Status(active|suspended|locked), MustChangePassword(bool, default true), FailedLoginCount(int, default 0), LastFailedLoginAt(*), CreatedByID(*), LastLoginAt(*), CreatedAt, UpdatedAt }
+Kelas      { ID, Nama, Deskripsi, KodeInvite(unique,6), GuruID, BobotSoalUlangan(default 50), BobotTugas(default 50), Version(int default 1), CreatedAt, ArchivedAt(*) }
+Enrollment { KelasID, SiswaID, Status, JoinedAt, JoinedVia(admin|kode) }  // PK composite
+Bab        { ID, KelasID, Nomor, Judul, Deskripsi, Urutan, Status(draft|published|archived, default draft), Version(int default 1), CreatedAt, ArchivedAt(*) }
+Materi     { ID, KelasID, BabID(*), Judul, Tipe, Konten, FilePath, Urutan, CreatedAt }
+MateriRead { MateriID, SiswaID, ReadAt }                              // PK composite
+Tugas      { ID, KelasID, BabID(*), Judul, Deskripsi, Deadline, MaxNilai, AttachmentPath, IzinkanLate(bool), PenaltyPersen(int 0-100), CreatedAt }
+Submission { ID, TugasID, SiswaID, Konten, AttachmentPath, SubmittedAt, IsLate(bool), Nilai(*), NilaiSetelahPenalty(*), Feedback, GradedAt(*), Version }
+
+// Soal Bab + gambar
+SoalBab    { ID, BabID, Pertanyaan, GambarSoal(*), OpsiA..E(*), GambarOpsiA..E(*), JawabanBenar, Poin, Mode(latihan|ulangan), Urutan, Version(int default 1), CreatedAt }
+UlanganBabSetting { BabID(PK), DurasiMenit, MulaiAt(*), SelesaiAt(*), ShuffleSoal, ShuffleOpsi, JumlahSoalRandom(*), TampilkanNilaiLangsung, IzinkanReviewSetelahSubmit(default false), WaktuBukaReview(*), Aktif, Version(int default 1) }
+HasilSoalBab { ID, BabID, SiswaID, Mode(latihan|ulangan), AttemptKe, MulaiAt, SubmitAt(*), TotalNilai(*), Status(berlangsung|submitted|expired), DeletedAt(*) }
+JawabanBab   { ID, HasilSoalBabID, SoalBabID, JawabanSiswa(*), Benar, Poin }
+EventBab     { ID, HasilSoalBabID, Tipe(tab_switch|blur|focus|paste), At }
+
+// Ulangan Harian + Soal bisa pakai gambar juga
+Ujian      { ID, KelasID, Judul, DurasiMenit, MulaiAt, SelesaiAt, ShuffleSoal, ShuffleOpsi, JumlahSoalRandom(*), TampilkanNilaiLangsung, IzinkanReviewSetelahSubmit(default false), WaktuBukaReview(*), Version(int default 1), CreatedAt }
+Soal       { ID, GuruID(pemilik bank), UjianID(*), Pertanyaan, GambarSoal(*), OpsiA..E(*), GambarOpsiA..E(*), JawabanBenar, Poin, Topik, Version(int default 1), CreatedAt }
+UjianSoal  { UjianID, SoalID, Urutan }                                // PK composite
+HasilUjian { ID, UjianID, SiswaID, MulaiAt, SubmitAt(*), TotalNilai(*), Status(berlangsung|submitted|expired), DeletedAt(*) }
+Jawaban    { ID, HasilUjianID, SoalID, JawabanSiswa(*), Benar, Poin }
+EventUjian { ID, HasilUjianID, Tipe, At }
+
+// Ulangan attempt assignment (untuk random pool — soal mana yang dikasih ke siswa mana, deterministik)
+HasilSoalBabSoalAssignment { HasilSoalBabID, SoalBabID, Urutan }      // PK composite
+HasilUjianSoalAssignment   { HasilUjianID, SoalID, Urutan }           // PK composite
+
+// Pengumuman per kelas / per bab
+Pengumuman { ID, KelasID, BabID(*), Judul, Isi(markdown), CreatedByID, CreatedAt }
+
+AuditLog   { ID, ActorID(*), ActorRole(*), Action, TargetType, TargetID(*), TargetKelasID(*), Meta(jsonb), IP(*), UserAgent(*), At }
+LoginAttempt { ID, Email, IP, UserAgent, Success(bool), Reason(*), At }
+ImportJob  { ID, AdminID, Filename, Status(preview|processing|completed|expired|failed), TotalRows, ValidCount, InvalidCount, SuccessCount, FailCount, PreviewRowsJSON(jsonb), ErrorsJSON(jsonb), CredentialsCSV(*), ExpiresAt, CreatedAt, ConfirmedAt(*), CompletedAt(*) }
+RefreshToken { ID, JTI(unique), UserID, IssuedAt, ExpiresAt, RevokedAt(*), RevokedReason(*), IP(*), UserAgent(*), ReplacedByJTI(*) }
+```
+
+`(*)` = nullable.
+
+### 6.1 Catatan model
+
+- **User**: `Status` tambah `locked` (akun di-lock karena terlalu banyak gagal login). `MustChangePassword` default `true` saat create — set `false` setelah user ganti password sendiri. `FailedLoginCount` di-increment per gagal login (per email). `LastFailedLoginAt` untuk window rate limit.
+- **Bab.Status**: `draft` (default, siswa gak lihat), `published` (siswa lihat), `archived` (siswa gak lihat lagi). Beda dari `ArchivedAt` — `Status=archived` adalah workflow guru, `ArchivedAt` adalah hard archive. Untuk konsistensi, **gabung jadi 1**: enum `Status(draft|published|archived)`, tanpa `ArchivedAt` di Bab. Kelas tetap pakai `ArchivedAt`.
+- **MateriRead**: dipakai untuk progress per bab di sisi siswa. Auto-insert pas siswa buka viewer materi.
+- **Tugas**: `IzinkanLate` default false. `PenaltyPersen` 0-100, jadi nilai max submission late = `MaxNilai × (100 - PenaltyPersen) / 100`.
+- **Submission**: `Version` increment tiap resubmit; baris terbaru saja yang dipake (atau pakai 1 row dengan overwrite). Default: **1 row, overwrite** — hemat storage. `IsLate` di-set saat submit, `NilaiSetelahPenalty` dihitung backend pas grading.
+- **SoalBab/Soal**: gambar disimpan sebagai path relatif di `./storage/uploads/soal/<uuid>.jpg`. Gambar opsi opsional (untuk soal "pilih gambar").
+- **HasilSoalBab.Status**:
+  - `berlangsung`: siswa udah start, belum submit. Inilah state yang dipake recovery resume.
+  - `submitted`: siswa udah submit normal.
+  - `expired`: timer habis, auto-submit.
+- **HasilSoalBab.DeletedAt** + **HasilUjian.DeletedAt**: dipakai untuk remedial / reset attempt — soft delete supaya audit trail tetap ada. Constraint unique untuk mode=ulangan harus di-update jadi partial: `WHERE deleted_at IS NULL`.
+- **HasilSoalBabSoalAssignment / HasilUjianSoalAssignment**: snapshot soal mana yang ditugaskan ke attempt itu, beserta urutan shuffle. Dibikin saat `start`. Penting untuk: (1) konsistensi soal saat resume, (2) random pool tetap deterministik per attempt, (3) review jawaban setelah submit pakai data ini.
+- **EventBab**: tabel terpisah dari `EventUjian`, sama bentuk, biar bersih.
+- **Pengumuman**: `BabID` nullable — kalau diisi, pengumuman cuma muncul di bab tsb.
+- **AuditLog**: untuk audit trail aksi admin/guru. `ActorID` nullable supaya bisa log "system reset" atau aksi otomatis.
+- **LoginAttempt**: tabel terpisah dari `AuditLog` karena volume tinggi & query pattern beda. Cleanup periodic (retain 30 hari).
+- **ImportJob.CredentialsCSV**: path file sementara, di-cleanup setelah modal sukses ditutup atau timeout 1 jam.
+- **ImportJob lifecycle (locked #54)**: `preview` (PreviewRowsJSON di-populate, file di disk, ExpiresAt = now+1h) → `processing` (admin confirm, sedang insert users) → `completed` (CredentialsCSV ready). Cleanup job hourly: kalau status=preview & ExpiresAt<now → status=expired + delete file. Failed insert → status=failed + ErrorsJSON.
+- **Version field (locked #56)**: di Bab/Kelas/SoalBab/Soal/UlanganBabSetting/Ujian — optimistic concurrency. PATCH wajib include `version`. Backend: `UPDATE ... SET version=version+1 WHERE id=? AND version=?`. Affected rows=0 → return 409 + `current_version`. UI tampil "Konten ini diubah orang lain — refresh dulu".
+- **RefreshToken**: tabel khusus refresh token tracking. Access token tetap stateless JWT 15m (gak di-store). Refresh token issued saat login, jti random UUID, simpan hash-nya di body JWT + DB row. Saat refresh: cek `revoked_at IS NULL` & `expires_at > now`, lalu rotate (mark old `revoked_at=now`, `replaced_by_jti=new_jti`, issue new token). Detection token reuse: kalau revoked token dipake lagi → revoke semua chain user (suspicious). `RevokedReason`: `logout`, `rotate`, `password_changed`, `admin_reset`, `user_locked`, `user_suspended`, `reuse_detected`.
+- **Recovery resume logic**: server cek `HasilSoalBab` / `HasilUjian` dengan `Status=berlangsung` & `DeletedAt IS NULL` untuk siswa tsb -> kalau ada, banner "lanjutkan ulangan" muncul. Soal yang ditampilkan re-fetch dari `*SoalAssignment` (deterministik).
+- **Submit transition (locked #43)**: dari `berlangsung → submitted/expired` wajib dalam transaction dengan `SELECT ... FOR UPDATE` di row HasilSoalBab/HasilUjian + cek `Status='berlangsung'` sebelum update. Auto-grade jalan dalam transaction yang sama. Idempotent: status udah final → return existing TotalNilai, no re-grade. Background timer-expire job pakai pg advisory lock per row.
+
+### 6.2 Formula Nilai Bab (per siswa)
+
+```
+NilaiUlanganBab = TotalNilai dari HasilSoalBab(mode=ulangan, deleted_at IS NULL) terakhir untuk (BabID, SiswaID)
+                  -> normalize ke skala 0-100 = (TotalNilai / SUM(SoalBab.Poin where Mode=ulangan)) × 100
+                  -> kalau gak ada soal ulangan / belum dikerjain: NULL
+
+NilaiTugasBab   = AVG(Submission.NilaiSetelahPenalty) untuk semua Tugas dengan BabID = bab tsb dan SiswaID
+                  (di-skala ke 0-100 per tugas: NilaiSetelahPenalty / MaxNilai × 100)
+                  -> kalau gak ada tugas / belum dinilai: NULL
+
+NilaiBab = weighted_avg(NilaiUlanganBab, NilaiTugasBab,
+                        weights = (Kelas.BobotSoalUlangan, Kelas.BobotTugas),
+                        skip NULL components)
+```
+
+Catatan: kalau `IsLate=true` dan `PenaltyPersen=20`, `NilaiSetelahPenalty = Nilai × 0.80`. Kalau `IsLate=false`, `NilaiSetelahPenalty = Nilai`.
+
+Contoh:
+- Bobot kelas: SoalUlangan=60, Tugas=40
+- NilaiUlanganBab=80, NilaiTugasBab=90 -> (80×60 + 90×40)/100 = 84
+- NilaiUlanganBab=80, NilaiTugasBab=NULL -> 80 (bobot tugas di-skip)
+- NilaiUlanganBab=NULL, NilaiTugasBab=NULL -> NULL ("-")
+
+### 6.3 Indexes penting
+- `enrollment(kelas_id, siswa_id)` PK
+- `bab(kelas_id, urutan)` index
+- `bab(kelas_id, status)` index (filter siswa: where status='published')
+- `materi(kelas_id, bab_id, urutan)` index
+- `materi_read(materi_id, siswa_id)` PK
+- `tugas(kelas_id, bab_id)` index
+- `soal_bab(bab_id, mode, urutan)` index
+- `hasil_soal_bab(bab_id, siswa_id, mode)` — partial unique untuk `mode='ulangan' AND deleted_at IS NULL` (1 attempt aktif only)
+- `hasil_soal_bab_soal_assignment(hasil_soal_bab_id, soal_bab_id)` PK
+- `hasil_ujian(ujian_id, siswa_id)` — partial unique untuk `deleted_at IS NULL`
+- `hasil_ujian_soal_assignment(hasil_ujian_id, soal_id)` PK
+- `kelas(kode_invite)` unique
+- `pengumuman(kelas_id, created_at DESC)` index
+- `login_attempt(email, at DESC)` index (untuk rate limit query)
+- `login_attempt(ip, at DESC)` index (untuk per-IP throttling)
+- `users(email)` unique
+- `users(status)` index (filter aktif/locked/suspended)
+- `audit_log(actor_id, at DESC)` index
+- `refresh_token(jti)` unique
+- `refresh_token(user_id, revoked_at)` index (cepat revoke-all-by-user)
+- `refresh_token(expires_at)` index (cleanup job)
+- `import_job(admin_id, status, expires_at)` index (cleanup query + admin filter)
+- `audit_log(target_kelas_id, at DESC)` index (untuk guru audit scope #59 — tambah column `target_kelas_id` nullable di AuditLog kalau action terkait kelas)
+
+### 6.4 Formula Progress Bab (per siswa, locked #48)
+
+```
+komponen   bobot_default   pct
+materi     25              materi_dibaca / total_materi
+latihan    25              1 if exists HasilSoalBab(mode=latihan, status=submitted) else 0
+ulangan    25              1 if exists HasilSoalBab(mode=ulangan, status IN (submitted,expired), deleted_at IS NULL) else 0
+tugas      25              count(submission graded) / count(tugas di bab itu)
+
+Rule:
+- Komponen yang gak punya konten (mis. bab tanpa tugas) bobotnya di-drop, total bobot re-normalize.
+- Kalau total konten 0 (bab kosong total) → progress 0% atau "—" di UI.
+- Hasil: integer 0-100. Round half-up.
+
+Contoh:
+- Bab punya 3 materi (siswa baca 2), 1 ulangan (selesai), 0 tugas, 0 latihan
+  → komponen aktif: materi+ulangan, bobot 50/50
+  → progress = 0.5 × (2/3) + 0.5 × 1 = 0.833 ≈ 83%
+```
+
+API: `GET /siswa/kelas/:id/bab` returns `progress: { persen, breakdown: { materi: {pct, w}, latihan: {pct, w}, ulangan: {pct, w}, tugas: {pct, w} } }`.
+
+---
+
+## 7. API Endpoints (`/api/v1`)
+
+### Health & Readiness
+- `GET /healthz` — liveness, return 200 selalu kalau process hidup. No DB, no deps. Dipake systemd / load balancer dasar.
+- `GET /readyz` — readiness, cek DB ping + storage dir writable. Return 503 kalau ada yang fail. Dipake uptime monitor.
+
+### Auth
+- `POST /auth/login` { email, password } -> { access, refresh, user: { id, name, email, role, status, must_change_password } }
+- `POST /auth/refresh` { refresh } — rotate token, mark old revoked, issue new pair. Reuse detection: kalau token udah revoked dipake → revoke semua refresh chain user.
+- `POST /auth/logout` — revoke current refresh token (`revoked_reason='logout'`)
+- `POST /auth/logout-all` — revoke semua refresh token user (logout dari semua device)
+- `GET  /auth/me`
+- `POST /auth/change-password` { old_password, new_password } — set `must_change_password=false`, revoke semua refresh token user kecuali current (opsional, default revoke all biar aman)
+- `GET  /auth/sessions` — list active refresh tokens user (jti masked, ip, user_agent, issued_at, last_used_at) untuk halaman "Perangkat aktif"
+
+> **No `/auth/register`** — semua user dibuat oleh admin (lihat Section 5.0a/5.12).
+> **No public `/auth/forgot-password`** — siswa hubungi admin untuk reset (lihat Section 5.17).
+> **Rate limit middleware**: `/auth/login` di-throttle 5 gagal/15 menit per (IP, email). 10 gagal kumulatif → akun `locked`.
+> **Force change password gate**: middleware cek `must_change_password=true` → block semua endpoint kecuali `/auth/me`, `/auth/change-password`, `/auth/logout`.
+
+### Admin (`/admin/*`, role=admin only)
+- `GET    /admin/users` (paginated, filter role/status, search)
+- `POST   /admin/users` { name, email, role, password? } — kalau password kosong, backend generate 8 char acak. Response: `{ user, generated_password? }` (cuma muncul kalau backend yang generate atau admin minta show). Kalau `role=admin` saat create → wajib `current_password` di body (re-auth).
+- `GET    /admin/users/:id`
+- `PATCH  /admin/users/:id` { name?, email?, status? } — gak include `role`, role pindah ke endpoint khusus.
+- `POST   /admin/users/:id/role` { role, current_password } — promote/demote, wajib re-auth admin yang melakukan. Tolak kalau target=actor & role=admin & ini admin terakhir (cegah lock-out).
+- `POST   /admin/users/:id/reset-password` { password? } — sama logic dengan create
+- `POST   /admin/users/:id/unlock` (kalau status=locked karena failed login)
+- `DELETE /admin/users/:id` (hard delete, hati-hati — cuma kalau gak ada referensi data)
+- `GET    /admin/users/:id/sessions` — list refresh token aktif user (untuk panel admin)
+- `POST   /admin/users/:id/revoke-sessions` — revoke semua refresh token user (force logout)
+- `POST   /admin/import-csv/upload` (multipart) → ImportJob status=`preview`, response `{ job_id, valid_count, invalid_count, preview_rows }`
+- `GET    /admin/import-csv/:job_id` — resume preview (kalau admin reload page sebelum confirm) — return preview_rows + counts
+- `POST   /admin/import-csv/:job_id/confirm` — status preview → processing → completed, response `{ job_id, success_count, fail_count, errors }`
+- `POST   /admin/import-csv/:job_id/cancel` — status preview → expired + cleanup file
+- `GET    /admin/import-csv/template.csv`
+- `GET    /admin/import-jobs/:id/credentials.csv` — sekali download (file di-cleanup setelah)
+- `POST   /admin/users/:id/enroll` { kelas_id }
+- `GET    /admin/audit-log` (filter actor/action/target/date)
+- `GET    /admin/login-attempts` (filter email/ip/success/date)
+- `GET    /admin/stats` { user_counts, kelas_counts, locked_accounts }
+- `GET    /admin/kelas` (read-only list semua kelas)
+
+### Kelas (guru)
+- `POST   /kelas`
+- `GET    /kelas`
+- `GET    /kelas/:id`
+- `PATCH  /kelas/:id` { nama?, deskripsi?, bobot_soal_ulangan?, bobot_tugas? }
+- `DELETE /kelas/:id` (soft archive)
+- `GET    /kelas/:id/siswa`
+- `DELETE /kelas/:id/siswa/:siswaId`
+
+### Bab (guru — owner kelas)
+- `POST   /kelas/:id/bab` { nomor, judul, deskripsi }
+- `GET    /kelas/:id/bab` -> list bab + counter (jumlah materi/soal/tugas)
+- `GET    /bab/:id`
+- `PATCH  /bab/:id` { nomor?, judul?, deskripsi?, urutan?, status? } — transisi `draft|published|archived`
+- `DELETE /bab/:id` (cascade: materi/tugas yang BabID-nya = bab ini di-set null, atau ditolak kalau ada hasil — saran: gunakan `Status=archived` instead)
+- `POST   /kelas/:id/bab/reorder` { ordered_ids[] } -> bulk update urutan
+- `POST   /bab/:id/duplicate` -> bikin bab baru status=draft + copy materi/soal/tugas
+
+### Kelas (guru) — Duplicate
+- `POST   /kelas/:id/duplicate` { nama_baru } -> bikin kelas baru + copy bab/materi/soal/tugas/ulangan (no enrollment, no submission, no hasil)
+
+### Kelas (siswa)
+- `GET  /siswa/kelas` -> list kelas yang siswa ikuti
+- `POST /kelas/join` { kode } -> join kelas via kode invite
+
+### Bab (siswa)
+- `GET /siswa/kelas/:id/bab` -> list bab WHERE status='published' + progress per bab (materi dibaca, latihan, ulangan bab status, nilai bab)
+- `GET /siswa/bab/:id` -> detail bab + tab data (materi, latihan summary, tugas list, hasil) — return 404 kalau bukan published
+
+### Materi
+- `POST   /kelas/:id/materi` (multipart kalau pdf, body bisa include `bab_id?`)
+- `GET    /kelas/:id/materi` (filter: `?bab_id=X` atau `?bab_id=null` untuk yang bebas)
+- `GET    /materi/:id`
+- `PATCH  /materi/:id` { ..., bab_id? }
+- `DELETE /materi/:id`
+- `POST   /materi/:id/read` (siswa, mark as read — idempotent)
+
+### Pengumuman
+- `POST   /kelas/:id/pengumuman` (guru) { judul, isi, bab_id? }
+- `GET    /kelas/:id/pengumuman` (guru + siswa enrolled, paginated, default DESC)
+- `GET    /pengumuman/:id`
+- `PATCH  /pengumuman/:id` (guru pemilik)
+- `DELETE /pengumuman/:id`
+
+### Soal Bab (guru)
+- `POST   /bab/:id/soal` (multipart: { pertanyaan, opsi[], jawaban_benar, poin, mode, gambar_soal?, gambar_opsi[]? })
+- `GET    /bab/:id/soal` (filter: `?mode=latihan|ulangan`)
+- `PATCH  /soal-bab/:id`
+- `DELETE /soal-bab/:id`
+- `POST   /bab/:id/soal/bulk` (paste banyak soal sekaligus, opsional)
+- `GET    /bab/:id/ulangan-setting`
+- `PUT    /bab/:id/ulangan-setting` { durasi_menit, mulai_at?, selesai_at?, shuffle_soal, shuffle_opsi, jumlah_soal_random?, tampilkan_nilai_langsung, izinkan_review_setelah_submit, waktu_buka_review?, aktif }
+- `GET    /bab/:id/ulangan/preview` (guru — render persis kayak siswa, mode read-only)
+
+### Soal Bab (siswa)
+- `GET    /siswa/bab/:id/soal/latihan` -> list soal mode=latihan + status attempt terakhir
+- `POST   /siswa/bab/:id/soal/latihan/start` -> { hasil_id, soal[] sesuai shuffle }
+- `POST   /hasil-soal-bab/:id/answer` { soal_id, jawaban }
+- `POST   /hasil-soal-bab/:id/submit` -> { total_nilai, breakdown jawaban benar/salah }
+- `GET    /siswa/bab/:id/ulangan` -> info ulangan bab (durasi, status: belum/dikerjain/selesai, sisa waktu kalau resume)
+- `POST   /siswa/bab/:id/ulangan/start` -> { hasil_id, soal[], sisa_detik }   // ditolak kalau sudah pernah submit
+- `GET    /hasil-soal-bab/:id/resume` -> { soal[], jawaban_tersimpan[], sisa_detik }   // dipake siswa saat reload page
+- `POST   /hasil-soal-bab/:id/event` { tipe } (anti-cheat log untuk ulangan bab)
+
+### Hasil Bab (guru)
+- `GET /bab/:id/hasil` -> rekap kelas (siswa × ulangan bab nilai + tab-switch count)
+- `POST /bab/:id/hasil/:siswaId/reset` { reason } (guru — remedial; soft-delete HasilSoalBab + JawabanBab + audit log dengan reason)
+- `GET /siswa/hasil-soal-bab/:id/review` (siswa, kalau IzinkanReviewSetelahSubmit=true atau WaktuBukaReview lewat — return list soal + jawaban siswa + jawaban benar + status)
+
+### Tugas
+- `POST   /kelas/:id/tugas` { ..., bab_id?, izinkan_late, penalty_persen }
+- `GET    /kelas/:id/tugas` (filter: `?bab_id=X`)
+- `GET    /tugas/:id`
+- `PATCH  /tugas/:id`
+- `DELETE /tugas/:id`
+- `POST   /tugas/:id/submit` (siswa, multipart) — auto-overwrite kalau udah pernah submit & belum graded; reject kalau lewat deadline & gak izinin late
+- `GET    /siswa/tugas/:id/submission` -> submission siswa sendiri (untuk pre-fill form resubmit)
+- `GET    /tugas/:id/submissions` (guru)
+- `POST   /submission/:id/grade` (guru) — backend hitung NilaiSetelahPenalty otomatis
+- `GET    /siswa/submissions` (siswa)
+
+### Ulangan Harian (lintas bab)
+- `POST   /kelas/:id/ujian`
+- `GET    /kelas/:id/ujian`
+- `GET    /ujian/:id`
+- `PATCH  /ujian/:id` (termasuk `izinkan_review_setelah_submit`, `waktu_buka_review`)
+- `DELETE /ujian/:id`
+- `POST   /ujian/:id/duplicate` -> bikin salinan dengan nama baru, status reset
+- `GET    /ujian/:id/preview` (guru — read-only)
+- `POST   /ujian/:id/start` (siswa) -> { hasil_id, soal[], sisa_detik }
+- `GET    /ujian/:id/play`
+- `GET    /hasil-ujian/:id/resume` -> { soal[], jawaban_tersimpan[], sisa_detik }
+- `POST   /hasil-ujian/:id/answer`
+- `POST   /hasil-ujian/:id/submit`
+- `POST   /hasil-ujian/:id/event`
+- `GET    /siswa/hasil-ujian/:id/review` (siswa, kalau review terbuka)
+- `GET    /ujian/:id/hasil` (guru)
+- `POST   /ujian/:id/hasil/:siswaId/reset` { reason } (guru — remedial)
+
+### Sesi Aktif (untuk recovery banner di dashboard)
+- `GET /siswa/active-assessments` -> list HasilSoalBab/HasilUjian dengan `Status=berlangsung` -> banner "Lanjutkan ulangan" di dashboard
+
+### Guru — Dashboard Activity & Counters
+- `GET /guru/feed?cursor=BASE64&limit=20` — opaque cursor pagination `(at_unix_micro, id)`. Response: `{ events: [...], next_cursor }`. Polling 30s pake `cursor=null` (latest 20).
+- `GET /guru/pending-counts` -> `{ ungraded_submissions, pending_review_ulangan_bab, pending_review_ulangan_harian }`
+- `GET /guru/kelas/:id/audit?action=<filter>&limit=50` — guru audit scope (subset action: `hasil_reset`, `bab_archived`, `bab_published`, `siswa_kicked`, `tugas_deleted`). Hanya entry dengan `target_kelas_id=<id>`.
+
+### Bank Soal (guru) — untuk Ulangan Harian
+- `POST   /bank-soal`
+- `GET    /bank-soal` (filter: topik)
+- `PATCH  /bank-soal/:id`
+- `DELETE /bank-soal/:id`
+
+### Nilai (transparansi siswa)
+- `GET /siswa/kelas/:id/nilai` -> per kelas:
+  - `bab[]`: { id, nomor, judul, nilai_ulangan_bab, nilai_tugas_bab, nilai_bab, breakdown }
+  - `ulangan_harian[]`: { id, judul, nilai }
+  - `total_kelas`: rata-rata semua bab (skip NULL)
+- `GET /guru/kelas/:id/rekap-nilai` -> tabel siswa × bab + ulangan harian (read-only matrix)
+
+### Export
+- `GET /kelas/:id/nilai/export` (CSV: kolom = siswa, bab1, bab2, ..., ulangan_harian, total)
+
+---
+
+## 8. Routes / Screens (Next.js)
+
+### Public
+- `/` Landing (1 CTA: Masuk)
+- `/login`
+- `/lupa-password` (instruksi "hubungi admin", no form)
+- ~~`/register`~~ tidak ada — semua akun dibuat oleh admin
+
+### Self (semua role yang sudah login)
+- `/me` Profil (nama, email, ganti password)
+- `/me/security` Ganti password (force redirect kalau `MustChangePassword=true`)
+
+### Admin (`/admin/*`, role=admin only)
+- `/admin` Dashboard (stats: total guru/siswa, kelas aktif, ujian berlangsung, locked accounts shortcut, audit log ringkas)
+- `/admin/pengguna` List user (filter role, search, badge status)
+- `/admin/pengguna/baru` Create user (input nama+email+role + password manual atau Generate -> modal sukses tampilkan password sekali)
+- `/admin/pengguna/[id]` Detail user (edit, reset password, suspend, unlock, enrollment list, riwayat login)
+- `/admin/pengguna/import` Bulk import CSV (upload -> preview -> confirm -> download credentials.csv sekali)
+- `/admin/kelas` List semua kelas (read-only, lihat siapa guru-nya, jumlah siswa)
+- `/admin/audit-log` Riwayat aksi admin/guru
+- `/admin/login-attempts` Riwayat login attempts (success + fail)
+
+### Guru (`/guru/*`)
+- `/guru` Dashboard — activity feed (polling 30s) + pending counters di sidebar (badge "12 belum dinilai")
+- `/guru/kelas` List + tombol Duplicate per kelas
+- `/guru/kelas/[id]` Detail (tabs: Bab / Siswa / Tugas / Ulangan Harian / Pengumuman / Rekap Nilai / Pengaturan)
+- `/guru/kelas/[id]/bab/baru` Form bikin bab
+- `/guru/kelas/[id]/bab/[bid]` Detail bab (tabs: Materi / Soal / Tugas / Pengumuman / Pengaturan Ulangan Bab) — header tampil status badge `draft|published|archived` + tombol Publish/Unpublish + Duplicate
+- `/guru/kelas/[id]/bab/[bid]/materi/baru`
+- `/guru/kelas/[id]/bab/[bid]/soal/editor` Editor soal (latihan + ulangan bab) + upload gambar
+- `/guru/kelas/[id]/bab/[bid]/ulangan/preview` Preview ulangan bab (read-only)
+- `/guru/kelas/[id]/bab/[bid]/hasil` Rekap ulangan bab + tombol Reset Attempt (modal: input reason)
+- `/guru/kelas/[id]/tugas/baru` (pilih bab di form, atau "tanpa bab", set izinkan late + penalty)
+- `/guru/kelas/[id]/tugas/[tid]/submissions` (badge LATE pada submission yang IsLate)
+- `/guru/kelas/[id]/ulangan/baru` (Ulangan Harian lintas bab) + setting review
+- `/guru/kelas/[id]/ulangan/[uid]/edit`
+- `/guru/kelas/[id]/ulangan/[uid]/preview` Preview ulangan harian (read-only)
+- `/guru/kelas/[id]/ulangan/[uid]/hasil` Rekap + tombol Reset Attempt (modal reason) + Duplicate
+- `/guru/kelas/[id]/pengumuman` List + bikin baru
+- `/guru/kelas/[id]/rekap-nilai` Matrix siswa × bab + ulangan harian
+- `/guru/kelas/[id]/pengaturan` Bobot nilai bab (Soal vs Tugas) + archive kelas + Duplicate
+- `/guru/bank-soal` (CRUD bank soal pribadi + upload gambar)
+
+### Siswa (`/siswa/*`)
+- `/siswa` Dashboard (kelas + tombol "Gabung Kelas" + banner "Lanjutkan ulangan" kalau ada sesi berlangsung)
+- `/siswa/gabung` Form input kode kelas
+- `/siswa/kelas/[id]` Detail kelas — list bab (cuma published) dengan progress + section "Ulangan Harian" + section "Pengumuman"
+- `/siswa/kelas/[id]/bab/[bid]` Detail bab (tabs: Materi / Latihan / Tugas / Hasil)
+- `/siswa/kelas/[id]/bab/[bid]/materi/[mid]` Viewer materi (auto-call mark-read)
+- `/siswa/kelas/[id]/bab/[bid]/latihan` Halaman kerjain soal latihan (retry)
+- `/siswa/kelas/[id]/bab/[bid]/ulangan` Lobby ulangan bab (tampil "Lanjutkan" kalau ada sesi berlangsung)
+- `/siswa/kelas/[id]/bab/[bid]/ulangan/play` Halaman fokus kerjain ulangan bab — auto-resume kalau ada session
+- `/siswa/kelas/[id]/bab/[bid]/ulangan/review` Review jawaban setelah submit (kalau guru izinin)
+- `/siswa/kelas/[id]/tugas/[tid]` Submit tugas — pre-fill kalau udah pernah submit + warning "Late penalty xx%" kalau lewat deadline & izinin late
+- `/siswa/kelas/[id]/ulangan-harian/[uid]` Lobby ulangan harian
+- `/siswa/kelas/[id]/ulangan-harian/[uid]/play` Kerjain ulangan harian — auto-resume
+- `/siswa/kelas/[id]/ulangan-harian/[uid]/review` Review jawaban setelah submit
+- `/siswa/kelas/[id]/nilai` Transparansi nilai per kelas — list bab + breakdown + total + ulangan harian
+- `/siswa/nilai` Rekap nilai lintas kelas (semua kelas yg diikuti)
+
+Karena static export, semua dynamic routes pakai `generateStaticParams` kalau perlu pre-render, atau di-handle full client-side dengan route group + `useParams` + fetch.
+
+---
+
+## 9. Project Structure
+
+```
+lms/
+├── backend/                  # Go API
+│   ├── cmd/
+│   │   ├── server/main.go        # API server (Fiber)
+│   │   ├── seed-admin/main.go    # CLI bootstrap admin pertama
+│   │   └── reset-admin/main.go   # CLI reset password admin (kalau lupa)
+│   ├── internal/
+│   │   ├── auth/             # login, JWT, change-password, middleware
+│   │   ├── admin/            # user CRUD, CSV import, audit log
+│   │   ├── user/             # user model + repo
+│   │   ├── kelas/
+│   │   ├── enrollment/
+│   │   ├── bab/              # Bab CRUD + reorder
+│   │   ├── materi/
+│   │   ├── tugas/
+│   │   ├── soalbab/          # SoalBab + UlanganBabSetting + HasilSoalBab
+│   │   ├── ujian/            # Ulangan Harian (lintas bab) + bank soal
+│   │   ├── nilai/            # formula nilai bab + rekap + export CSV
+│   │   ├── audit/            # audit log writer
+│   │   ├── middleware/       # auth, role guard, logging, recover
+│   │   ├── storage/          # file upload helper
+│   │   └── db/               # GORM setup, migrations
+│   ├── pkg/                  # shared utils (jwt, hash, validator, csv)
+│   ├── go.mod
+│   └── go.sum
+├── frontend/                 # Next.js (static export)
+│   ├── app/
+│   │   ├── (auth)/login/
+│   │   ├── admin/
+│   │   ├── guru/
+│   │   ├── siswa/
+│   │   ├── me/
+│   │   ├── layout.tsx
+│   │   └── page.tsx          # landing
+│   ├── components/
+│   │   ├── ui/               # shadcn
+│   │   ├── bab/
+│   │   ├── soal/
+│   │   └── ...
+│   ├── lib/
+│   │   ├── api.ts            # fetch wrapper + token refresh
+│   │   ├── auth.ts           # token store (Zustand)
+│   │   └── utils.ts
+│   ├── next.config.js        # output: 'export'
+│   ├── package.json
+│   └── ...
+├── storage/uploads/          # gitignored, runtime files
+├── docs/
+│   ├── DEPLOY.md             # runbook (mirip fb-bot)
+│   └── ARCHITECTURE.md
+├── deploy/
+│   ├── deploy.sh
+│   └── systemd/lms-api.service
+├── .kiro/steering/           # plan + state
+├── .env.example
+├── LOCAL_AI_CONTEXT.md       # quick context buat AI sessions
+├── README.md
+└── .gitignore
+```
+
+---
+
+## 10. Phasing / Roadmap
+
+### Fase 0 — Setup (1-2 hari)
+- Init repo Git, struktur folder
+- Backend: `go mod init`, Fiber, GORM connect Postgres, **golang-migrate setup** (migrations dir + initial migration), healthcheck `/api/v1/healthz` (liveness, no DB) + `/api/v1/readyz` (readiness, cek DB + storage)
+- **Request ID middleware** (UUID v4 atau ambil dari header), propagate ke slog context (`request_id`, `user_id`, `path`, `method`)
+- **Global rate limit middleware** (Fiber `limiter` 120 req/menit per IP)
+- Lock timezone server: `time.LoadLocation("Asia/Jakarta")` + `time.Local` di main.go
+- Frontend: `create-next-app`, Tailwind+shadcn (new-york), halaman login stub, `output: 'export'`
+- Adopt design baseline (warna, font — pakai `ui-ux-pro-max` skill)
+- Build dan test Go serve `frontend/out/` di port 8200
+- systemd unit & deploy.sh draft di `deploy/` (`ExecStartPost` curl readyz)
+- Push ke GitHub, clone ke rdpkhorur, smoke test via SSH tunnel
+- Bikin `LOCAL_AI_CONTEXT.md`, `docs/DEPLOY.md`, `README.md`
+- Bikin `cmd/seed-admin` CLI (lihat Section 17)
+- Bikin `cmd/reset-admin` CLI (emergency reset password admin)
+- CI gate setup: `go test -cover ./...` minimal 70% target (initially loose, ketat tiap fase nambah)
+
+### Fase 1 — Auth & Admin Panel (4-5 hari)
+- User model lengkap (role admin|guru|siswa, status active|suspended|locked, MustChangePassword, FailedLoginCount)
+- **RefreshToken table** + repository (issue, rotate, revoke single, revoke-all-by-user, reuse detection)
+- Login + JWT (access 15m stateless + refresh 7d stateful) + bcrypt cost 12 + change-password
+- **Refresh rotation flow**: tiap refresh → mark old jti `revoked_at`, issue new jti, update `replaced_by_jti`
+- **Reuse detection**: kalau token revoked dipake → revoke all chain user + audit log `reuse_detected`
+- **Auto-revoke triggers**: suspend / lock / change-password / admin reset → revoke all refresh tokens user
+- **Rate limit middleware** untuk `/auth/login` (5 gagal/15 menit per IP+email, in-memory)
+- **Rate limit `/auth/refresh`** (10/menit per refresh token)
+- **Lockout**: 10 gagal kumulatif -> Status=locked
+- **ForceChangePassword middleware** — block semua endpoint kecuali `/auth/me`, `/auth/change-password`, `/auth/logout` kalau MustChangePassword=true
+- LoginAttempt logging (success + fail)
+- AuditLog writer infrastructure (dengan field `target_kelas_id` nullable)
+- **Auth boundary middleware order**: ratelimit → request-id → auth → role-guard → enrollment-guard. Whitelist anon: `/auth/login`, `/auth/refresh`, `/healthz`, `/readyz`, static.
+- Middleware: auth + role guard (admin/guru/siswa) + enrollment-guard untuk endpoint kelas-scope
+- Admin endpoints: CRUD user (password manual atau generate), reset password (manual atau generate), unlock, suspend, enroll
+- **Admin promote/demote**: `POST /admin/users/:id/role` — wajib re-auth (current_password). Tolak kalau bikin admin terakhir kena demote.
+- Admin endpoints: audit log + login attempts list + user sessions + revoke-sessions
+- Self endpoint: `GET /auth/sessions` + `POST /auth/logout-all`
+- Frontend: login page, /lupa-password page (instruksi), /me + /me/security (force redirect kalau MustChangePassword) + /me/perangkat (list active sessions + tombol logout-all)
+- Frontend admin panel: dashboard, pengguna list (filter, search) + create form (toggle manual/generate password, kalau pilih role=admin → modal re-auth) + modal sukses dengan tombol copy + reset/suspend/unlock + audit-log + login-attempts + detail user (riwayat sesi)
+- Seed admin pertama via CLI (`cmd/seed-admin`) + `cmd/reset-admin` emergency
+- E2E manual: bootstrap admin -> create akun guru & siswa -> login keduanya -> force change password -> dashboard -> verify suspend langsung kick session aktif -> verify promote butuh re-auth
+
+### Fase 2 — Kelas, Enrollment & Bulk Import (3-4 hari)
+- Backend: Kelas CRUD (guru) + bobot nilai (BobotSoalUlangan, BobotTugas) + generate kode invite unik + archive + **duplicate** + **Version field** (optimistic concurrency)
+- Backend: Siswa join via kode (rate limit 10/menit per IP), tracking JoinedVia
+- Backend: Admin assign siswa ke kelas
+- Backend: **ImportJob lifecycle** — upload (status=preview, PreviewRowsJSON, ExpiresAt=now+1h), GET resume preview, confirm (preview→processing→completed), cancel (preview→expired), hourly cleanup expired jobs
+- Backend: Bulk CSV import siswa (parser, validator) + **generate password per siswa + credentials.csv download sekali + auto-cleanup 1 jam**
+- Backend: **Storage path convention** — `./storage/uploads/<kategori>/<uuid>.<ext>`, OriginalFilename di DB column terpisah
+- Frontend admin: import CSV (drag-and-drop, preview tabel persistent — admin bisa close tab + balik tanpa lose state, confirm, modal sukses dengan link download credentials.csv), list kelas (read-only)
+- Frontend guru: dashboard list+create kelas + tombol Duplicate, kelas detail (tab Siswa, tab Pengaturan/bobot, tab Pengumuman placeholder), edit form pakai version (409 handler "konten ke-update orang lain")
+- Frontend siswa: dashboard, gabung kelas via kode
+
+### Fase 3 — Bab & Materi + Pengumuman + Bab Status (3-4 hari)
+- Backend: Bab CRUD (guru) + reorder bulk endpoint + **status (draft/published/archived)** + **Version field** (optimistic concurrency) + duplicate (copy materi/soal/tugas)
+- Backend: Materi CRUD dengan field `bab_id` nullable (upload PDF, link YouTube, teks markdown) + **storage path `./storage/uploads/materi/<uuid>.<ext>` + OriginalFilename di DB**
+- Backend: MateriRead endpoint (siswa mark-as-read)
+- Backend: endpoint siswa list bab (cuma published) + detail bab dengan progress (formula 6.4)
+- Backend: Pengumuman CRUD (per-kelas atau per-bab)
+- Frontend guru:
+  - Tab "Bab" di kelas detail: list bab dengan status badge, drag-and-drop urutan, create/edit/delete/archive/publish/unpublish/duplicate, edit form pakai version (409 → "konten ke-update orang lain, refresh dulu")
+  - `/guru/kelas/[id]/bab/[bid]` shell dengan tabs (Materi / Soal placeholder / Tugas placeholder / Pengumuman / Pengaturan) + status badge di header
+  - Tab Materi di bab: upload PDF, tambah link YouTube, tulis markdown
+  - Tab Pengumuman per kelas + per bab
+- Frontend siswa:
+  - `/siswa/kelas/[id]` list bab published (urut, judul, deskripsi, **progress bar dengan tooltip breakdown** sesuai formula 6.4) + section pengumuman
+  - `/siswa/kelas/[id]/bab/[bid]` detail bab dengan tab Materi (viewer + auto mark-read)
+  - Materi viewer: PDF iframe, YouTube embed, react-markdown
+
+> **Checkpoint:** Sebelum Fase 4, bedah notifikasi (v0.8).
+
+### Fase 4 — Tugas (per bab) + Late + Resubmit (3-4 hari)
+- Backend: Tugas CRUD dengan field `bab_id` nullable + `IzinkanLate` + `PenaltyPersen`
+- Backend: Submission flow + grading + IsLate flag + NilaiSetelahPenalty calc
+- Backend: Resubmit logic (overwrite kalau belum graded & belum lewat deadline)
+- Backend: Reject submission kalau lewat deadline & gak izinin late
+- Frontend guru: form bikin tugas (pilih bab, set late + penalty), tab Tugas di bab, review submissions (badge LATE), grading
+- Frontend siswa: tab Tugas di bab + halaman submit (pre-fill kalau udah pernah submit), banner "Late submission akan kena penalty xx%"
+
+### Fase 5 — Soal Bab (Latihan + Ulangan Bab) + Resume + Remedial + Random Pool + Review (5-6 hari)
+- Backend: SoalBab CRUD per bab + bulk paste + **upload gambar soal & gambar opsi** (mime sniff, allowlist jpg/png/webp, resize max 1920px, simpan sebagai uuid, original name di DB)
+- Backend: UlanganBabSetting (PUT per bab) — termasuk `JumlahSoalRandom`, `IzinkanReviewSetelahSubmit`, `WaktuBukaReview`
+- Backend: HasilSoalBab + JawabanBab + EventBab + **HasilSoalBabSoalAssignment**
+  - Latihan: start (bikin attempt baru + assignment soal sesuai shuffle), answer save, submit -> auto-grade, reveal jawaban benar
+  - Ulangan Bab: start (cek belum pernah submit + status berlangsung, **random N dari pool kalau JumlahSoalRandom set**), server-side timer, answer auto-save
+  - **Submit transition**: pakai `SELECT ... FOR UPDATE` + cek `Status='berlangsung'` di transaction, auto-grade dalam transaction yang sama, idempotent (status final → return existing)
+  - **Resume**: GET `/hasil-soal-bab/:id/resume` untuk lanjut session berlangsung (re-fetch dari assignment)
+  - **Remedial**: POST `/bab/:id/hasil/:siswaId/reset` { reason } — soft-delete attempt + assignment lama, **assignment baru fresh-snapshot** dari SoalBab aktif sekarang, audit log dengan `soal_diff` (added/removed IDs)
+  - **Review**: GET `/siswa/hasil-soal-bab/:id/review` (cek IzinkanReviewSetelahSubmit + WaktuBukaReview)
+  - Anti-cheat event log
+- Backend: timer-expire background job (per row pg advisory lock, transition ke `expired` + auto-grade)
+- Backend: GET /bab/:id/hasil (rekap guru)
+- Backend: GET /bab/:id/ulangan/preview (guru — read-only render)
+- Backend: GET /siswa/active-assessments (banner recovery di dashboard)
+- Frontend guru: editor soal dengan image upload (preview thumbnail + warning kalau >5MB pre-resize), pengaturan ulangan bab (durasi, shuffle, jumlah random, review), halaman preview, halaman rekap hasil + tombol Reset Attempt (modal reason)
+- Frontend siswa: tab Latihan (kerjain + retry + reveal), tab Ulangan Bab (lobby + play full screen + timer + resume), tab Hasil dengan link Review (kalau dibuka), banner di dashboard
+- Test (TDD): auto-grade, **concurrency 1-attempt-only (parallel start request)**, **submit race (parallel submit + timer expire)**, resume after disconnect, remedial flow with soal_diff, random pool deterministik
+- Coverage gate: package `soalbab` minimal 70%
+
+### Fase 6 — Ulangan Harian (lintas bab) + Resume + Remedial + Duplicate + Review (4-5 hari)
+- Backend: Bank Soal + Ujian + Soal + UjianSoal + HasilUjian + Jawaban + EventUjian + **HasilUjianSoalAssignment**
+- Backend: Bank Soal CRUD (guru) + upload gambar, buat Ujian (manual / random N dari bank), termasuk setting `IzinkanReviewSetelahSubmit` + `WaktuBukaReview`
+- Backend: Start session (with assignment snapshot), play, answer auto-save, submit, auto-grade, anti-cheat log
+- Backend: Resume + Preview + Duplicate + Remedial + Review (mirror Fase 5)
+- Frontend guru: bank soal page dengan image, buat ulangan harian, preview, hasil rekap + reset + duplicate
+- Frontend siswa: lobby ulangan harian + play full screen + auto-resume + Review (kalau dibuka)
+- Test: scenario timer expired, concurrent submit, reset & re-attempt, random pool deterministik
+
+### Fase 7 — Rekap Nilai & Transparansi + Activity Feed + Pending Counters (4 hari)
+- Backend: GET /siswa/kelas/:id/nilai (formula nilai bab — section 6.2, dengan NilaiSetelahPenalty)
+- Backend: GET /siswa/nilai (lintas kelas)
+- Backend: GET /guru/kelas/:id/rekap-nilai (matrix siswa × bab + ulangan harian)
+- Backend: **GET /guru/feed** — opaque cursor `(at_unix_micro, id)` base64 pagination, polling 30s pakai cursor=null
+- Backend: GET /guru/pending-counts (badge sidebar)
+- Backend: **GET /guru/kelas/:id/audit** — guru audit scope (subset action, target_kelas_id filter)
+- Backend: export CSV nilai
+- Frontend siswa: `/siswa/kelas/[id]/nilai` (transparansi per bab + breakdown), `/siswa/nilai` (lintas kelas)
+- Frontend guru: `/guru/kelas/[id]/rekap-nilai` (matrix), tombol Export CSV
+- Frontend guru: dashboard activity feed (polling 30s + load-more pakai cursor) + pending counters di sidebar (badge)
+- Frontend guru: `/guru/kelas/[id]/audit` halaman riwayat aksi di kelas (filter action, paginated)
+
+### Fase 8 — Polish & Production-ready (3-4 hari)
+- Logging hardening, error handling, structured error response (`{ error, code, request_id }`)
+- Backup `pg_dump` cron daily ke folder lain (rotation 30 hari rolling, monthly archive 1 tahun)
+- **Backup restore drill**: dokumentasikan + test restore di staging (minimal 1x sebelum go-live)
+- Hardening (CORS same-origin, file size limit 20MB tugas, gambar size limit 5MB per file pre-resize, mime sniff via `http.DetectContentType` + allowlist eksplisit, executable mime blocklist)
+- Cleanup tasks (daily cron):
+  - Orphan gambar soal (gak ke-reference SoalBab/Soal manapun)
+  - ImportJob credentials.csv expired (>1 jam)
+  - LoginAttempt >30 hari
+  - RefreshToken expired & revoked >7 hari
+  - HasilSoalBab/HasilUjian deleted_at >1 tahun → hard delete + audit log
+  - Submission file: kelas archived + 1 tahun → hard delete file (DB row tetap)
+- Web performance pass (bundle size, Core Web Vitals)
+- Timezone validation: server `Asia/Jakarta`, frontend tampil WIB explicit, semua timestamp di-format konsisten
+- **Coverage gate ketat**: backend `auth/admin/soalbab/ujian/nilai` ≥ 70%, fail CI kalau di bawah
+- Playwright E2E core flows:
+  - admin login -> bikin user guru -> guru login (force change password) -> bikin kelas -> publish bab -> tambah materi -> bikin soal latihan
+  - admin import siswa CSV -> siswa login -> force change password -> join kelas -> kerjain latihan -> kerjain ulangan bab -> resume scenario -> review jawaban
+  - **submit race scenario**: 2 tab buka ulangan bareng, submit barengan, verify cuma 1 yang terhitung
+  - **suspend kick session**: admin suspend user yang lagi login, refresh next request → 401 + redirect ke login
+- README polish + screenshot demo
+
+**Total estimasi:** ~6-7 minggu kerja santai
+- Fase 0 setup
+- Fase 1 auth + admin (lebih lama karena security stack penuh)
+- Fase 2 kelas + bulk import
+- Fase 3-7 fitur akademik berbasis Bab dengan recovery + remedial + transparansi nilai + activity feed
+- Fase 8 polish
+
+> Notifikasi: skipped sampai bedah v0.8 — placeholder UI bell tidak dibikin sampai keputusan ada.
+
+---
+
+## 11. Risks / Concerns
+
+- Concurrency ulangan: partial unique index `(bab_id, siswa_id, mode='ulangan') WHERE deleted_at IS NULL` & `(ujian_id, siswa_id) WHERE deleted_at IS NULL` wajib
+- Timer drift: server autoritatif, frontend cuma display
+- Upload file: limit 20MB tugas, 5MB per gambar soal, validate mime
+- Backup data nilai: cron `pg_dump` daily ke folder lain
+- Static export limit: gak bisa SSR (gak masalah, semua data via API)
+- Kode invite collision: 6 char alfanumerik (~2.1B), retry kalau collision
+- Cascade delete Bab: kalau ada hasil siswa, deletion harus ditolak (pakai status=archived dulu) atau warning loud
+- Renormalisasi bobot nilai bab kalau ada komponen NULL — perlu dites edge cases
+- Resume race: dua tab buka ulangan bersamaan -> server tetap satu session, frontend cek `Status=berlangsung` & lock UI di tab kedua
+- Remedial audit trail: tiap reset attempt wajib masuk `audit_log` dengan actor + target + reason (diketik guru)
+- Late penalty edge case: lock penalty saat submit (snapshot `IsLate`), jangan re-calc saat grading kalau guru ubah `PenaltyPersen`
+- Timezone: PostgreSQL pakai `TIMESTAMPTZ`, server lock TZ ke `Asia/Jakarta`, tampilkan di frontend dengan suffix WIB explicit
+- Image storage growth: gambar soal numpuk; cleanup task (Fase 8) untuk hapus orphan files yang gak ke-reference
+- **Password lifecycle**: password awal cuma muncul SEKALI di modal — kalau admin lupa salin, satu-satunya jalan reset ulang. Kasih copy button + confirmation sebelum tutup modal.
+- **CSV credentials file leak**: file ada di disk sementara, harus di-cleanup setelah download atau timeout 1 jam. Path harus di luar `frontend/out/` supaya gak ke-serve sebagai static.
+- **Rate limit memory**: in-memory store buat rate limit hilang kalau service restart — attacker bisa exploit. OK untuk MVP karena restart jarang. Nanti pindah ke Redis kalau ada notifikasi pakai Redis (v0.8+).
+- **Force password change bypass**: pastikan middleware cek di SEMUA endpoint kecuali whitelist. Tes manual: login user yang must_change_password=true, coba akses /api/v1/kelas -> harus 403.
+- **Random pool determinisme**: shuffle pakai seed `(mulai_at unix + siswa_id)`, simpan urutan di `*SoalAssignment` saat start. Kalau gak ada assignment, resume bakal random ulang -> jawaban tersimpan gak match. Test scenario ini di TDD.
+- **Bab Status & data integrity**: kalau guru unpublish bab yang udah ada hasil siswa, hasil tetap valid (snapshot di assignment), tapi siswa gak bisa lihat detail bab lagi. Tampilkan di /siswa/nilai dengan label "(bab tidak tersedia)".
+- **Migration rollback**: simpan migration bersama `up.sql` + `down.sql`. Production rollback dengan `migrate down 1` — tes di staging dulu.
+- **Duplicate kelas/bab — referensi**: hati-hati copy gambar — pakai path baru atau reference shared file? Default: copy file (boros tapi aman dari delete).
+- **Refresh token reuse race**: kalau attacker pakai refresh token curian sebelum legit user refresh, attacker dapet pair baru, legit user kena revoke. Mitigasi: detect reuse → revoke chain + email/audit alert. Trade-off: legit user kadang ke-logout kalau ada race kondisi browser-buffer; acceptable security trade.
+- **SELECT FOR UPDATE deadlock**: kalau dua tab submit + timer expire job barengan ke 1 row HasilSoalBab. Mitigasi: timeout lock 5 detik, retry 1x, kalau masih deadlock → return 409 ke client. Test scenario di Fase 5/6.
+- **Mime sniff false positive**: `http.DetectContentType` baca 512 byte pertama. File markdown atau text encoding aneh kadang di-detect sebagai `application/octet-stream`. Allowlist harus include `text/plain` untuk markdown materi. Test dengan sample file real.
+- **Image resize OOM**: gambar 50MB jpg yang ke-bypass size check bisa decode jadi 4GB di memory. Set `image.DecodeConfig` dulu, reject kalau dimension > 10000px sebelum full decode.
+- **Progress formula edge case**: bab kosong total (0 materi, 0 latihan, 0 ulangan, 0 tugas) → divide-by-zero. Return 0 atau "—" eksplisit. Test scenario.
+- **Readyz flapping**: kalau DB sempet down 1 detik, readyz return 503, monitor alert. Tambah grace window: 3x consecutive fail dalam 30 detik baru consider down. Or pake circuit breaker simpel.
+- **AuditLog growth**: forever retention bisa numpuk. Saran: partition by month di Postgres setelah 1 tahun, atau archive ke S3-compatible storage di v1.
+- **Admin lock-out**: kalau admin satu-satunya kena lock + lupa password + gak ada SSH access ke server → stuck. Mitigasi: setup SSH backup access (≥2 admin server-level), runbook recovery di `docs/DEPLOY.md`, jangan kasih account admin satu-doang ke 1 orang produksi (minimal 2 admin user di sistem).
+- **ImportJob abandoned**: admin upload preview tapi tutup tab tanpa confirm. File numpuk di disk + DB row. Cleanup hourly cron wajib running. Test scenario: upload + close, tunggu 1 jam, verify cleanup.
+- **Version conflict UX**: terlalu agresif (semua PATCH 409) bisa annoying kalau user kerja sendiri. Solusi: client auto-fetch version sebelum submit, kasih banner "Konten ke-update orang lain" cuma kalau real conflict. Default test: 2 tab edit bab → tab kedua kena 409 → load fresh data + retry.
+- **Frontend env mistake**: lupa rebuild FE setelah ubah `NEXT_PUBLIC_API_BASE`. Siswa dapet 404 di production karena API URL salah. Mitigasi: tampilkan banner "API base: /api/v1" di footer dev mode, sanity check di startup script.
+- **CSV import preview leak**: PreviewRowsJSON bisa berisi PII (nama, email siswa). Kalau admin lain bisa lihat ImportJob bukan miliknya → leak. Strict scope: query selalu `WHERE admin_id = current_user.id`.
+- **AuditLog target_kelas_id backfill**: existing audit_log row sebelum migration #59 gak punya target_kelas_id. Fase 7 implement: migration set NULL untuk existing, baru row baru wajib isi kalau action terkait kelas.
+
+---
+
+## 12. Open Decisions Tersisa (v0.7.2)
+
+1. **Notifikasi**: bentuk apa, kapan trigger, polling/SSE/websocket — bedah di v0.8 setelah Fase 0-3 jalan.
+2. **Pengumuman dismiss state per siswa**: sekedar "udah dilihat" atau ada read receipt? — diputuskan saat Fase 3 implementasi.
+3. **Pending counters polling vs realtime**: MVP polling 30s, kalau kerasa lemot pertimbangin SSE di v0.8.
+4. **Bab unpublish dengan hasil existing**: tampil di /siswa/nilai sebagai "(bab tidak tersedia)" atau hide total. Default: tampil dengan label.
+5. **JWT storage strategy**: localStorage (current, gampang implement, gak ada CSRF risk) vs httpOnly cookie (lebih aman dari XSS, butuh CSRF token). MVP: localStorage. Re-evaluate di v0.8 kalau audit security minta.
+6. **Self change-password — revoke other sessions only?**: current default revoke ALL termasuk current device (user re-login). Alternatif: revoke all KECUALI current jti (UX lebih halus). Pilih saat Fase 1 implement.
+7. **AuditLog partitioning**: kapan trigger? Kalau >1 juta row atau >1 tahun. Decide di v1.
+8. **Share bank soal antar guru**: defer ke v1. Sekarang bank soal pribadi per guru.
+9. **Email notification**: tetap YAGNI sampai v1, atau worth tambah minimal "password reset link" di v0.9? Tunda keputusan.
+10. **AuditLog backfill `target_kelas_id`**: existing rows pre-Fase 7 set NULL. Skip backfill (cuma kelas-scope action baru yang isi). Confirm OK saat Fase 7.
+
+---
+
+## 13. Deploy Strategy (mengikuti pola fb-bot)
+
+Reference: `D:\program\facebook-bot\docs\DEPLOY.md`. Adopsi pola yang sama, disesuaikan:
+
+### 13.1 Production target
+- Single Ubuntu VM `rdpkhorur` (Jakarta)
+- PostgreSQL lokal di host yang sama
+- Go binary listen `0.0.0.0:8200`, juga serve `frontend/out/` sebagai static
+- **Tidak pakai Nginx** — sama seperti fb-bot
+- SSH tunnel untuk akses browser: `ssh -L 8200:127.0.0.1:8200 rdpkhorur`
+
+### 13.2 Project layout di server
+- `/home/ubuntu/lms` (mirip `/home/ubuntu/fb-bot`)
+- Binary build di server: `/home/ubuntu/lms/backend/bin/lms-api`
+- Frontend static: `/home/ubuntu/lms/frontend/out/`
+- Storage: `/home/ubuntu/lms/storage/uploads/`
+- `.env` di root project
+
+### 13.3 systemd service: `lms-api.service`
+```
+[Unit]
+Description=LMS API (Go Fiber, serves backend + static frontend)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/lms
+EnvironmentFile=/home/ubuntu/lms/.env
+ExecStart=/home/ubuntu/lms/backend/bin/lms-api
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 13.4 TL;DR ship a change (mirip fb-bot)
+```bash
+# local (C:\Users\pikip\Documents\program\lms)
+git add -A
+git commit -m "feat(...): ..."
+git push origin main
+
+# server (rdpkhorur)
+ssh rdpkhorur "cd /home/ubuntu/lms && git fetch origin \
+    && git reset --hard origin/main \
+    && cd frontend && npm install --silent && npm run build \
+    && cd ../backend && go build -o bin/lms-api ./cmd/server \
+    && sudo systemctl restart lms-api \
+    && systemctl is-active lms-api"
+```
+
+Verify:
+```bash
+ssh -L 8200:127.0.0.1:8200 rdpkhorur
+# browser: http://localhost:8200
+```
+
+### 13.5 First-time server setup
+1. **Base packages**: `sudo apt install -y golang nodejs npm postgresql git build-essential`
+2. **Go versi terbaru** (kalau apt punya yang lama): pasang dari tarball atau `snap install go --classic`
+3. **PostgreSQL**: `sudo systemctl enable --now postgresql`, bikin user+DB:
+   ```sql
+   CREATE USER lms WITH PASSWORD 'xxx';
+   CREATE DATABASE lms OWNER lms;
+   ```
+4. **Clone**: `git clone git@github.com:<user>/lms.git /home/ubuntu/lms`
+5. **`.env`**: `cp .env.example .env`, isi: `DATABASE_URL`, `JWT_SECRET_KEY`, `PORT=8200`, `STORAGE_DIR=./storage/uploads`, `ENV=production`
+6. **Build**:
+   ```bash
+   cd backend && go mod download && go build -o bin/lms-api ./cmd/server
+   cd ../frontend && npm install && npm run build
+   ```
+7. **systemd**:
+   ```bash
+   sudo cp deploy/systemd/lms-api.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now lms-api
+   ```
+8. **Akses**: `ssh -L 8200:127.0.0.1:8200 rdpkhorur` -> `http://localhost:8200`
+
+### 13.6 Rollback
+```bash
+cd /home/ubuntu/lms
+git log --oneline -n 5
+git reset --hard <sha>
+cd frontend && npm run build && cd ../backend && go build -o bin/lms-api ./cmd/server
+sudo systemctl restart lms-api
+```
+
+### 13.7 Backup
+Cron daily:
+```bash
+0 2 * * * pg_dump -U lms lms > /home/ubuntu/lms-backups/lms_$(date +\%F).sql
+```
+
+### 13.8 Logs
+```bash
+journalctl -u lms-api -f --no-pager -n 200
+```
+
+---
+
+## 14. Frontend Development Arsenal — Skills & Agents
+
+Daftar skill & agent yang DIPAKE buat ngembangin frontend LMS. Tiap skill/agent gue load otomatis di fase yang relevan, lu gak perlu inget.
+
+### 14.1 Core Frontend Skills (wajib load di tiap fase yang menyentuh FE)
+
+| Skill | Kapan dipakai | Fase |
+|-------|---------------|------|
+| `senior-frontend` | Scaffold komponen, performance, UI best practices (React + Next + TS + Tailwind) | 0+ |
+| `nextjs-app-router-patterns` | Routing, layout, data fetching (App Router) | 0+ |
+| `frontend-developer` | Lifecycle frontend lengkap, integrasi BE, a11y WCAG 2.2, Core Web Vitals | 0+ |
+| `typescript-pro` | Tipe-tipe rumit, generic, strict mode | 0+ |
+| `shadcn` | Setup & manage komponen shadcn/ui (Button, Dialog, Form, dsb) | 0+ |
+| `tanstack-query-expert` | Query caching, mutation, optimistic update untuk semua list/detail | 1+ |
+| `zustand-store-ts` | Store auth + UI state pakai pattern + middleware | 1+ |
+| `zod-validation-expert` | Schema form (login, ganti password, buat kelas/bab/soal/tugas/ulangan, CSV import) | 1+ |
+| `react-query-error-boundaries` | Error boundary + global toast cache error | 2+ |
+| `react-component-performance` | Optimize page yang berat (rekap nilai, list submission) | 5+ |
+| `web-performance-optimization` | Bundle size, Core Web Vitals sebelum production | 8 |
+| `react-animejs-v4` | (Opsional) animasi halus di transisi soal/timer ulangan | 5-6 |
+
+### 14.2 Design / UX Skills
+
+| Skill | Fungsi | Kapan |
+|-------|--------|-------|
+| `ui-ux-pro-max` | Design intelligence: 50 styles, 21 palettes, 50 font pairings, generate komponen polished | 0 (set baseline visual) |
+| `frontend-design` | Bikin halaman polished (landing, dashboard) yang gak generic AI | 0, 2, 6 |
+| `ui-design-system` | Generate design tokens, dokumentasi komponen, handoff dev | 0 |
+| `ui-ux-designer` | Audit/kritik UI: WCAG, eye-tracking, NN/g — review fix prioritized | tiap akhir fase visible |
+| `popular-web-designs` | Referensi 54 sistem design real (Stripe/Linear/Vercel) buat inspirasi | 0 |
+| `design-md` | (Opsional) `DESIGN.md` token spec | 0 |
+| `mobile-design` | (Opsional) prinsip touch & mobile kalau LMS dipake di tab/HP | 6+ |
+
+**Baseline visual (saran):**
+- Style: minimalism + bento grid untuk dashboard
+- Palette: tone netral + 1 accent (biru/hijau-akademik)
+- Font pairing: ditentukan via `ui-ux-pro-max` di Fase 0
+- Font primer: Inter (UI), JetBrains Mono (code/skor)
+- Komponen: shadcn `new-york` style (default)
+
+### 14.3 Quality & Process Skills
+
+| Skill | Fungsi | Kapan |
+|-------|--------|-------|
+| `writing-plans` | Bite-sized task plan (gue pake buat append section task plan) | tiap awal fase |
+| `subagent-driven-development` | Eksekusi plan task-by-task via delegate_task subagent (review 2-stage) | tiap fase eksekusi |
+| `test-driven-development` | RED-GREEN-REFACTOR untuk component & API contract | tiap fitur baru |
+| `code-reviewer` | Review TypeScript/React sebelum commit | tiap PR / batch commit |
+| `requesting-code-review` | Pre-commit security & quality gate | sebelum push |
+
+### 14.4 Coding Agents (delegate via `delegate_task`)
+
+Buat tugas yang banyak/repeat atau biar context utama gue bersih, gue delegasi ke subagent. Tiga opsi yang available:
+
+| Agent | Profil | Kapan dipake |
+|-------|--------|--------------|
+| `claude-code` (Claude Code CLI) | Reasoning kuat, refactor besar, design-aware | Bikin halaman kompleks (engine ulangan, rekap nilai, formula bab), desain UI baru |
+| `codex` (OpenAI Codex CLI) | Cepat, eksekusi PR-style task | Scaffold rutin (CRUD page, form), generate boilerplate |
+| `opencode` (OpenCode CLI) | Open-source, review-friendly | Code review pass kedua, second opinion |
+
+**Pola pakai:**
+- Fase 0-2: tugas masih kecil -> gue handle langsung tanpa delegasi
+- Fase 3-6: per-task gue bisa delegasi ke `codex` (CRUD scaffolding) atau `claude-code` (engine ujian)
+- Tiap delegasi: pasangin skill `senior-frontend` + `nextjs-app-router-patterns` + skill spesifik fitur (mis `tanstack-query-expert`)
+- Dua-stage review pakai `subagent-driven-development`: stage 1 spec compliance, stage 2 code quality
+
+### 14.5 Stack Frontend (recap final)
+
+Yang dipake (di-confirm via skill di atas):
+- **Next.js 14 App Router** + **TypeScript** + `output: 'export'`
+- **Tailwind CSS** + **shadcn/ui** (style: new-york) + **lucide-react** + **Radix UI** (via shadcn)
+- **TanStack Query** (server state) + **Zustand** (global UI/auth state)
+- **React Hook Form** + **Zod** + `@hookform/resolvers/zod`
+- **react-markdown** + **remark-gfm** (render materi markdown)
+- **date-fns** (format tanggal/timer)
+- **clsx** + **tailwind-merge** + **class-variance-authority** (bawaan shadcn)
+- **TanStack Table** (kalau perlu sort/filter di rekap nilai, fase 6+)
+- **react-animejs-v4** (opsional, animasi transisi ujian)
+
+Test:
+- **Vitest** + **@testing-library/react** (unit/component)
+- **Playwright** (E2E untuk flow login/join kelas/kerjain ulangan, fase 8)
+
+Build & dev:
+- `next build && next export` -> `frontend/out/` -> di-serve oleh Go Fiber
+- Dev mode: `next dev` di port 3000, backend di 8200, dengan `NEXT_PUBLIC_API_BASE=http://localhost:8200/api/v1`
+
+---
+
+## 15. Implementation Notes
+
+_belum ada — masih konsep, belum mulai coding_
+
+## 16. Current Next Step
+
+**TUNGGU USER KONFIRMASI v0.7.2.** Setelah ACK:
+1. Append "Task-by-Task Implementation Plan" (Fase 0-2) di file ini
+2. Mulai eksekusi Fase 0 (init repo, struktur, healthz+readyz, request ID middleware, global rate limit, deploy skeleton ke rdpkhorur, seed-admin CLI)
+3. Bedah notifikasi (v0.8) sebelum mulai Fase 4
+
+Kalau ada yang masih salah/mau diubah di v0.7.2, bilang sekarang.
+
+### Changelog v0.7.1 → v0.7.2
+- **Locked**: 9 keputusan baru (#52-60) — multi-admin promote w/ re-auth, admin lock-out recovery, CSV preview persistence, feed cursor, concurrent edit version, auth boundary explicit, storage path convention, guru audit scope, frontend env strategy.
+- **Section 6**: tambah `Version` field di Kelas/Bab/SoalBab/UlanganBabSetting/Soal/Ujian; ImportJob expand (Status, PreviewRowsJSON, ExpiresAt, ConfirmedAt, CompletedAt); AuditLog tambah `TargetKelasID`; new indexes for ImportJob + AuditLog scope.
+- **Section 7**: split admin user PATCH dari role endpoint, tambah `/admin/users/:id/role` (re-auth), `/admin/users/:id/sessions`, `/admin/users/:id/revoke-sessions`, ImportJob endpoints (resume, cancel), feed cursor, guru audit scope endpoint.
+- **Section 10**: Fase 1 tambah promote re-auth + auth boundary middleware order; Fase 2 tambah ImportJob lifecycle + storage convention + version field di Kelas; Fase 3 tambah version di Bab + materi storage path + progress formula 6.4; Fase 7 tambah feed cursor + guru audit page.
+- **Section 11**: 6 risiko baru (admin lock-out, ImportJob abandoned, version conflict UX, frontend env mistake, CSV preview leak, audit log backfill).
+- **Section 12**: 3 open decisions baru (#8 share bank soal, #9 email notif, #10 audit backfill).
+
+### Changelog v0.7 → v0.7.1
+- **Locked**: 10 keputusan baru (#42-51) — session revocation, submit concurrency, healthz/readyz, remedial snapshot policy, file upload hardening, global rate limit, bab progress formula, request ID middleware, test coverage target, data retention.
+- **Section 4.5**: rate limit detail diperluas (refresh/join/upload), JWT note jadi "stateless access + stateful refresh".
+- **Section 6**: tambah `RefreshToken` table + indexes + section 6.4 formula progress bab.
+- **Section 7**: tambah `/healthz`, `/readyz`, `/auth/logout-all`, `/auth/sessions`, admin user sessions endpoint.
+- **Section 10**: Fase 0 nambah request-id + rate limit + readyz; Fase 1 expand auth (refresh rotation, reuse detection, /me/perangkat); Fase 5 expand submit transition + remedial snapshot; Fase 8 expand cleanup tasks + restore drill + race scenario E2E.
+- **Section 11**: 7 risiko baru (refresh reuse race, FOR UPDATE deadlock, mime sniff false positive, image OOM, progress edge case, readyz flapping, audit log growth).
+- **Section 12**: 3 open decisions baru (#5 JWT storage, #6 change-pw revoke scope, #7 audit partitioning).
+
+---
+
+## 17. First Admin Bootstrap
+
+Karena tidak ada self-register publik, admin pertama harus dibikin via CLI. Pola:
+
+### 17.1 CLI tool: `cmd/seed-admin`
+
+File: `backend/cmd/seed-admin/main.go`
+
+Cara kerja:
+1. Connect ke DB pakai `DATABASE_URL` dari `.env`
+2. Cek apakah sudah ada user dengan role=admin
+   - Kalau ADA -> exit dengan pesan: "Admin sudah ada, gunakan panel /admin untuk manage user"
+   - Kalau BELUM -> lanjut step 3
+3. Baca input dari env vars atau interactive prompt:
+   - `ADMIN_EMAIL`
+   - `ADMIN_PASSWORD`
+   - `ADMIN_NAME` (opsional, default "Administrator")
+4. Hash password dgn bcrypt
+5. Insert ke tabel `users` dengan role=admin, status=active
+6. Print sukses + email yang dibuat
+
+### 17.2 Cara pakai
+
+**Mode env vars (recommended untuk server):**
+```bash
+cd /home/ubuntu/lms/backend
+ADMIN_EMAIL=admin@sekolah.id ADMIN_PASSWORD='ganti-secepatnya-123' \
+  ./bin/seed-admin
+```
+
+**Mode interactive (untuk local dev):**
+```bash
+go run ./cmd/seed-admin
+# prompt:
+# Email: admin@sekolah.id
+# Password: ********
+# Name: Apis
+```
+
+### 17.3 Kapan dijalankan
+
+- **Sekali** pas first-time deploy ke rdpkhorur (Fase 0 selesai, Fase 1 selesai)
+- Setelah itu, admin pertama bisa bikin admin lain via panel `/admin/pengguna` (role bisa di-set ke admin saat create)
+
+### 17.4 Safety
+
+- CLI menolak run kalau sudah ada admin (cegah lupa & bikin admin ganda)
+- Kalau lupa password admin pertama:
+  - Opsi A: jalankan `cmd/reset-admin` (CLI lain) yang minta email -> set password baru
+  - Opsi B: manual update DB: `UPDATE users SET password_hash='<bcrypt-hash>' WHERE email='...'`
+- Password yang dipake jangan dipakai forever — login admin -> /me/security -> ganti password
+
+### 17.5 Implementation di Fase 0
+
+Task:
+1. Bikin `backend/cmd/seed-admin/main.go` dengan flow di atas
+2. Verifikasi: build (`go build -o bin/seed-admin ./cmd/seed-admin`), jalanin, cek DB
+3. Dokumentasi di `docs/DEPLOY.md`: bagian "First admin bootstrap"
+
+Setelah tools jadi, runbook deploy jadi:
+```
+1. git clone + .env + go build + npm build
+2. systemctl start lms-api
+3. ./backend/bin/seed-admin (sekali aja)
+4. login ke /admin pake email yang barusan dibuat
+5. ganti password di /me/security
+6. mulai bikin akun guru dari /admin/pengguna
+```
+
+---

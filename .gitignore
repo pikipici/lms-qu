@@ -1,0 +1,51 @@
+# --- env ---
+.env
+.env.*
+!.env.example
+
+# --- backend (Go) ---
+backend/bin/
+backend/tmp/
+backend/coverage.out
+backend/coverage.html
+*.test
+*.out
+
+# --- frontend (Next.js) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+frontend/.vercel/
+frontend/dist/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+
+# --- runtime / storage ---
+storage/uploads/
+storage/tmp/
+*.log
+*.sqlite
+*.db
+
+# --- backups ---
+backups/
+*.sql.gz
+*.dump
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- OS ---
+*.bak
+*.orig
+
+# --- secrets ---
+*.pem
+*.key
+!*.pub.key
