@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — operational pass: admin lock-out recovery, multi-admin promote w/ re-auth, CSV import preview persistence, feed cursor pagination, concurrent edit version, auth boundary explicit, storage path convention, guru audit scope, frontend env strategy.
+> Status: v0.7.2 — Fase 0 DONE ✅ (deployed ke rdpkhorur, systemd active, schema_meta `000001_init` applied). Mulai eksekusi Fase 1 — task-by-task plan ada di Section 18.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-18 (v0.7.2)
+> Last updated: 2026-05-19 (v0.7.2 — Section 18 Task-by-Task Plan Fase 0-2 added, Section 16 Fase 0 marked done)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -23,6 +23,7 @@
 - [15. Implementation Notes](#15-implementation-notes)
 - [16. Current Next Step](#16-current-next-step)
 - [17. First Admin Bootstrap](#17-first-admin-bootstrap)
+- [18. Task-by-Task Implementation Plan (Fase 0-2)](#18-task-by-task-implementation-plan-fase-0-2)
 
 ---
 
@@ -1262,12 +1263,15 @@ _belum ada — masih konsep, belum mulai coding_
 
 ## 16. Current Next Step
 
-**TUNGGU USER KONFIRMASI v0.7.2.** Setelah ACK:
-1. Append "Task-by-Task Implementation Plan" (Fase 0-2) di file ini
-2. Mulai eksekusi Fase 0 (init repo, struktur, healthz+readyz, request ID middleware, global rate limit, deploy skeleton ke rdpkhorur, seed-admin CLI)
-3. Bedah notifikasi (v0.8) sebelum mulai Fase 4
+**Fase 0 SELESAI ✅** (commit `24eab15`, deployed ke rdpkhorur, systemd `lms-api` active, healthz/readyz green, migrate `000001_init` applied).
 
-Kalau ada yang masih salah/mau diubah di v0.7.2, bilang sekarang.
+Sedang masuk **Fase 1 — Auth & Admin Panel**. Detail bite-sized tasks ada di **Section 18 (Task-by-Task Implementation Plan)**.
+
+Open dependencies sebelum Fase 1 mulai:
+1. (Opsional) Setup GitHub remote — saat ini pakai bare repo `/home/ubuntu/git-repos/lms.git`. Bisa di-swap ke GitHub kapanpun tanpa block kerja.
+2. (Wajib sebelum first user) Bedah notifikasi (v0.8) tetap di-tunda sampai mendekati Fase 4.
+
+Mau eksekusi Fase 1 task-by-task lewat `subagent-driven-development`, atau gue handle inline? (Default: inline — task masih kecil, less context overhead.)
 
 ### Changelog v0.7.1 → v0.7.2
 - **Locked**: 9 keputusan baru (#52-60) — multi-admin promote w/ re-auth, admin lock-out recovery, CSV preview persistence, feed cursor, concurrent edit version, auth boundary explicit, storage path convention, guru audit scope, frontend env strategy.
@@ -1358,3 +1362,370 @@ Setelah tools jadi, runbook deploy jadi:
 ```
 
 ---
+
+## 18. Task-by-Task Implementation Plan (Fase 0-2)
+
+> Living checklist. Status legend: `[ ]` pending, `[~]` in progress, `[x]` done, `[!]` blocked.
+> Setiap task = bite-sized 2-5 menit kerja, lengkap dengan path file, perintah verify, dan commit message.
+> Update tiap selesai 1 task. "Current Next Step" di bagian akhir section ini = pointer eksekusi berikutnya.
+
+### Konvensi commit
+- Format: `<type>(<scope>): <imperative>`
+- Type: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
+- Scope: `auth`, `admin`, `bab`, `kelas`, `db`, `fe`, `deploy`, `migrations`, dst.
+- Verify command default backend: `cd backend && go build ./... && go test ./...`
+- Verify command default frontend: `cd frontend && npm run build`
+- Push flow: `git push server main` → ssh `cd /home/ubuntu/lms && git pull origin main && cd backend && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api`
+
+---
+
+### Fase 0 — Setup ✅ DONE (commits `071d25e`, `f50c8b5`, `24eab15`)
+
+| # | Task | Status |
+|---|------|--------|
+| 0.1 | Init repo + .gitignore + .env.example + LOCAL_AI_CONTEXT.md | [x] |
+| 0.2 | Backend Go module + Fiber + GORM + healthz/readyz + request-id + ratelimit middleware | [x] |
+| 0.3 | Backend CLI scaffolding: `cmd/seed-admin` + `cmd/reset-admin` (stub, full di Fase 1) | [x] |
+| 0.4 | Migrations dir + `000001_init.up/down.sql` (extensions + schema_meta) | [x] |
+| 0.5 | Frontend Next 14 scaffolding (landing, login stub, /me, /me/security, /lupa-password) | [x] |
+| 0.6 | systemd unit + deploy.sh + DEPLOY.md + ARCHITECTURE.md + README.md | [x] |
+| 0.7 | Push ke rdpkhorur via bare repo `/home/ubuntu/git-repos/lms.git` | [x] |
+| 0.8 | Build + smoke test di server (healthz/readyz/static, X-Request-ID, rate limit headers) | [x] |
+| 0.9 | `migrate up` apply `000001_init` → schema_meta populated | [x] |
+| 0.10 | Document Postgres port 5435 di `.env.example` + `LOCAL_AI_CONTEXT.md` | [x] |
+| 0.11 | systemd unit install + enable + start (drop ProtectHome, .env via setup-env.sh) | [x] |
+
+---
+
+### Fase 1 — Auth & Admin Panel (4-5 hari)
+
+#### 1.A Schema Auth (migration 000002)
+
+**Task 1.A.1 — Bikin migration `000002_auth_schema.up.sql`**
+- Files: `backend/migrations/000002_auth_schema.up.sql`, `backend/migrations/000002_auth_schema.down.sql`
+- Tables: `users`, `refresh_tokens`, `login_attempts`, `audit_logs`
+- Reference: Section 6 (User, RefreshToken, LoginAttempt, AuditLog) + Section 6.3 indexes
+- Verify: `migrate -database "$DATABASE_URL" -path migrations up` di server, `psql ... -c '\dt'` cek 4 table baru
+- Commit: `feat(migrations): 000002 auth schema (users, refresh_tokens, login_attempts, audit_logs)`
+
+**Task 1.A.2 — GORM models di `backend/internal/auth/model.go`**
+- Files: `backend/internal/auth/model.go`
+- Models: `User`, `RefreshToken`, `LoginAttempt`, `AuditLog` (full field per Section 6)
+- Tag GORM: `column:`, `not null`, `default:`, `index:`, `uniqueIndex:`
+- Verify: `cd backend && go build ./...`
+- Commit: `feat(auth): GORM models User RefreshToken LoginAttempt AuditLog`
+
+**Task 1.A.3 — Repository layer**
+- Files: `backend/internal/auth/repo.go`
+- Methods: `FindUserByEmail`, `CreateUser`, `UpdateUserPassword`, `IncFailedLogin`, `ResetFailedLogin`, `LockUser`, `IssueRefresh`, `RotateRefresh`, `RevokeRefresh`, `RevokeAllRefreshByUser`, `FindRefreshByJTI`, `LogLoginAttempt`, `LogAudit`
+- Verify: `go build ./internal/auth/...`
+- Commit: `feat(auth): repository for user + refresh token + audit + login attempt`
+
+#### 1.B Login + JWT + Rate Limit
+
+**Task 1.B.1 — bcrypt password helper**
+- Files: `backend/internal/auth/password.go` (Hash, Verify, cost 12 from config)
+- Test: `backend/internal/auth/password_test.go` (hash → verify roundtrip, wrong pass fails)
+- Verify: `go test ./internal/auth/`
+- Commit: `feat(auth): bcrypt password helper`
+
+**Task 1.B.2 — JWT issue + verify**
+- Files: `backend/internal/auth/jwt.go`
+- Funcs: `IssueAccess(userID, role) (token, exp)`, `IssueRefresh(userID) (jti, token, exp)`, `VerifyAccess(token) (claims, err)`, `VerifyRefresh(token) (jti, userID, err)`
+- Algo HS256, secret dari config `JWT_SECRET_KEY`
+- Test: roundtrip + wrong secret fails + expired fails
+- Verify: `go test ./internal/auth/`
+- Commit: `feat(auth): JWT issue/verify access+refresh`
+
+**Task 1.B.3 — Login service**
+- Files: `backend/internal/auth/service.go` (`Login(email, password, ip, ua)`)
+- Logic: rate-limit (5/15min per IP+email), find user, check status (active only), bcrypt verify, log LoginAttempt, increment FailedLoginCount on fail, lock user if FailedLoginCount >= 10, on success: reset counter, issue access + refresh, save RefreshToken, log audit
+- Test: success + wrong password + suspended + locked + ratelimit
+- Verify: `go test ./internal/auth/`
+- Commit: `feat(auth): login service with rate limit + lockout`
+
+**Task 1.B.4 — Login HTTP handler + route + auth-login rate limiter middleware**
+- Files: `backend/internal/auth/handler.go`, mount di `cmd/server/main.go`
+- Route: `POST /api/v1/auth/login` body `{email, password}` → 200 `{access_token, refresh_token, user}` atau 401
+- Use `RATE_LIMIT_LOGIN_PER_15MIN` config
+- Verify: di server `curl -X POST 127.0.0.1:8200/api/v1/auth/login -d '{"email":"x","password":"y"}'` → 401, 5 fail beruntun → 429
+- Commit: `feat(auth): POST /auth/login handler + per-IP+email rate limiter`
+
+**Task 1.B.5 — Refresh rotation + reuse detection**
+- Files: extend `service.go` (`Refresh(refreshToken, ip, ua)`)
+- Logic: verify JWT → find RefreshToken by JTI → if revoked: revoke chain user (reuse_detected) + return 401 → else mark old `revoked_at=now`, `replaced_by_jti=new`, issue new pair
+- Test: rotation roundtrip + reuse detection revokes chain
+- Verify: `go test ./internal/auth/`
+- Commit: `feat(auth): refresh rotation with reuse detection`
+
+**Task 1.B.6 — POST /auth/refresh + POST /auth/logout + POST /auth/logout-all + GET /auth/sessions**
+- Routes + per-token rate limit (`RATE_LIMIT_REFRESH_PER_MIN=10`)
+- Verify: end-to-end via curl di server
+- Commit: `feat(auth): refresh + logout + sessions endpoints`
+
+#### 1.C Auth Middleware
+
+**Task 1.C.1 — Auth middleware (parse access JWT → set ctx user)**
+- Files: `backend/internal/middleware/auth.go`
+- Logic: read `Authorization: Bearer <token>`, verify, load user from DB (status check), set `c.Locals("user_id", "role", "email")`
+- Whitelist anon: `/auth/login`, `/auth/refresh`, `/healthz`, `/readyz`, static frontend
+- Verify: handler protected → 401 tanpa token, 200 dengan token valid
+- Commit: `feat(middleware): auth bearer + user context`
+
+**Task 1.C.2 — Role guard middleware (admin/guru/siswa) + ForceChangePassword middleware**
+- Files: `backend/internal/middleware/role.go`, `backend/internal/middleware/force_change.go`
+- ForceChange: if `user.MustChangePassword=true` → block kecuali `/auth/me`, `/auth/change-password`, `/auth/logout`
+- Order yang lock di Section 4.5: ratelimit → request-id → auth → role-guard → enrollment-guard
+- Verify: integration test middleware chain
+- Commit: `feat(middleware): role guard + force-change-password gate`
+
+#### 1.D Self Endpoints (`/auth/me`, change-password, sessions)
+
+**Task 1.D.1 — GET /auth/me (return current user profile)**
+- Verify: curl with token → 200 user JSON
+- Commit: `feat(auth): GET /auth/me`
+
+**Task 1.D.2 — POST /auth/change-password (current_password + new_password)**
+- Logic: verify current → bcrypt new → set MustChangePassword=false → revoke all refresh kecuali current (decision #6 — revoke OTHERS, locked default; bisa diubah ke ALL kalau user pilih opsi konservatif)
+- Audit log: `password_changed`
+- Verify: integration test
+- Commit: `feat(auth): POST /auth/change-password + revoke other sessions`
+
+#### 1.E Admin Bootstrap CLI (full implementation)
+
+**Task 1.E.1 — Lengkapi `cmd/seed-admin/main.go`**
+- Replace stub: connect DB → check no admin exists → prompt email/password (atau env vars) → `golang.org/x/term` untuk hide password → bcrypt hash → insert User role=admin status=active MustChangePassword=true → print success
+- Verify: run di server pakai env vars `ADMIN_EMAIL=admin@sekolah.id ADMIN_PASSWORD='temp123' /home/ubuntu/lms/backend/bin/seed-admin` → cek `SELECT email, role FROM users` di Postgres
+- Commit: `feat(cmd): seed-admin full implementation`
+
+**Task 1.E.2 — Lengkapi `cmd/reset-admin/main.go`**
+- Replace stub: flag `--email <email> --password <new>` (interactive kalau kosong) → find user role=admin → bcrypt new pass → update + revoke all refresh
+- Verify: run di server, login admin pake password baru
+- Commit: `feat(cmd): reset-admin full implementation`
+
+#### 1.F Admin Panel Endpoints
+
+**Task 1.F.1 — Admin user CRUD endpoints**
+- Routes: `GET /admin/users` (filter, search, paginate), `POST /admin/users` (toggle manual/generate password), `PATCH /admin/users/:id` (name only), `DELETE /admin/users/:id` (soft-suspend, gak hard delete)
+- Body POST: `{name, email, role, password_strategy: manual|generate, password?}`
+- Response POST: `{user, generated_password?}`
+- Audit log per aksi
+- Verify: integration test + curl
+- Commit: `feat(admin): user CRUD endpoints`
+
+**Task 1.F.2 — Admin user lifecycle endpoints**
+- `POST /admin/users/:id/reset-password` (manual atau generate)
+- `POST /admin/users/:id/suspend`, `POST /admin/users/:id/unsuspend`
+- `POST /admin/users/:id/unlock`
+- Semua: revoke all refresh user → audit log
+- Verify: integration
+- Commit: `feat(admin): user lifecycle (reset/suspend/unlock)`
+
+**Task 1.F.3 — Admin role promote/demote (re-auth)**
+- `POST /admin/users/:id/role` body `{new_role, current_password}`
+- Logic: verify current admin's password → cek bukan demote admin terakhir → update role → audit log dengan old_role + new_role
+- Verify: integration test (admin terakhir → 400, salah pass → 401)
+- Commit: `feat(admin): role promote/demote with re-auth`
+
+**Task 1.F.4 — Admin sessions + audit + login attempts**
+- `GET /admin/users/:id/sessions`, `POST /admin/users/:id/revoke-sessions`
+- `GET /admin/audit-log` (filter actor, target, paginate)
+- `GET /admin/login-attempts` (filter email, success, paginate)
+- Verify: curl
+- Commit: `feat(admin): sessions + audit-log + login-attempts endpoints`
+
+#### 1.G Frontend Auth + Self
+
+**Task 1.G.1 — Login page wiring**
+- Files: `frontend/app/(auth)/login/page.tsx`
+- React Hook Form + Zod schema (email + password) + submit POST `/auth/login` via `lib/api.ts`
+- On success: simpan access+refresh di Zustand + redirect: kalau `MustChangePassword` → `/me/security`, kalau admin → `/admin`, kalau guru → `/guru`, siswa → `/siswa`
+- Verify: visual + manual login pake admin yang di-seed
+- Commit: `feat(fe): login form wired to backend`
+
+**Task 1.G.2 — Protected route HOC + auth refresh interceptor**
+- Files: `frontend/lib/api.ts` interceptor: 401 → refresh → retry. `frontend/lib/auth-guard.tsx` HOC redirect ke /login kalau gak ada token.
+- Verify: token expired → auto-refresh
+- Commit: `feat(fe): auth refresh interceptor + protected route guard`
+
+**Task 1.G.3 — /me + /me/security pages full**
+- `/me` show profile (read-only).
+- `/me/security` form change password (current + new + confirm). Force-redirect modal kalau `MustChangePassword=true` di seluruh app.
+- Verify: e2e flow seed → login admin → force change password → success
+- Commit: `feat(fe): /me + /me/security pages full`
+
+**Task 1.G.4 — /me/perangkat — list active sessions + logout-all**
+- Files: `frontend/app/me/perangkat/page.tsx`
+- Verify: visual
+- Commit: `feat(fe): /me/perangkat sessions list + logout-all`
+
+#### 1.H Frontend Admin Panel
+
+**Task 1.H.1 — Admin layout + sidebar**
+- Files: `frontend/app/admin/layout.tsx` (sidebar Pengguna/Audit/Login Attempts), guard role=admin
+- Verify: visual
+- Commit: `feat(fe-admin): admin layout + sidebar`
+
+**Task 1.H.2 — /admin/pengguna list + filter**
+- Files: `frontend/app/admin/pengguna/page.tsx` (TanStack Query + Table)
+- Filter: role, status, search email/name. Paginated.
+- Verify: visual + data
+- Commit: `feat(fe-admin): pengguna list with filter`
+
+**Task 1.H.3 — /admin/pengguna create form**
+- Modal/page bikin user. Toggle manual/generate password. Kalau role=admin → modal re-auth.
+- Modal sukses dengan tombol copy password (kalau generate).
+- Verify: e2e bikin guru + siswa
+- Commit: `feat(fe-admin): create user form + re-auth on admin role`
+
+**Task 1.H.4 — /admin/pengguna detail**
+- Tabs: Detail, Sesi Aktif, Riwayat Audit, Login Attempts
+- Action buttons: reset password (manual/generate), suspend/unsuspend, unlock, promote/demote
+- Verify: e2e
+- Commit: `feat(fe-admin): user detail page with lifecycle actions`
+
+**Task 1.H.5 — /admin/audit-log + /admin/login-attempts list pages**
+- Verify: visual + filter
+- Commit: `feat(fe-admin): audit log + login attempts pages`
+
+#### 1.I E2E Manual Verify
+
+**Task 1.I.1 — Bootstrap admin → bikin guru + siswa → login keduanya**
+- Run on server: seed-admin → login via FE → bikin akun guru + siswa → login keduanya (force change pw flow) → dashboard nampil
+- Verify: manual checklist + screenshot
+- Commit: `docs: fase 1 e2e manual checklist passed`
+
+**Task 1.I.2 — Verifikasi suspend kick session aktif + promote re-auth**
+- Suspend user yang lagi login → next request → 401 + redirect login
+- Promote guru → admin → modal re-auth muncul, salah pass tolak, bener jalan
+- Commit: `docs: fase 1 e2e security checks passed`
+
+---
+
+### Fase 2 — Kelas, Enrollment & Bulk Import (3-4 hari)
+
+#### 2.A Schema Kelas + Enrollment
+
+**Task 2.A.1 — Migration `000003_kelas_enrollment.up.sql`**
+- Tables: `kelas`, `enrollment`, `import_jobs`
+- Indexes per Section 6.3
+- Verify: migrate up + `\dt`
+- Commit: `feat(migrations): 000003 kelas + enrollment + import_jobs`
+
+**Task 2.A.2 — Models + repo Kelas/Enrollment/ImportJob**
+- Files: `backend/internal/kelas/{model,repo}.go`, `backend/internal/import/{model,repo}.go`
+- Verify: build
+- Commit: `feat(kelas): GORM models + repo`
+
+#### 2.B Kelas CRUD (guru)
+
+**Task 2.B.1 — Generate kode invite unik (6-char alnum)**
+- Files: `backend/internal/kelas/code.go` (generate + collision retry)
+- Test
+- Commit: `feat(kelas): kode invite generator`
+
+**Task 2.B.2 — Kelas CRUD service + handler**
+- `GET /kelas` (guru's kelas), `POST /kelas`, `PATCH /kelas/:id` (with version), `POST /kelas/:id/archive`, `POST /kelas/:id/duplicate`
+- Optimistic concurrency: 409 kalau version mismatch
+- Audit log
+- Verify: integration
+- Commit: `feat(kelas): CRUD endpoints with optimistic concurrency`
+
+**Task 2.B.3 — FE guru: list kelas + create form**
+- `frontend/app/guru/page.tsx`, `frontend/app/guru/kelas/page.tsx`
+- Verify: visual + bikin kelas
+- Commit: `feat(fe-guru): list kelas + create form`
+
+**Task 2.B.4 — FE guru: kelas detail (tab placeholder Siswa/Pengaturan/Pengumuman) + edit pakai version + duplicate button**
+- `frontend/app/guru/kelas/[id]/page.tsx`
+- 409 handler "konten ke-update orang lain"
+- Commit: `feat(fe-guru): kelas detail tabs + edit version + duplicate`
+
+#### 2.C Enrollment
+
+**Task 2.C.1 — Siswa join via kode (rate limit 10/min)**
+- `POST /siswa/kelas/join` body `{kode_invite}`
+- Logic: rate limit per IP, find kelas by kode, insert enrollment (ignore conflict), JoinedVia=kode
+- Test
+- Commit: `feat(kelas): siswa join via kode`
+
+**Task 2.C.2 — Admin assign siswa ke kelas (bulk supported)**
+- `POST /admin/kelas/:id/enroll` body `{siswa_ids: []}`
+- JoinedVia=admin
+- Audit
+- Commit: `feat(admin): assign siswa ke kelas`
+
+**Task 2.C.3 — FE siswa dashboard + join kelas form**
+- `frontend/app/siswa/page.tsx` (list kelas siswa) + `frontend/app/siswa/gabung/page.tsx`
+- Visual + e2e
+- Commit: `feat(fe-siswa): dashboard + join kelas`
+
+**Task 2.C.4 — FE guru tab Siswa di kelas detail**
+- List enrollment + remove button (admin scope only? lock decision: guru read-only di MVP)
+- Commit: `feat(fe-guru): tab Siswa di kelas detail`
+
+#### 2.D Bulk Import CSV
+
+**Task 2.D.1 — CSV parser + validator**
+- Files: `backend/internal/import/parser.go`
+- Parse rows, validate (email format, name not empty, nama_lengkap, dst), dedupe by email
+- Test dengan fixture CSV valid + invalid
+- Commit: `feat(import): CSV parser + validator`
+
+**Task 2.D.2 — Storage convention + upload CSV**
+- `POST /admin/import-jobs` multipart file → simpan ke `./storage/uploads/import/<uuid>.csv`, parse, generate PreviewRowsJSON, insert ImportJob status=preview ExpiresAt=now+1h
+- Response: `{job_id, valid_count, invalid_count, preview_url}`
+- Commit: `feat(import): upload + preview ImportJob`
+
+**Task 2.D.3 — Resume + cancel preview**
+- `GET /admin/import-jobs/:id` (status preview only) → return PreviewRowsJSON
+- `POST /admin/import-jobs/:id/cancel` → status=expired + delete file
+- Commit: `feat(import): resume + cancel preview`
+
+**Task 2.D.4 — Confirm import (preview → processing → completed)**
+- `POST /admin/import-jobs/:id/confirm`
+- Logic: status=processing → loop rows: bcrypt random pass → insert User → save credentials.csv ke `./storage/uploads/import/<uuid>-credentials.csv` → status=completed CompletedAt=now
+- Audit log per user created
+- Commit: `feat(import): confirm flow with credentials.csv`
+
+**Task 2.D.5 — Download credentials.csv (one-shot, signed URL)**
+- `GET /admin/import-jobs/:id/credentials.csv` (cek admin owner + ExpiresAt)
+- Auto-cleanup file 1 jam after CompletedAt
+- Commit: `feat(import): credentials download with TTL`
+
+**Task 2.D.6 — Hourly cleanup cron**
+- Files: `backend/internal/import/cleanup.go` (run on app start: ticker 1h)
+- Logic: find ImportJob status=preview AND ExpiresAt < now → set expired + delete file
+- Commit: `feat(import): hourly expired cleanup`
+
+#### 2.E FE Admin Import
+
+**Task 2.E.1 — /admin/import-csv page (drag-and-drop upload)**
+- Visual: file picker, parsing progress, error rows
+- Commit: `feat(fe-admin): import CSV upload`
+
+**Task 2.E.2 — Preview tabel persistent (admin bisa close + balik)**
+- Read job_id dari URL, GET preview, render table
+- Commit: `feat(fe-admin): import preview persistent`
+
+**Task 2.E.3 — Confirm + modal sukses + download credentials.csv**
+- Visual: confirm button → POST → poll status → modal download
+- Commit: `feat(fe-admin): import confirm + credentials download`
+
+#### 2.F E2E Manual Fase 2
+
+**Task 2.F.1 — Bikin kelas + invite kode + siswa join**
+- Manual: guru login → bikin kelas → copy kode → siswa login → join → muncul di dashboard
+- Commit: `docs: fase 2 e2e flow guru-siswa passed`
+
+**Task 2.F.2 — Bulk import 5 siswa**
+- Manual: bikin sample.csv → upload → preview → confirm → download credentials → 5 user baru bisa login
+- Commit: `docs: fase 2 e2e bulk import passed`
+
+---
+
+### Current Next Step (Section 18)
+
+**Berikut: Task 1.A.1 — bikin migration `000002_auth_schema.up.sql`** (schema users + refresh_tokens + login_attempts + audit_logs).
+
+> Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
