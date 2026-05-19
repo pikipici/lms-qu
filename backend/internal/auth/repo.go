@@ -119,6 +119,64 @@ func (r *Repo) SuspendUser(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// AdminResetUserPassword updates the password and forces a change on next login.
+// Status is not changed. Returns gorm.ErrRecordNotFound if no row.
+func (r *Repo) AdminResetUserPassword(ctx context.Context, id uuid.UUID, newHash string) error {
+	res := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", id).
+		UpdateColumns(map[string]any{
+			"password_hash":        newHash,
+			"must_change_password": true,
+			"failed_login_count":   0,
+			"updated_at":           gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// UnsuspendUser sets status='active'. Returns gorm.ErrRecordNotFound if no row.
+func (r *Repo) UnsuspendUser(ctx context.Context, id uuid.UUID) error {
+	res := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", id).
+		UpdateColumns(map[string]any{
+			"status":     Active,
+			"updated_at": gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// UnlockUser sets status='active' and failed_login_count=0. Returns gorm.ErrRecordNotFound if no row.
+func (r *Repo) UnlockUser(ctx context.Context, id uuid.UUID) error {
+	res := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", id).
+		UpdateColumns(map[string]any{
+			"status":             Active,
+			"failed_login_count": 0,
+			"updated_at":         gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // UpdateUserPassword updates a user's password and clears force-change state.
 func (r *Repo) UpdateUserPassword(ctx context.Context, userID uuid.UUID, newHash string) error {
 	return r.db.WithContext(ctx).

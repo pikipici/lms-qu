@@ -34,6 +34,9 @@ type userRepo interface {
 	CreateUser(ctx context.Context, u *auth.User) error
 	UpdateUserName(ctx context.Context, id uuid.UUID, name string) error
 	SuspendUser(ctx context.Context, id uuid.UUID) error
+	AdminResetUserPassword(ctx context.Context, id uuid.UUID, newHash string) error
+	UnsuspendUser(ctx context.Context, id uuid.UUID) error
+	UnlockUser(ctx context.Context, id uuid.UUID) error
 	RevokeAllRefreshByUser(ctx context.Context, userID uuid.UUID, reason auth.RevokedReason) (int64, error)
 	CountAdmins(ctx context.Context) (int64, error)
 	LogAudit(ctx context.Context, entry *auth.AuditLog) error
@@ -113,6 +116,20 @@ type createUserRequest struct {
 type createUserResponse struct {
 	User              *auth.User `json:"user"`
 	GeneratedPassword *string    `json:"generated_password"`
+}
+
+type resetUserPasswordRequest struct {
+	PasswordStrategy string `json:"password_strategy"`
+	Password         string `json:"password"`
+}
+
+type resetUserPasswordResponse struct {
+	User              *auth.User `json:"user"`
+	GeneratedPassword *string    `json:"generated_password"`
+}
+
+type suspendUserRequest struct {
+	Reason string `json:"reason"`
 }
 
 // CreateUser handles POST /api/v1/admin/users.
@@ -200,7 +217,7 @@ func (h *Handler) CreateUser(c *fiber.Ctx) error {
 		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
 	}
 
-	h.logAudit(c, "admin_user_created", adminID, newUser.ID, auditMeta(map[string]string{
+	h.logAudit(c, "admin_user_created", adminID, newUser.ID, auditMeta(map[string]any{
 		"role":              role,
 		"password_strategy": strategy,
 	}))
@@ -260,10 +277,281 @@ func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 	if err != nil {
 		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
 	}
-	h.logAudit(c, "admin_user_name_updated", adminID, targetID, auditMeta(map[string]string{
+	h.logAudit(c, "admin_user_name_updated", adminID, targetID, auditMeta(map[string]any{
 		"old_name": existing.Name,
 		"new_name": name,
 	}))
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": fresh})
+}
+
+// ResetUserPassword handles POST /api/v1/admin/users/:id/reset-password.
+func (h *Handler) ResetUserPassword(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	var req resetUserPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+
+	strategy := strings.ToLower(strings.TrimSpace(req.PasswordStrategy))
+	switch strategy {
+	case "manual":
+		if len(req.Password) < 8 {
+			return adminError(c, fiber.StatusBadRequest, "password must be at least 8 characters", "weak_password")
+		}
+	case "generate":
+		if req.Password != "" {
+			return adminError(c, fiber.StatusBadRequest, "password must be empty when generating", "conflicting_password")
+		}
+	default:
+		return adminError(c, fiber.StatusBadRequest, "invalid password strategy", "invalid_strategy")
+	}
+
+	if _, err := h.repo.FindUserByID(c.UserContext(), targetID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	password := req.Password
+	var generated *string
+	if strategy == "generate" {
+		plain, err := generatePassword(generatedLength)
+		if err != nil {
+			slog.Error("admin generate password failed", slog.String("err", err.Error()))
+			return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+		}
+		password = plain
+		generated = &plain
+	}
+
+	cost := 0
+	if h.cfg != nil {
+		cost = h.cfg.JWT.BcryptCost
+	}
+	hash, err := auth.HashPassword(password, cost)
+	if err != nil {
+		slog.Error("admin hash password failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if err := h.repo.AdminResetUserPassword(c.UserContext(), targetID, hash); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin reset user password failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if _, err := h.repo.RevokeAllRefreshByUser(c.UserContext(), targetID, auth.AdminReset); err != nil {
+		slog.Warn("admin revoke refresh tokens failed",
+			slog.String("user_id", targetID.String()),
+			slog.String("err", err.Error()),
+		)
+	}
+
+	h.logAudit(c, "admin_user_password_reset", adminID, targetID, auditMeta(map[string]any{
+		"password_strategy": strategy,
+		"must_change":       true,
+	}))
+
+	fresh, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin refetch user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(resetUserPasswordResponse{
+		User:              fresh,
+		GeneratedPassword: generated,
+	})
+}
+
+// SuspendUser handles POST /api/v1/admin/users/:id/suspend.
+func (h *Handler) SuspendUser(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	var req suspendUserRequest
+	if body := strings.TrimSpace(string(c.Body())); body != "" {
+		if err := c.BodyParser(&req); err != nil {
+			return adminError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+		}
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if len(reason) > 200 {
+		return adminError(c, fiber.StatusBadRequest, "reason must be at most 200 characters", "invalid_body")
+	}
+
+	target, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if target.Role == auth.Admin {
+		adminCount, err := h.repo.CountAdmins(c.UserContext())
+		if err != nil {
+			slog.Error("admin count admins failed", slog.String("err", err.Error()))
+			return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+		}
+		if adminCount == 1 {
+			return adminError(c, fiber.StatusBadRequest, "cannot suspend the last admin", "last_admin_protected")
+		}
+	}
+
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	if target.ID == adminID {
+		return adminError(c, fiber.StatusBadRequest, "cannot suspend self", "cannot_suspend_self")
+	}
+
+	if target.Status == auth.Suspended {
+		return adminError(c, fiber.StatusBadRequest, "user already suspended", "already_suspended")
+	}
+
+	if err := h.repo.SuspendUser(c.UserContext(), targetID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin suspend user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if _, err := h.repo.RevokeAllRefreshByUser(c.UserContext(), targetID, auth.AdminReset); err != nil {
+		slog.Warn("admin revoke refresh tokens failed",
+			slog.String("user_id", targetID.String()),
+			slog.String("err", err.Error()),
+		)
+	}
+
+	h.logAudit(c, "admin_user_suspended", adminID, targetID, auditMeta(map[string]any{
+		"previous_status": string(target.Status),
+		"reason":          reason,
+	}))
+
+	fresh, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin refetch user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": fresh})
+}
+
+// UnsuspendUser handles POST /api/v1/admin/users/:id/unsuspend.
+func (h *Handler) UnsuspendUser(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	target, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if target.Status != auth.Suspended {
+		return adminError(c, fiber.StatusBadRequest, "user is not suspended", "not_suspended")
+	}
+
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if err := h.repo.UnsuspendUser(c.UserContext(), targetID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin unsuspend user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	h.logAudit(c, "admin_user_unsuspended", adminID, targetID, auditMeta(map[string]any{
+		"previous_status": string(auth.Suspended),
+	}))
+
+	fresh, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin refetch user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": fresh})
+}
+
+// UnlockUser handles POST /api/v1/admin/users/:id/unlock.
+func (h *Handler) UnlockUser(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	target, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if target.Status != auth.Locked {
+		return adminError(c, fiber.StatusBadRequest, "user is not locked", "not_locked")
+	}
+
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if err := h.repo.UnlockUser(c.UserContext(), targetID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	} else if err != nil {
+		slog.Error("admin unlock user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	h.logAudit(c, "admin_user_unlocked", adminID, targetID, auditMeta(map[string]any{
+		"previous_status": string(auth.Locked),
+	}))
+
+	fresh, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin refetch user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": fresh})
 }
@@ -317,7 +605,7 @@ func (h *Handler) DeleteUser(c *fiber.Ctx) error {
 		)
 	}
 
-	h.logAudit(c, "admin_user_suspended", adminID, targetID, auditMeta(map[string]string{
+	h.logAudit(c, "admin_user_suspended", adminID, targetID, auditMeta(map[string]any{
 		"previous_status": string(target.Status),
 	}))
 
@@ -381,7 +669,7 @@ func generatePassword(length int) (string, error) {
 	return b.String(), nil
 }
 
-func auditMeta(fields map[string]string) datatypes.JSON {
+func auditMeta(fields map[string]any) datatypes.JSON {
 	if len(fields) == 0 {
 		return nil
 	}

@@ -45,6 +45,19 @@ type stubRepo struct {
 	suspendCalls int
 	suspendID    uuid.UUID
 
+	adminResetPasswordFn    func(context.Context, uuid.UUID, string) error
+	adminResetPasswordCalls int
+	adminResetPasswordID    uuid.UUID
+	adminResetPasswordHash  string
+
+	unsuspendFn    func(context.Context, uuid.UUID) error
+	unsuspendCalls int
+	unsuspendID    uuid.UUID
+
+	unlockFn    func(context.Context, uuid.UUID) error
+	unlockCalls int
+	unlockID    uuid.UUID
+
 	revokeFn     func(context.Context, uuid.UUID, auth.RevokedReason) (int64, error)
 	revokeCalls  int
 	revokeUserID uuid.UUID
@@ -112,6 +125,34 @@ func (s *stubRepo) SuspendUser(ctx context.Context, id uuid.UUID) error {
 	s.suspendID = id
 	if s.suspendFn != nil {
 		return s.suspendFn(ctx, id)
+	}
+	return nil
+}
+
+func (s *stubRepo) AdminResetUserPassword(ctx context.Context, id uuid.UUID, newHash string) error {
+	s.adminResetPasswordCalls++
+	s.adminResetPasswordID = id
+	s.adminResetPasswordHash = newHash
+	if s.adminResetPasswordFn != nil {
+		return s.adminResetPasswordFn(ctx, id, newHash)
+	}
+	return nil
+}
+
+func (s *stubRepo) UnsuspendUser(ctx context.Context, id uuid.UUID) error {
+	s.unsuspendCalls++
+	s.unsuspendID = id
+	if s.unsuspendFn != nil {
+		return s.unsuspendFn(ctx, id)
+	}
+	return nil
+}
+
+func (s *stubRepo) UnlockUser(ctx context.Context, id uuid.UUID) error {
+	s.unlockCalls++
+	s.unlockID = id
+	if s.unlockFn != nil {
+		return s.unlockFn(ctx, id)
 	}
 	return nil
 }
@@ -528,6 +569,437 @@ func TestHandler_DeleteUser(t *testing.T) {
 	})
 }
 
+func TestHandler_ResetUserPassword(t *testing.T) {
+	t.Run("happy manual -> 200 user + no generated_password", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:                 targetID,
+			Name:               "Teacher",
+			Email:              "teacher@example.com",
+			Role:               auth.Guru,
+			Status:             auth.Active,
+			MustChangePassword: false,
+			FailedLoginCount:   3,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/reset-password", `{"password_strategy":"manual","password":"newsecret"}`)
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body resetUserPasswordResponse
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.GeneratedPassword != nil {
+			t.Fatalf("generated_password = %q, want nil", *body.GeneratedPassword)
+		}
+		if body.User == nil || body.User.ID != targetID || !body.User.MustChangePassword {
+			t.Fatalf("user = %+v", body.User)
+		}
+		if repo.adminResetPasswordCalls != 1 || repo.adminResetPasswordID != targetID {
+			t.Fatalf("AdminResetUserPassword calls/id = %d/%s", repo.adminResetPasswordCalls, repo.adminResetPasswordID)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(repo.adminResetPasswordHash), []byte("newsecret")); err != nil {
+			t.Fatalf("password hash did not match manual password: %v", err)
+		}
+		if repo.revokeCalls != 1 || repo.revokeUserID != targetID || repo.revokeReason != auth.AdminReset {
+			t.Fatalf("revoke = calls %d user %s reason %s", repo.revokeCalls, repo.revokeUserID, repo.revokeReason)
+		}
+		if repo.auditCalls != 1 || repo.audits[0].Action != "admin_user_password_reset" {
+			t.Fatalf("audit = %+v", repo.audits)
+		}
+		meta := auditMetaMap(t, repo.audits[0])
+		if meta["password_strategy"] != "manual" || meta["must_change"] != true {
+			t.Fatalf("audit meta = %+v", meta)
+		}
+	})
+
+	t.Run("happy generate -> 200 user + generated_password len 16", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Student",
+			Email:  "student@example.com",
+			Role:   auth.Siswa,
+			Status: auth.Active,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/reset-password", `{"password_strategy":"generate"}`)
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body resetUserPasswordResponse
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.GeneratedPassword == nil || len(*body.GeneratedPassword) != generatedLength {
+			t.Fatalf("generated_password len = %v, want %d", body.GeneratedPassword, generatedLength)
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(repo.adminResetPasswordHash), []byte(*body.GeneratedPassword)); err != nil {
+			t.Fatalf("password hash did not match generated password: %v", err)
+		}
+		if repo.adminResetPasswordCalls != 1 || repo.revokeCalls != 1 {
+			t.Fatalf("reset/revoke calls = %d/%d, want 1/1", repo.adminResetPasswordCalls, repo.revokeCalls)
+		}
+	})
+
+	t.Run("invalid_id -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/not-a-uuid/reset-password", `{"password_strategy":"manual","password":"newsecret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_id")
+		if repo.adminResetPasswordCalls != 0 {
+			t.Fatalf("AdminResetUserPassword calls = %d, want 0", repo.adminResetPasswordCalls)
+		}
+	})
+
+	t.Run("invalid_strategy -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/reset-password", `{"password_strategy":"bad"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_strategy")
+		if repo.findIDCalls != 0 {
+			t.Fatalf("FindUserByID calls = %d, want 0", repo.findIDCalls)
+		}
+	})
+
+	t.Run("weak_password -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/reset-password", `{"password_strategy":"manual","password":"short"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "weak_password")
+	})
+
+	t.Run("conflicting_password -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/reset-password", `{"password_strategy":"generate","password":"newsecret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "conflicting_password")
+	})
+
+	t.Run("user_not_found -> 404", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/reset-password", `{"password_strategy":"manual","password":"newsecret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusNotFound, "user_not_found")
+		if repo.adminResetPasswordCalls != 0 {
+			t.Fatalf("AdminResetUserPassword calls = %d, want 0", repo.adminResetPasswordCalls)
+		}
+	})
+}
+
+func TestHandler_SuspendUser(t *testing.T) {
+	t.Run("happy -> 200 user + previous_status in audit meta", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Teacher",
+			Email:  "teacher@example.com",
+			Role:   auth.Guru,
+			Status: auth.Active,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/suspend", `{"reason":"  policy  "}`)
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body struct {
+			User auth.User `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.User.Status != auth.Suspended {
+			t.Fatalf("user.status = %s, want %s", body.User.Status, auth.Suspended)
+		}
+		if repo.suspendCalls != 1 || repo.suspendID != targetID {
+			t.Fatalf("SuspendUser calls/id = %d/%s", repo.suspendCalls, repo.suspendID)
+		}
+		if repo.revokeCalls != 1 || repo.revokeUserID != targetID || repo.revokeReason != auth.AdminReset {
+			t.Fatalf("revoke = calls %d user %s reason %s", repo.revokeCalls, repo.revokeUserID, repo.revokeReason)
+		}
+		if repo.auditCalls != 1 || repo.audits[0].Action != "admin_user_suspended" {
+			t.Fatalf("audit = %+v", repo.audits)
+		}
+		meta := auditMetaMap(t, repo.audits[0])
+		if meta["previous_status"] != string(auth.Active) || meta["reason"] != "policy" {
+			t.Fatalf("audit meta = %+v", meta)
+		}
+	})
+
+	t.Run("invalid_id -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/not-a-uuid/suspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_id")
+	})
+
+	t.Run("user_not_found -> 404", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/suspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusNotFound, "user_not_found")
+	})
+
+	t.Run("last_admin_protected -> 400", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Admin",
+			Email:  "admin@example.com",
+			Role:   auth.Admin,
+			Status: auth.Active,
+		})
+		repo.countAdminsFn = func(context.Context) (int64, error) { return 1, nil }
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/suspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "last_admin_protected")
+		if repo.suspendCalls != 0 {
+			t.Fatalf("SuspendUser calls = %d, want 0", repo.suspendCalls)
+		}
+	})
+
+	t.Run("cannot_suspend_self -> 400", func(t *testing.T) {
+		adminID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     adminID,
+			Name:   "Admin",
+			Email:  "admin@example.com",
+			Role:   auth.Guru,
+			Status: auth.Active,
+		})
+		app := testAdminApp(repo, adminID)
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+adminID.String()+"/suspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "cannot_suspend_self")
+		if repo.suspendCalls != 0 {
+			t.Fatalf("SuspendUser calls = %d, want 0", repo.suspendCalls)
+		}
+	})
+
+	t.Run("already_suspended -> 400", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Teacher",
+			Email:  "teacher@example.com",
+			Role:   auth.Guru,
+			Status: auth.Suspended,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/suspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "already_suspended")
+		if repo.suspendCalls != 0 {
+			t.Fatalf("SuspendUser calls = %d, want 0", repo.suspendCalls)
+		}
+	})
+}
+
+func TestHandler_UnsuspendUser(t *testing.T) {
+	t.Run("happy from suspended -> 200 user", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Teacher",
+			Email:  "teacher@example.com",
+			Role:   auth.Guru,
+			Status: auth.Suspended,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/unsuspend", "")
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body struct {
+			User auth.User `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.User.Status != auth.Active {
+			t.Fatalf("user.status = %s, want %s", body.User.Status, auth.Active)
+		}
+		if repo.unsuspendCalls != 1 || repo.unsuspendID != targetID {
+			t.Fatalf("UnsuspendUser calls/id = %d/%s", repo.unsuspendCalls, repo.unsuspendID)
+		}
+		if repo.revokeCalls != 0 {
+			t.Fatalf("RevokeAllRefreshByUser calls = %d, want 0", repo.revokeCalls)
+		}
+		if repo.auditCalls != 1 || repo.audits[0].Action != "admin_user_unsuspended" {
+			t.Fatalf("audit = %+v", repo.audits)
+		}
+		meta := auditMetaMap(t, repo.audits[0])
+		if meta["previous_status"] != string(auth.Suspended) {
+			t.Fatalf("audit meta = %+v", meta)
+		}
+	})
+
+	t.Run("invalid_id -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/not-a-uuid/unsuspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_id")
+	})
+
+	t.Run("user_not_found -> 404", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/unsuspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusNotFound, "user_not_found")
+	})
+
+	t.Run("not_suspended status=active -> 400", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Teacher",
+			Email:  "teacher@example.com",
+			Role:   auth.Guru,
+			Status: auth.Active,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/unsuspend", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "not_suspended")
+		if repo.unsuspendCalls != 0 {
+			t.Fatalf("UnsuspendUser calls = %d, want 0", repo.unsuspendCalls)
+		}
+	})
+}
+
+func TestHandler_UnlockUser(t *testing.T) {
+	t.Run("happy from locked -> 200 user", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:               targetID,
+			Name:             "Teacher",
+			Email:            "teacher@example.com",
+			Role:             auth.Guru,
+			Status:           auth.Locked,
+			FailedLoginCount: 5,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/unlock", "")
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body struct {
+			User auth.User `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.User.Status != auth.Active {
+			t.Fatalf("user.status = %s, want %s", body.User.Status, auth.Active)
+		}
+		if repo.unlockCalls != 1 || repo.unlockID != targetID {
+			t.Fatalf("UnlockUser calls/id = %d/%s", repo.unlockCalls, repo.unlockID)
+		}
+		if repo.revokeCalls != 0 {
+			t.Fatalf("RevokeAllRefreshByUser calls = %d, want 0", repo.revokeCalls)
+		}
+		if repo.auditCalls != 1 || repo.audits[0].Action != "admin_user_unlocked" {
+			t.Fatalf("audit = %+v", repo.audits)
+		}
+		meta := auditMetaMap(t, repo.audits[0])
+		if meta["previous_status"] != string(auth.Locked) {
+			t.Fatalf("audit meta = %+v", meta)
+		}
+	})
+
+	t.Run("invalid_id -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/not-a-uuid/unlock", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_id")
+	})
+
+	t.Run("user_not_found -> 404", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/unlock", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusNotFound, "user_not_found")
+	})
+
+	t.Run("not_locked status=active -> 400", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Teacher",
+			Email:  "teacher@example.com",
+			Role:   auth.Guru,
+			Status: auth.Active,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/unlock", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "not_locked")
+		if repo.unlockCalls != 0 {
+			t.Fatalf("UnlockUser calls = %d, want 0", repo.unlockCalls)
+		}
+	})
+}
+
 func repoWithUsers(users ...*auth.User) *stubRepo {
 	store := make(map[uuid.UUID]*auth.User, len(users))
 	for _, user := range users {
@@ -560,6 +1032,33 @@ func repoWithUsers(users ...*auth.User) *stubRepo {
 		user.Status = auth.Suspended
 		return nil
 	}
+	repo.adminResetPasswordFn = func(_ context.Context, id uuid.UUID, newHash string) error {
+		user, ok := store[id]
+		if !ok {
+			return gorm.ErrRecordNotFound
+		}
+		user.PasswordHash = newHash
+		user.MustChangePassword = true
+		user.FailedLoginCount = 0
+		return nil
+	}
+	repo.unsuspendFn = func(_ context.Context, id uuid.UUID) error {
+		user, ok := store[id]
+		if !ok {
+			return gorm.ErrRecordNotFound
+		}
+		user.Status = auth.Active
+		return nil
+	}
+	repo.unlockFn = func(_ context.Context, id uuid.UUID) error {
+		user, ok := store[id]
+		if !ok {
+			return gorm.ErrRecordNotFound
+		}
+		user.Status = auth.Active
+		user.FailedLoginCount = 0
+		return nil
+	}
 	return repo
 }
 
@@ -579,6 +1078,10 @@ func testAdminApp(repo *stubRepo, adminID uuid.UUID) *fiber.App {
 	app.Post("/api/v1/admin/users", h.CreateUser)
 	app.Patch("/api/v1/admin/users/:id", h.UpdateUser)
 	app.Delete("/api/v1/admin/users/:id", h.DeleteUser)
+	app.Post("/api/v1/admin/users/:id/reset-password", h.ResetUserPassword)
+	app.Post("/api/v1/admin/users/:id/suspend", h.SuspendUser)
+	app.Post("/api/v1/admin/users/:id/unsuspend", h.UnsuspendUser)
+	app.Post("/api/v1/admin/users/:id/unlock", h.UnlockUser)
 	return app
 }
 
@@ -602,6 +1105,16 @@ func doAdminRequest(t *testing.T, app *fiber.App, method, path, body string) *ht
 		t.Fatalf("app.Test() error = %v", err)
 	}
 	return resp
+}
+
+func auditMetaMap(t *testing.T, entry *auth.AuditLog) map[string]any {
+	t.Helper()
+
+	var meta map[string]any
+	if err := json.Unmarshal(entry.Meta, &meta); err != nil {
+		t.Fatalf("Unmarshal audit meta error = %v", err)
+	}
+	return meta
 }
 
 func assertErrorCode(t *testing.T, resp *http.Response, wantStatus int, wantCode string) {
