@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B FULL + 1.C FULL + 1.D FULL + 1.E.1 done. Bootstrap admin flow LIVE end-to-end (login → /me → /change-password → unblocked → re-login w/ new pass). Berikut: Task 1.E.2 (`cmd/reset-admin`) atau Task 1.F (admin user CRUD endpoints).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E FULL DONE. Bootstrap admin flow LIVE end-to-end + emergency reset CLI verified (admin_reset_via_cli audit row + revoke-all + re-login w/ new pass). Berikut: Task 1.F (admin user CRUD endpoints).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.D.1 + 1.D.2 marked done, ForceChangePassword wired)
+> Last updated: 2026-05-19 (Section 18: Task 1.E.2 marked done, reset-admin CLI live-verified)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1495,10 +1495,12 @@ Setelah tools jadi, runbook deploy jadi:
 
 **Task 1.E.1 — Lengkapi `cmd/seed-admin/main.go`** ✅ DONE — see Section 1.C above (bundled dgn 1.C.2 di commit `768333f`).
 
-**Task 1.E.2 — Lengkapi `cmd/reset-admin/main.go`**
+**Task 1.E.2 — Lengkapi `cmd/reset-admin/main.go`** ✅ DONE (commit `1cb0826`)
 - Replace stub: flag `--email <email> --password <new>` (interactive kalau kosong) → find user role=admin → bcrypt new pass → update + revoke all refresh
 - Verify: run di server, login admin pake password baru
-- Commit: `feat(cmd): reset-admin full implementation`
+- Implementation: validates role=admin (refuses non-admin), bcrypts new pass, calls `UpdateUserPassword`, best-effort `ResetFailedLogin`, `RevokeAllRefreshByUser(admin_reset)`, `LogAudit(admin_reset_via_cli, actor_id=NULL, target_id=user.ID)`. Best-effort on revoke + audit (does not abort post-update).
+- Live E2E verified: `./bin/reset-admin --email admin@sekolah.id --password 'Reset-Test-2026!'` → revoked 1 token, old pass returns 401, new pass returns 200 (must_change_password=false), audit row inserted dgn actor_id=NULL.
+- Note: locked-user unlock TODO (#53) — `UpdateUserPassword` clears `must_change_password` tapi tidak `status`. Logged warning kalau user.Status==Locked. Add repo method `UnlockUser` di task selanjutnya kalau dibutuhkan.
 
 #### 1.F Admin Panel Endpoints
 
@@ -1723,7 +1725,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.E.2 — Lengkapi `cmd/reset-admin/main.go`** (CLI: --email + --password flag → find admin → bcrypt → update + revoke all refresh + audit `admin_reset_via_cli` actor=NULL). Atau langsung **Task 1.F (Admin user CRUD endpoints)**. Rekomendasi: 1.E.2 dulu — CLI utility kecil, tapi penting untuk admin lockout recovery (#53). Lalu skip ke 1.F.
+**Berikut: Task 1.F — Admin user CRUD endpoints** (GET/POST/PATCH/DELETE /admin/users + bulk CSV import per Fase 2). Sub-tasks: 1.F.1 list+filter, 1.F.2 create user, 1.F.3 update, 1.F.4 delete/disable, 1.F.5 reset-password endpoint (admin-side, parallel ke `cmd/reset-admin`).
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
