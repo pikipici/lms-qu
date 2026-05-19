@@ -26,6 +26,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
+	"github.com/pikip/lms/backend/internal/admin"
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
@@ -202,6 +203,18 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	protected.Post("/change-password", authHandler.ChangePassword)
 	protected.Post("/logout-all", authHandler.LogoutAll)
 	protected.Get("/sessions", authHandler.Sessions)
+
+	adminHandler := admin.NewHandler(authRepo, cfg)
+	adminGroup := api.Group("/admin",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin)),
+	)
+	adminUsers := adminGroup.Group("/users")
+	adminUsers.Get("/", adminHandler.ListUsers)
+	adminUsers.Post("/", adminHandler.CreateUser)
+	adminUsers.Patch("/:id", adminHandler.UpdateUser)
+	adminUsers.Delete("/:id", adminHandler.DeleteUser)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

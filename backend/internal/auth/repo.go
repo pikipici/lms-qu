@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,14 @@ type Repo struct {
 
 // NewRepo creates an auth repository backed by GORM.
 func NewRepo(db *gorm.DB) *Repo { return &Repo{db: db} }
+
+// UserListFilter narrows the user list query. All fields are optional.
+type UserListFilter struct {
+	Role        string // "admin"|"guru"|"siswa"|""=any
+	Status      string // "active"|"suspended"|"locked"|""=any
+	SearchEmail string // ILIKE match on email; empty=no filter
+	SearchName  string // ILIKE match on name; empty=no filter
+}
 
 // FindUserByEmail returns a user by email.
 func (r *Repo) FindUserByEmail(ctx context.Context, email string) (*User, error) {
@@ -38,6 +47,76 @@ func (r *Repo) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 // CreateUser inserts a new user.
 func (r *Repo) CreateUser(ctx context.Context, u *User) error {
 	return r.db.WithContext(ctx).Create(u).Error
+}
+
+// ListUsers returns a page of users + total count matching filter, ordered by created_at DESC.
+// limit must be >0; offset >=0.
+func (r *Repo) ListUsers(ctx context.Context, f UserListFilter, limit, offset int) ([]User, int64, error) {
+	query := r.db.WithContext(ctx).Model(&User{})
+	if f.Role != "" {
+		query = query.Where("role = ?", f.Role)
+	}
+	if f.Status != "" {
+		query = query.Where("status = ?", f.Status)
+	}
+
+	searchEmail := strings.TrimSpace(f.SearchEmail)
+	searchName := strings.TrimSpace(f.SearchName)
+	switch {
+	case searchEmail != "" && searchName != "":
+		query = query.Where("(email ILIKE ? OR name ILIKE ?)", "%"+searchEmail+"%", "%"+searchName+"%")
+	case searchEmail != "":
+		query = query.Where("email ILIKE ?", "%"+searchEmail+"%")
+	case searchName != "":
+		query = query.Where("name ILIKE ?", "%"+searchName+"%")
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var users []User
+	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	return users, total, nil
+}
+
+// UpdateUserName updates only the name column. Returns gorm.ErrRecordNotFound if no row.
+func (r *Repo) UpdateUserName(ctx context.Context, id uuid.UUID, name string) error {
+	res := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", id).
+		UpdateColumns(map[string]any{
+			"name":       name,
+			"updated_at": gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// SuspendUser sets status='suspended'. Returns gorm.ErrRecordNotFound if no row.
+func (r *Repo) SuspendUser(ctx context.Context, id uuid.UUID) error {
+	res := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", id).
+		UpdateColumns(map[string]any{
+			"status":     Suspended,
+			"updated_at": gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // UpdateUserPassword updates a user's password and clears force-change state.
