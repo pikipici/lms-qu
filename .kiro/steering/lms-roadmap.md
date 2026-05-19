@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: Section 1.A FULL done + 1.B.1+1.B.2 done (crypto helpers, build/vet/test PASS). Berikut: Task 1.B.3 (Login service).
+> Status: v0.7.2 — Fase 1 in progress: Section 1.A FULL + 1.B.1+1.B.2+1.B.3 done (login service + crypto + repo, all tests PASS). Berikut: Task 1.B.4 (POST /auth/login HTTP handler).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.B.1 + 1.B.2 marked done, point ke 1.B.3)
+> Last updated: 2026-05-19 (Section 18: Task 1.B.3 marked done, point ke 1.B.4)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1431,12 +1431,12 @@ Setelah tools jadi, runbook deploy jadi:
 - Files: `backend/internal/auth/jwt.go` (117 LOC) + `jwt_test.go` (124 LOC)
 - Done: AccessClaims (UserID, Role, RegisteredClaims) + RefreshClaims (UserID + JTI in RegisteredClaims.ID). HS256 sign/verify, Issuer="lms-api", config-driven TTL. Sentinel `ErrInvalidSigningMethod`. Tests: roundtrip access+refresh, wrong secret, expired token, invalid signing method (alg=none). Dep added: github.com/golang-jwt/jwt/v5 v5.2.1. Server build/vet/test PASS.
 
-**Task 1.B.3 — Login service**
-- Files: `backend/internal/auth/service.go` (`Login(email, password, ip, ua)`)
-- Logic: rate-limit (5/15min per IP+email), find user, check status (active only), bcrypt verify, log LoginAttempt, increment FailedLoginCount on fail, lock user if FailedLoginCount >= 10, on success: reset counter, issue access + refresh, save RefreshToken, log audit
-- Test: success + wrong password + suspended + locked + ratelimit
-- Verify: `go test ./internal/auth/`
-- Commit: `feat(auth): login service with rate limit + lockout`
+**Task 1.B.3 — Login service** ✅ DONE (commit `4339f2b`, 2026-05-19)
+- Files: `backend/internal/auth/service.go` (242 LOC) + `service_test.go` (400 LOC)
+- Done: `Service.Login(ctx, email, password, ip, ua) (*LoginResult, error)` dengan flow: normalize email → rate-limit (5/15min via CountRecentFailedAttempts) → FindUserByEmail (gorm.ErrRecordNotFound → ErrInvalidCredentials, no leak) → status gate (Suspended/Locked) → VerifyPassword → on fail: IncFailedLogin + auto LockUser kalo cumulative >=10 → on success: ResetFailedLogin + IssueAccess+IssueRefresh + persist RefreshToken + audit log.
+- Sentinel errors: `ErrInvalidCredentials`, `ErrUserSuspended`, `ErrUserLocked`, `ErrRateLimited`.
+- Internal `authRepo` interface (subset of *Repo) untuk tests via mockRepo (no DB driver added). 9 test cases pass: success, wrong password, user not found (no leak), suspended, locked, rate-limited (before lookup), auto-lock at 10th fail, email normalization, empty email no-logging.
+- Server `go build` + `go vet` + `go test` PASS (0.270s).
 
 **Task 1.B.4 — Login HTTP handler + route + auth-login rate limiter middleware**
 - Files: `backend/internal/auth/handler.go`, mount di `cmd/server/main.go`
@@ -1720,7 +1720,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.B.3 — Login service (`backend/internal/auth/service.go`)** — rate-limit cek, find user, status check, bcrypt verify, log LoginAttempt, increment FailedLoginCount, lock at >=10, on success reset+issue tokens+save refresh+audit. Eksekusi via codex sub-agent.
+**Berikut: Task 1.B.4 — POST /api/v1/auth/login HTTP handler** + per-IP+email rate limiter middleware (`RATE_LIMIT_LOGIN_PER_15MIN` config). Body `{email, password}` → 200 `{access_token, refresh_token, user}` atau 401/429. Eksekusi via codex sub-agent.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
