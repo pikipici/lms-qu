@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A.1 + 1.A.2 done (auth schema + GORM models, build PASS). Berikut: Task 1.A.3 repo layer.
+> Status: v0.7.2 — Fase 1 in progress: Section 1.A FULL done (schema + models + repo, build PASS). Berikut: Section 1.B (Login + JWT + Rate Limit), bundle 1.B.1 + 1.B.2 lewat codex.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.A.1 + 1.A.2 marked done)
+> Last updated: 2026-05-19 (Section 18: Task 1.A.3 marked done, point ke 1.B.1+1.B.2)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1417,11 +1417,9 @@ Setelah tools jadi, runbook deploy jadi:
 - Commit: `feat(auth): GORM models User RefreshToken LoginAttempt AuditLog`
 - Done: gorm.io/datatypes v1.2.7 added; build + vet PASS at server; go.sum + package-lock.json now committed for reproducible builds
 
-**Task 1.A.3 — Repository layer**
-- Files: `backend/internal/auth/repo.go`
-- Methods: `FindUserByEmail`, `CreateUser`, `UpdateUserPassword`, `IncFailedLogin`, `ResetFailedLogin`, `LockUser`, `IssueRefresh`, `RotateRefresh`, `RevokeRefresh`, `RevokeAllRefreshByUser`, `FindRefreshByJTI`, `LogLoginAttempt`, `LogAudit`
-- Verify: `go build ./internal/auth/...`
-- Commit: `feat(auth): repository for user + refresh token + audit + login attempt`
+**Task 1.A.3 — Repository layer** ✅ DONE (commit `18f7a4e`, 2026-05-19)
+- Files: `backend/internal/auth/repo.go` (199 baris)
+- Done: Repo struct + NewRepo + 17 methods. User: FindByEmail, FindByID, Create, UpdatePassword, IncFailed, ResetFailed, LockUser (transactional). RefreshToken: Issue, FindByJTI, Rotate (transactional + reuse trigger), Revoke, RevokeAllByUser, RevokeChain, ListUserSessions. LoginAttempt: Log, CountRecentFailedAttempts. AuditLog: Log. `gorm.Expr("now()")` server-side timestamps; build + vet PASS at server.
 
 #### 1.B Login + JWT + Rate Limit
 
@@ -1728,7 +1726,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.A.3 — Repository layer (`backend/internal/auth/repo.go`)** — methods: FindUserByEmail, CreateUser, UpdateUserPassword, IncFailedLogin, ResetFailedLogin, LockUser, IssueRefresh, RotateRefresh, RevokeRefresh, RevokeAllRefreshByUser, FindRefreshByJTI, LogLoginAttempt, LogAudit.
+**Berikut: Task 1.B.1 + 1.B.2 (bundle) — bcrypt password helper + JWT issue/verify** lewat codex sub-agent. File-file independen, satu commit gabungan `feat(auth): crypto helpers (bcrypt password + JWT)`.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
