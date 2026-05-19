@@ -219,6 +219,7 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	adminUsers.Post("/:id/suspend", adminHandler.SuspendUser)
 	adminUsers.Post("/:id/unsuspend", adminHandler.UnsuspendUser)
 	adminUsers.Post("/:id/unlock", adminHandler.UnlockUser)
+	adminUsers.Post("/:id/role", adminHandler.ChangeUserRole)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

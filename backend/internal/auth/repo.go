@@ -101,6 +101,24 @@ func (r *Repo) UpdateUserName(ctx context.Context, id uuid.UUID, name string) er
 	return nil
 }
 
+// UpdateUserRole sets the role column. Returns gorm.ErrRecordNotFound if no row.
+func (r *Repo) UpdateUserRole(ctx context.Context, id uuid.UUID, role UserRole) error {
+	res := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", id).
+		UpdateColumns(map[string]any{
+			"role":       role,
+			"updated_at": gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // SuspendUser sets status='suspended'. Returns gorm.ErrRecordNotFound if no row.
 func (r *Repo) SuspendUser(ctx context.Context, id uuid.UUID) error {
 	res := r.db.WithContext(ctx).

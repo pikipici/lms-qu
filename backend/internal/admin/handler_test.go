@@ -41,6 +41,14 @@ type stubRepo struct {
 	updateID     uuid.UUID
 	updateName   string
 
+	updateUserRoleFn   func(context.Context, uuid.UUID, auth.UserRole) error
+	updateUserRoleErr  error
+	updateUserRoleArgs struct {
+		id   uuid.UUID
+		role auth.UserRole
+	}
+	updateUserRoleCalls int
+
 	suspendFn    func(context.Context, uuid.UUID) error
 	suspendCalls int
 	suspendID    uuid.UUID
@@ -118,6 +126,16 @@ func (s *stubRepo) UpdateUserName(ctx context.Context, id uuid.UUID, name string
 		return s.updateNameFn(ctx, id, name)
 	}
 	return nil
+}
+
+func (s *stubRepo) UpdateUserRole(ctx context.Context, id uuid.UUID, role auth.UserRole) error {
+	s.updateUserRoleCalls++
+	s.updateUserRoleArgs.id = id
+	s.updateUserRoleArgs.role = role
+	if s.updateUserRoleFn != nil {
+		return s.updateUserRoleFn(ctx, id, role)
+	}
+	return s.updateUserRoleErr
 }
 
 func (s *stubRepo) SuspendUser(ctx context.Context, id uuid.UUID) error {
@@ -473,6 +491,304 @@ func TestHandler_UpdateUser(t *testing.T) {
 		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_body")
 		if repo.findIDCalls != 0 {
 			t.Fatalf("FindUserByID calls = %d, want 0", repo.findIDCalls)
+		}
+	})
+}
+
+func TestChangeUserRole(t *testing.T) {
+	t.Run("happy promote guru to admin -> 200", func(t *testing.T) {
+		adminID := uuid.New()
+		targetID := uuid.New()
+		repo := repoWithUsers(
+			&auth.User{
+				ID:           adminID,
+				Name:         "Admin",
+				Email:        "admin@example.com",
+				PasswordHash: "hash",
+				Role:         auth.Admin,
+				Status:       auth.Active,
+			},
+			&auth.User{
+				ID:     targetID,
+				Name:   "Teacher",
+				Email:  "teacher@example.com",
+				Role:   auth.Guru,
+				Status: auth.Active,
+			},
+		)
+		var gotPlain string
+		app := testAdminAppWithVerifier(repo, adminID, func(_, plain string) error {
+			gotPlain = plain
+			return nil
+		})
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/role", `{"new_role":"admin","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body struct {
+			User auth.User `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.User.ID != targetID || body.User.Role != auth.Admin {
+			t.Fatalf("user = %+v, want target role admin", body.User)
+		}
+		if gotPlain != "secret" {
+			t.Fatalf("plain password = %q, want secret", gotPlain)
+		}
+		if repo.updateUserRoleCalls != 1 || repo.updateUserRoleArgs.id != targetID || repo.updateUserRoleArgs.role != auth.Admin {
+			t.Fatalf("UpdateUserRole calls/id/role = %d/%s/%s", repo.updateUserRoleCalls, repo.updateUserRoleArgs.id, repo.updateUserRoleArgs.role)
+		}
+		if repo.revokeCalls != 1 || repo.revokeUserID != targetID || repo.revokeReason != auth.AdminReset {
+			t.Fatalf("revoke = calls %d user %s reason %s", repo.revokeCalls, repo.revokeUserID, repo.revokeReason)
+		}
+		if repo.auditCalls != 1 || repo.audits[0].Action != "admin_user_role_changed" {
+			t.Fatalf("audit = %+v", repo.audits)
+		}
+		meta := auditMetaMap(t, repo.audits[0])
+		if meta["old_role"] != string(auth.Guru) || meta["new_role"] != string(auth.Admin) {
+			t.Fatalf("audit meta = %+v", meta)
+		}
+	})
+
+	t.Run("happy demote admin to guru on non-self target -> 200", func(t *testing.T) {
+		adminID := uuid.New()
+		targetID := uuid.New()
+		repo := repoWithUsers(
+			&auth.User{
+				ID:           adminID,
+				Name:         "Admin",
+				Email:        "admin@example.com",
+				PasswordHash: "hash",
+				Role:         auth.Admin,
+				Status:       auth.Active,
+			},
+			&auth.User{
+				ID:     targetID,
+				Name:   "Other Admin",
+				Email:  "other-admin@example.com",
+				Role:   auth.Admin,
+				Status: auth.Active,
+			},
+		)
+		repo.countAdminsFn = func(context.Context) (int64, error) { return 2, nil }
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/role", `{"new_role":"guru","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body struct {
+			User auth.User `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.User.Role != auth.Guru {
+			t.Fatalf("user.role = %s, want %s", body.User.Role, auth.Guru)
+		}
+		if repo.updateUserRoleCalls != 1 || repo.updateUserRoleArgs.id != targetID || repo.updateUserRoleArgs.role != auth.Guru {
+			t.Fatalf("UpdateUserRole calls/id/role = %d/%s/%s", repo.updateUserRoleCalls, repo.updateUserRoleArgs.id, repo.updateUserRoleArgs.role)
+		}
+	})
+
+	t.Run("invalid_id -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminAppWithVerifier(repo, uuid.New(), func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/not-a-uuid/role", `{"new_role":"admin","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_id")
+		if repo.findIDCalls != 0 {
+			t.Fatalf("FindUserByID calls = %d, want 0", repo.findIDCalls)
+		}
+	})
+
+	t.Run("invalid_body malformed json -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminAppWithVerifier(repo, uuid.New(), func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/role", `{"new_role":`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_body")
+		if repo.findIDCalls != 0 {
+			t.Fatalf("FindUserByID calls = %d, want 0", repo.findIDCalls)
+		}
+	})
+
+	t.Run("invalid_role -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminAppWithVerifier(repo, uuid.New(), func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/role", `{"new_role":"hacker","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_role")
+		if repo.findIDCalls != 0 {
+			t.Fatalf("FindUserByID calls = %d, want 0", repo.findIDCalls)
+		}
+	})
+
+	t.Run("missing current_password -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminAppWithVerifier(repo, uuid.New(), func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/role", `{"new_role":"admin"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_body")
+		if repo.findIDCalls != 0 {
+			t.Fatalf("FindUserByID calls = %d, want 0", repo.findIDCalls)
+		}
+	})
+
+	t.Run("invalid_current_password -> 401", func(t *testing.T) {
+		adminID := uuid.New()
+		targetID := uuid.New()
+		repo := repoWithUsers(
+			&auth.User{
+				ID:           adminID,
+				PasswordHash: "hash",
+				Role:         auth.Admin,
+				Status:       auth.Active,
+			},
+			&auth.User{
+				ID:     targetID,
+				Role:   auth.Guru,
+				Status: auth.Active,
+			},
+		)
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error {
+			return bcrypt.ErrMismatchedHashAndPassword
+		})
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/role", `{"new_role":"admin","current_password":"wrong"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusUnauthorized, "invalid_current_password")
+		if repo.updateUserRoleCalls != 0 {
+			t.Fatalf("UpdateUserRole calls = %d, want 0", repo.updateUserRoleCalls)
+		}
+	})
+
+	t.Run("requester not found -> 401", func(t *testing.T) {
+		adminID := uuid.New()
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Role:   auth.Guru,
+			Status: auth.Active,
+		})
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/role", `{"new_role":"admin","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusUnauthorized, "invalid_current_password")
+		if repo.updateUserRoleCalls != 0 {
+			t.Fatalf("UpdateUserRole calls = %d, want 0", repo.updateUserRoleCalls)
+		}
+	})
+
+	t.Run("target not found -> 404", func(t *testing.T) {
+		adminID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:           adminID,
+			PasswordHash: "hash",
+			Role:         auth.Admin,
+			Status:       auth.Active,
+		})
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+uuid.NewString()+"/role", `{"new_role":"admin","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusNotFound, "user_not_found")
+		if repo.updateUserRoleCalls != 0 {
+			t.Fatalf("UpdateUserRole calls = %d, want 0", repo.updateUserRoleCalls)
+		}
+	})
+
+	t.Run("same_role -> 400", func(t *testing.T) {
+		adminID := uuid.New()
+		targetID := uuid.New()
+		repo := repoWithUsers(
+			&auth.User{
+				ID:           adminID,
+				PasswordHash: "hash",
+				Role:         auth.Admin,
+				Status:       auth.Active,
+			},
+			&auth.User{
+				ID:     targetID,
+				Role:   auth.Guru,
+				Status: auth.Active,
+			},
+		)
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/role", `{"new_role":"guru","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "same_role")
+		if repo.updateUserRoleCalls != 0 {
+			t.Fatalf("UpdateUserRole calls = %d, want 0", repo.updateUserRoleCalls)
+		}
+	})
+
+	t.Run("last_admin_protected -> 400", func(t *testing.T) {
+		adminID := uuid.New()
+		targetID := uuid.New()
+		repo := repoWithUsers(
+			&auth.User{
+				ID:           adminID,
+				PasswordHash: "hash",
+				Role:         auth.Admin,
+				Status:       auth.Active,
+			},
+			&auth.User{
+				ID:     targetID,
+				Role:   auth.Admin,
+				Status: auth.Active,
+			},
+		)
+		repo.countAdminsFn = func(context.Context) (int64, error) { return 1, nil }
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+targetID.String()+"/role", `{"new_role":"guru","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "last_admin_protected")
+		if repo.updateUserRoleCalls != 0 {
+			t.Fatalf("UpdateUserRole calls = %d, want 0", repo.updateUserRoleCalls)
+		}
+	})
+
+	t.Run("cannot_demote_self -> 400", func(t *testing.T) {
+		adminID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:           adminID,
+			PasswordHash: "hash",
+			Role:         auth.Admin,
+			Status:       auth.Active,
+		})
+		repo.countAdminsFn = func(context.Context) (int64, error) { return 2, nil }
+		app := testAdminAppWithVerifier(repo, adminID, func(_, _ string) error { return nil })
+
+		resp := doAdminRequest(t, app, http.MethodPost, "/api/v1/admin/users/"+adminID.String()+"/role", `{"new_role":"guru","current_password":"secret"}`)
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "cannot_demote_self")
+		if repo.updateUserRoleCalls != 0 {
+			t.Fatalf("UpdateUserRole calls = %d, want 0", repo.updateUserRoleCalls)
 		}
 	})
 }
@@ -1024,6 +1340,14 @@ func repoWithUsers(users ...*auth.User) *stubRepo {
 		user.Name = name
 		return nil
 	}
+	repo.updateUserRoleFn = func(_ context.Context, id uuid.UUID, role auth.UserRole) error {
+		user, ok := store[id]
+		if !ok {
+			return gorm.ErrRecordNotFound
+		}
+		user.Role = role
+		return nil
+	}
 	repo.suspendFn = func(_ context.Context, id uuid.UUID) error {
 		user, ok := store[id]
 		if !ok {
@@ -1063,6 +1387,10 @@ func repoWithUsers(users ...*auth.User) *stubRepo {
 }
 
 func testAdminApp(repo *stubRepo, adminID uuid.UUID) *fiber.App {
+	return testAdminAppWithVerifier(repo, adminID, nil)
+}
+
+func testAdminAppWithVerifier(repo *stubRepo, adminID uuid.UUID, verifier passwordVerifier) *fiber.App {
 	app := fiber.New()
 	app.Use(middleware.RequestID())
 	app.Use(func(c *fiber.Ctx) error {
@@ -1074,6 +1402,9 @@ func testAdminApp(repo *stubRepo, adminID uuid.UUID) *fiber.App {
 	h := NewHandler(repo, &config.Config{
 		JWT: config.JWTConfig{BcryptCost: bcrypt.MinCost},
 	})
+	if verifier != nil {
+		h.verifyPassword = verifier
+	}
 	app.Get("/api/v1/admin/users", h.ListUsers)
 	app.Post("/api/v1/admin/users", h.CreateUser)
 	app.Patch("/api/v1/admin/users/:id", h.UpdateUser)
@@ -1082,6 +1413,7 @@ func testAdminApp(repo *stubRepo, adminID uuid.UUID) *fiber.App {
 	app.Post("/api/v1/admin/users/:id/suspend", h.SuspendUser)
 	app.Post("/api/v1/admin/users/:id/unsuspend", h.UnsuspendUser)
 	app.Post("/api/v1/admin/users/:id/unlock", h.UnlockUser)
+	app.Post("/api/v1/admin/users/:id/role", h.ChangeUserRole)
 	return app
 }
 

@@ -33,6 +33,7 @@ type userRepo interface {
 	FindUserByID(ctx context.Context, id uuid.UUID) (*auth.User, error)
 	CreateUser(ctx context.Context, u *auth.User) error
 	UpdateUserName(ctx context.Context, id uuid.UUID, name string) error
+	UpdateUserRole(ctx context.Context, id uuid.UUID, role auth.UserRole) error
 	SuspendUser(ctx context.Context, id uuid.UUID) error
 	AdminResetUserPassword(ctx context.Context, id uuid.UUID, newHash string) error
 	UnsuspendUser(ctx context.Context, id uuid.UUID) error
@@ -42,12 +43,17 @@ type userRepo interface {
 	LogAudit(ctx context.Context, entry *auth.AuditLog) error
 }
 
+type passwordVerifier func(hashed, plain string) error
+
 type Handler struct {
-	repo userRepo
-	cfg  *config.Config
+	repo           userRepo
+	cfg            *config.Config
+	verifyPassword passwordVerifier
 }
 
-func NewHandler(repo userRepo, cfg *config.Config) *Handler { return &Handler{repo: repo, cfg: cfg} }
+func NewHandler(repo userRepo, cfg *config.Config) *Handler {
+	return &Handler{repo: repo, cfg: cfg, verifyPassword: auth.VerifyPassword}
+}
 
 type listUsersResponse struct {
 	Users      []auth.User `json:"users"`
@@ -232,6 +238,11 @@ type updateUserRequest struct {
 	Name string `json:"name"`
 }
 
+type changeRoleRequest struct {
+	NewRole         string `json:"new_role"`
+	CurrentPassword string `json:"current_password"`
+}
+
 // UpdateUser handles PATCH /api/v1/admin/users/:id.
 func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 	targetID, err := uuid.Parse(c.Params("id"))
@@ -281,6 +292,105 @@ func (h *Handler) UpdateUser(c *fiber.Ctx) error {
 		"old_name": existing.Name,
 		"new_name": name,
 	}))
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": fresh})
+}
+
+// ChangeUserRole handles POST /api/v1/admin/users/:id/role.
+func (h *Handler) ChangeUserRole(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	var req changeRoleRequest
+	if err := c.BodyParser(&req); err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+	if req == (changeRoleRequest{}) {
+		return adminError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+
+	newRole := strings.ToLower(strings.TrimSpace(req.NewRole))
+	if !validRole(newRole) {
+		return adminError(c, fiber.StatusBadRequest, "invalid role", "invalid_role")
+	}
+	if strings.TrimSpace(req.CurrentPassword) == "" {
+		return adminError(c, fiber.StatusBadRequest, "current password is required", "invalid_body")
+	}
+
+	requesterID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	requester, err := h.repo.FindUserByID(c.UserContext(), requesterID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusUnauthorized, "invalid current password", "invalid_current_password")
+	}
+	if err != nil {
+		slog.Error("admin find requester failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	if err := h.verifyPassword(requester.PasswordHash, req.CurrentPassword); err != nil {
+		return adminError(c, fiber.StatusUnauthorized, "invalid current password", "invalid_current_password")
+	}
+
+	target, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	role := auth.UserRole(newRole)
+	if target.Role == role {
+		return adminError(c, fiber.StatusBadRequest, "user already has role", "same_role")
+	}
+
+	if target.Role == auth.Admin && role != auth.Admin {
+		adminCount, err := h.repo.CountAdmins(c.UserContext())
+		if err != nil {
+			slog.Error("admin count admins failed", slog.String("err", err.Error()))
+			return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+		}
+		if adminCount == 1 {
+			return adminError(c, fiber.StatusBadRequest, "cannot demote the last admin", "last_admin_protected")
+		}
+	}
+
+	if target.ID == requesterID && role != auth.Admin {
+		return adminError(c, fiber.StatusBadRequest, "cannot demote self", "cannot_demote_self")
+	}
+
+	oldRole := target.Role
+	if err := h.repo.UpdateUserRole(c.UserContext(), targetID, role); err != nil {
+		slog.Error("admin update user role failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	if _, err := h.repo.RevokeAllRefreshByUser(c.UserContext(), targetID, auth.AdminReset); err != nil {
+		slog.Warn("admin revoke refresh tokens failed",
+			slog.String("user_id", targetID.String()),
+			slog.String("err", err.Error()),
+		)
+	}
+
+	h.logAudit(c, "admin_user_role_changed", requesterID, targetID, auditMeta(map[string]any{
+		"old_role": string(oldRole),
+		"new_role": string(role),
+	}))
+
+	fresh, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin refetch user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": fresh})
 }
