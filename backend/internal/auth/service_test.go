@@ -32,6 +32,10 @@ type mockRepo struct {
 	lockReasons       []string
 	issueRefreshCalls int
 	issuedRefreshes   []*RefreshToken
+	refreshByJTI      map[uuid.UUID]*RefreshToken
+	rotateCalls       int
+	chainRevokeCalls  int
+	chainRevokedJTIs  []uuid.UUID
 	loginAttempts     []*LoginAttempt
 	audits            []*AuditLog
 	errFindByEmail    error
@@ -250,6 +254,277 @@ func TestLogin_EmptyEmail_NoLogging(t *testing.T) {
 	}
 }
 
+func TestRefresh_Success_RotatesTokenAndReturnsNewPair(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+
+	_, oldJTI, raw, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		oldJTI: &RefreshToken{
+			JTI:       oldJTI,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(7 * 24 * time.Hour),
+		},
+	}
+
+	got, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("Refresh() result is nil")
+	}
+	if got.User.ID != user.ID {
+		t.Fatalf("Refresh() user ID = %s, want %s", got.User.ID, user.ID)
+	}
+	if got.AccessToken == "" {
+		t.Fatal("Refresh() AccessToken is empty")
+	}
+	if got.RefreshToken == "" {
+		t.Fatal("Refresh() RefreshToken is empty")
+	}
+	if got.RefreshJTI == oldJTI.String() {
+		t.Fatal("Refresh() reused old refresh JTI")
+	}
+	newJTI, err := uuid.Parse(got.RefreshJTI)
+	if err != nil {
+		t.Fatalf("uuid.Parse(RefreshJTI) error = %v", err)
+	}
+	if repo.rotateCalls != 1 {
+		t.Fatalf("RotateRefresh calls = %d, want 1", repo.rotateCalls)
+	}
+	old := repo.refreshByJTI[oldJTI]
+	if old.RevokedAt == nil {
+		t.Fatal("old refresh RevokedAt = nil, want set")
+	}
+	if old.ReplacedByJTI == nil || *old.ReplacedByJTI != newJTI {
+		t.Fatalf("old refresh ReplacedByJTI = %v, want %s", old.ReplacedByJTI, newJTI)
+	}
+	if _, ok := repo.refreshByJTI[newJTI]; !ok {
+		t.Fatalf("new refresh %s was not persisted", newJTI)
+	}
+	assertOneAuditAction(t, repo, "refresh_success")
+}
+
+func TestRefresh_InvalidJWT_ReturnsErrInvalidCredentials(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+
+	_, err := svc.Refresh(context.Background(), "garbage", "1.2.3.4", "ua")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrInvalidCredentials)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "invalid_token")
+}
+
+func TestRefresh_WrongSecret_ReturnsErrInvalidCredentials(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	otherJWT := svc.cfg.JWT
+	otherJWT.SecretKey = "other-test-secret-min-32-chars-123456"
+	_, _, raw, _ := issueValidRefresh(t, otherJWT, uuid.New())
+
+	_, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrInvalidCredentials)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "invalid_token")
+}
+
+func TestRefresh_UnknownJTI_ReturnsErrInvalidCredentialsNoChainRevoke(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	userID := uuid.New()
+	_, _, raw, _ := issueValidRefresh(t, svc.cfg.JWT, userID)
+
+	_, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrInvalidCredentials)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	if repo.chainRevokeCalls != 0 {
+		t.Fatalf("RevokeRefreshChain calls = %d, want 0", repo.chainRevokeCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "unknown_jti")
+	if repo.audits[0].ActorID == nil || *repo.audits[0].ActorID != userID {
+		t.Fatalf("audit ActorID = %v, want %s", repo.audits[0].ActorID, userID)
+	}
+}
+
+func TestRefresh_AlreadyRevokedToken_TriggersReuseDetectionAndChainRevoke(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+
+	_, revokedJTI, revokedRaw, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	_, activeJTI, _, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	revokedAt := fixedLoginNow.Add(-time.Minute)
+	rotateReason := string(Rotate)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		revokedJTI: &RefreshToken{
+			JTI:           revokedJTI,
+			UserID:        user.ID,
+			IssuedAt:      fixedLoginNow.Add(-time.Hour),
+			ExpiresAt:     fixedLoginNow.Add(7 * 24 * time.Hour),
+			RevokedAt:     &revokedAt,
+			RevokedReason: &rotateReason,
+		},
+		activeJTI: &RefreshToken{
+			JTI:       activeJTI,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(7 * 24 * time.Hour),
+		},
+	}
+
+	_, err := svc.Refresh(context.Background(), revokedRaw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrRefreshReuse) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrRefreshReuse)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	if repo.chainRevokeCalls != 1 {
+		t.Fatalf("RevokeRefreshChain calls = %d, want 1", repo.chainRevokeCalls)
+	}
+	if len(repo.chainRevokedJTIs) != 1 || repo.chainRevokedJTIs[0] != revokedJTI {
+		t.Fatalf("chainRevokedJTIs = %v, want [%s]", repo.chainRevokedJTIs, revokedJTI)
+	}
+	active := repo.refreshByJTI[activeJTI]
+	if active.RevokedAt == nil {
+		t.Fatal("active refresh RevokedAt = nil, want set")
+	}
+	if active.RevokedReason == nil || *active.RevokedReason != string(ReuseDetected) {
+		t.Fatalf("active refresh RevokedReason = %v, want %s", active.RevokedReason, ReuseDetected)
+	}
+	assertOneAuditAction(t, repo, "refresh_reuse_detected")
+}
+
+func TestRefresh_ExpiredPersistedToken_ReturnsErrInvalidCredentials(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+	_, oldJTI, raw, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		oldJTI: &RefreshToken{
+			JTI:       oldJTI,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow.Add(-8 * 24 * time.Hour),
+			ExpiresAt: fixedLoginNow.Add(-time.Hour),
+		},
+	}
+
+	_, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrInvalidCredentials)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	if repo.chainRevokeCalls != 0 {
+		t.Fatalf("RevokeRefreshChain calls = %d, want 0", repo.chainRevokeCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "expired")
+}
+
+func TestRefresh_UserSuspended_ReturnsErrUserSuspended(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Suspended, 0)
+	repo.addUser(user)
+	_, oldJTI, raw, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		oldJTI: &RefreshToken{
+			JTI:       oldJTI,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(7 * 24 * time.Hour),
+		},
+	}
+
+	_, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrUserSuspended) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrUserSuspended)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "user_suspended")
+}
+
+func TestRefresh_UserLocked_ReturnsErrUserLocked(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Locked, 0)
+	repo.addUser(user)
+	_, oldJTI, raw, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		oldJTI: &RefreshToken{
+			JTI:       oldJTI,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(7 * 24 * time.Hour),
+		},
+	}
+
+	_, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrUserLocked) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrUserLocked)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "user_locked")
+}
+
+func TestRefresh_UserMismatch_ReturnsErrInvalidCredentials(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	claimUserID := uuid.New()
+	persistedUserID := uuid.New()
+	_, oldJTI, raw, _ := issueValidRefresh(t, svc.cfg.JWT, claimUserID)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		oldJTI: &RefreshToken{
+			JTI:       oldJTI,
+			UserID:    persistedUserID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(7 * 24 * time.Hour),
+		},
+	}
+
+	_, err := svc.Refresh(context.Background(), raw, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Refresh() error = %v, want %v", err, ErrInvalidCredentials)
+	}
+	if repo.rotateCalls != 0 {
+		t.Fatalf("RotateRefresh calls = %d, want 0", repo.rotateCalls)
+	}
+	if repo.chainRevokeCalls != 0 {
+		t.Fatalf("RevokeRefreshChain calls = %d, want 0", repo.chainRevokeCalls)
+	}
+	assertOneAuditAction(t, repo, "refresh_failed")
+	assertAuditReason(t, repo.audits[0], "user_mismatch")
+}
+
 func (m *mockRepo) addUser(user *User) {
 	m.userByEmail[user.Email] = user
 	m.userByID[user.ID] = user
@@ -310,6 +585,49 @@ func (m *mockRepo) IssueRefresh(ctx context.Context, t *RefreshToken) error {
 	return nil
 }
 
+func (m *mockRepo) FindRefreshByJTI(ctx context.Context, jti uuid.UUID) (*RefreshToken, error) {
+	if m.refreshByJTI == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	t, ok := m.refreshByJTI[jti]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return t, nil
+}
+
+func (m *mockRepo) RotateRefresh(ctx context.Context, oldJTI uuid.UUID, newToken *RefreshToken) error {
+	m.rotateCalls++
+	if old, ok := m.refreshByJTI[oldJTI]; ok {
+		rev := time.Now()
+		old.RevokedAt = &rev
+		rotateReason := string(Rotate)
+		old.RevokedReason = &rotateReason
+		old.ReplacedByJTI = &newToken.JTI
+	}
+	if m.refreshByJTI == nil {
+		m.refreshByJTI = map[uuid.UUID]*RefreshToken{}
+	}
+	m.refreshByJTI[newToken.JTI] = newToken
+	return nil
+}
+
+func (m *mockRepo) RevokeRefreshChain(ctx context.Context, jti uuid.UUID) error {
+	m.chainRevokeCalls++
+	m.chainRevokedJTIs = append(m.chainRevokedJTIs, jti)
+	if t, ok := m.refreshByJTI[jti]; ok {
+		for _, candidate := range m.refreshByJTI {
+			if candidate.UserID == t.UserID && candidate.RevokedAt == nil {
+				rev := time.Now()
+				candidate.RevokedAt = &rev
+				reuseReason := string(ReuseDetected)
+				candidate.RevokedReason = &reuseReason
+			}
+		}
+	}
+	return nil
+}
+
 func (m *mockRepo) LogLoginAttempt(ctx context.Context, attempt *LoginAttempt) error {
 	m.loginAttempts = append(m.loginAttempts, attempt)
 	return nil
@@ -356,6 +674,20 @@ func testServiceConfig() *config.Config {
 		},
 		RateLimit: config.RateLimitConfig{LoginPer15Min: 5},
 	}
+}
+
+func issueValidRefresh(t *testing.T, cfg config.JWTConfig, userID uuid.UUID) (jti string, parsedJTI uuid.UUID, raw string, expiresAt time.Time) {
+	t.Helper()
+
+	jti, raw, expiresAt, err := IssueRefresh(cfg, userID)
+	if err != nil {
+		t.Fatalf("IssueRefresh: %v", err)
+	}
+	parsedJTI, err = uuid.Parse(jti)
+	if err != nil {
+		t.Fatalf("uuid.Parse: %v", err)
+	}
+	return jti, parsedJTI, raw, expiresAt
 }
 
 func assertOneFailedAttemptReason(t *testing.T, repo *mockRepo, reason string) {

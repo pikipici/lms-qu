@@ -25,6 +25,9 @@ type authRepo interface {
 	ResetFailedLogin(ctx context.Context, userID uuid.UUID) error
 	LockUser(ctx context.Context, userID uuid.UUID, reason string) error
 	IssueRefresh(ctx context.Context, t *RefreshToken) error
+	FindRefreshByJTI(ctx context.Context, jti uuid.UUID) (*RefreshToken, error)
+	RotateRefresh(ctx context.Context, oldJTI uuid.UUID, newToken *RefreshToken) error
+	RevokeRefreshChain(ctx context.Context, jti uuid.UUID) error
 	LogLoginAttempt(ctx context.Context, attempt *LoginAttempt) error
 	CountRecentFailedAttempts(ctx context.Context, email string, ip *string, since time.Time) (int64, error)
 	LogAudit(ctx context.Context, entry *AuditLog) error
@@ -37,12 +40,13 @@ type Service struct {
 	now  func() time.Time
 }
 
-// Login sentinel errors returned by Service methods.
+// Sentinel errors returned by Service methods.
 var (
 	ErrInvalidCredentials = errors.New("auth: invalid credentials")
 	ErrUserSuspended      = errors.New("auth: user suspended")
 	ErrUserLocked         = errors.New("auth: user locked")
 	ErrRateLimited        = errors.New("auth: too many failed attempts; try again later")
+	ErrRefreshReuse       = errors.New("auth: refresh token reuse detected")
 )
 
 // LoginResult contains the authenticated user and issued token pair.
@@ -178,6 +182,125 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 		RefreshToken:     refreshToken,
 		RefreshJTI:       refreshJTI,
 		RefreshExpiresAt: refreshExpiresAt,
+	}, nil
+}
+
+// Refresh rotates a refresh token. It verifies the JWT, looks up the
+// persisted RefreshToken by JTI, detects reuse (token already revoked) by
+// revoking the entire refresh chain for that user with reason=reuse_detected,
+// rejects expired or unknown tokens, and otherwise issues a fresh access and
+// refresh pair atomically via repo.RotateRefresh.
+//
+// It returns ErrInvalidCredentials for verify failures, expired or unknown
+// tokens; ErrRefreshReuse when an already-revoked token is presented;
+// ErrUserSuspended or ErrUserLocked if the user's status no longer permits
+// login.
+func (s *Service) Refresh(ctx context.Context, refreshToken, ip, userAgent string) (*LoginResult, error) {
+	now := s.now()
+	ipAddr := ipPtr(ip)
+	ua := uaPtr(userAgent)
+
+	jti, userID, err := VerifyRefresh(s.cfg.JWT, refreshToken)
+	if err != nil {
+		s.logAudit(ctx, "refresh_failed", nil, nil, auditMeta(map[string]string{
+			"reason": "invalid_token",
+		}), ipAddr, ua, now)
+		return nil, ErrInvalidCredentials
+	}
+
+	parsedJTI, err := uuid.Parse(jti)
+	if err != nil {
+		s.logAudit(ctx, "refresh_failed", nil, nil, auditMeta(map[string]string{
+			"reason": "invalid_jti",
+		}), ipAddr, ua, now)
+		return nil, ErrInvalidCredentials
+	}
+
+	persisted, err := s.repo.FindRefreshByJTI(ctx, parsedJTI)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		s.logAudit(ctx, "refresh_failed", &userID, nil, auditMeta(map[string]string{
+			"reason": "unknown_jti",
+		}), ipAddr, ua, now)
+		return nil, ErrInvalidCredentials
+	}
+	if err != nil {
+		return nil, fmt.Errorf("auth: find refresh: %w", err)
+	}
+
+	if persisted.UserID != userID {
+		s.logAudit(ctx, "refresh_failed", &persisted.UserID, nil, auditMeta(map[string]string{
+			"reason": "user_mismatch",
+		}), ipAddr, ua, now)
+		return nil, ErrInvalidCredentials
+	}
+
+	if persisted.RevokedAt != nil {
+		_ = s.repo.RevokeRefreshChain(ctx, parsedJTI)
+		s.logAudit(ctx, "refresh_reuse_detected", &persisted.UserID, nil, auditMeta(map[string]string{
+			"jti": parsedJTI.String(),
+		}), ipAddr, ua, now)
+		return nil, ErrRefreshReuse
+	}
+
+	if !persisted.ExpiresAt.After(now) {
+		s.logAudit(ctx, "refresh_failed", &persisted.UserID, nil, auditMeta(map[string]string{
+			"reason": "expired",
+		}), ipAddr, ua, now)
+		return nil, ErrInvalidCredentials
+	}
+
+	user, err := s.repo.FindUserByID(ctx, persisted.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("auth: find user: %w", err)
+	}
+
+	switch user.Status {
+	case Suspended:
+		s.logAudit(ctx, "refresh_failed", &user.ID, roleStrPtr(user.Role), auditMeta(map[string]string{
+			"reason": "user_suspended",
+		}), ipAddr, ua, now)
+		return nil, ErrUserSuspended
+	case Locked:
+		s.logAudit(ctx, "refresh_failed", &user.ID, roleStrPtr(user.Role), auditMeta(map[string]string{
+			"reason": "user_locked",
+		}), ipAddr, ua, now)
+		return nil, ErrUserLocked
+	}
+
+	accessToken, accessExpiresAt, err := IssueAccess(s.cfg.JWT, user.ID, user.Role)
+	if err != nil {
+		return nil, fmt.Errorf("auth: issue access token: %w", err)
+	}
+	newRefreshJTI, newRefreshToken, newRefreshExpiresAt, err := IssueRefresh(s.cfg.JWT, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("auth: issue refresh token: %w", err)
+	}
+
+	newParsedJTI, err := uuid.Parse(newRefreshJTI)
+	if err != nil {
+		return nil, fmt.Errorf("auth: parse refresh jti: %w", err)
+	}
+	newPersistedRefresh := &RefreshToken{
+		JTI:       newParsedJTI,
+		UserID:    user.ID,
+		IssuedAt:  now,
+		ExpiresAt: newRefreshExpiresAt,
+		IP:        ipAddr,
+		UserAgent: ua,
+	}
+	if err := s.repo.RotateRefresh(ctx, parsedJTI, newPersistedRefresh); err != nil {
+		return nil, fmt.Errorf("auth: rotate refresh: %w", err)
+	}
+
+	s.logAudit(ctx, "refresh_success", &user.ID, roleStrPtr(user.Role), nil, ipAddr, ua, now)
+
+	return &LoginResult{
+		User:             user,
+		AccessToken:      accessToken,
+		AccessExpiresAt:  accessExpiresAt,
+		RefreshToken:     newRefreshToken,
+		RefreshJTI:       newRefreshJTI,
+		RefreshExpiresAt: newRefreshExpiresAt,
 	}, nil
 }
 
