@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E FULL + 1.F.1 + 1.F.2 + 1.F.3 DONE. Admin user CRUD + lifecycle + role change endpoints LIVE end-to-end (audit + re-auth + multi-admin guards). Berikut: Task 1.F.4 (sessions/audit/login-attempts read endpoints).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL DONE. Backend admin domain CLOSED (auth + bootstrap + recovery + user CRUD + lifecycle + role change + sessions/audit/login-attempts read endpoints). Berikut: Fase 1.G (frontend auth flow integration).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.F.3 marked done, role promote/demote live-verified)
+> Last updated: 2026-05-19 (Section 18: Task 1.F.4 marked done, Section 1.F closed)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1526,12 +1526,12 @@ Setelah tools jadi, runbook deploy jadi:
 - Implementation: 1 repo method baru `UpdateUserRole`. Handler `ChangeUserRole` dgn `passwordVerifier` field (testable injection, default `auth.VerifyPassword`). Validation order: invalid_id → invalid_body → invalid_role → invalid_current_password (empty) → requester not found 401 → wrong password 401 invalid_current_password → target not found 404 → same_role 400 → last_admin_protected 400 → cannot_demote_self 400 → success. Revoke all refresh + audit (`admin_user_role_changed` dgn old_role/new_role meta) on success. Self-demote-self distinct dari last-admin (works dgn 2+ admin).
 - Live E2E verified: wrong pass→401, invalid_role→400, same_role→400 (siswa→siswa), promote siswa→admin→200, self-demote primary admin (with 2 admins)→400 cannot_demote_self, demote calon admin→guru→200, audit chain {siswa→admin, admin→guru} captured.
 
-**Task 1.F.4 — Admin sessions + audit + login attempts**
+**Task 1.F.4 — Admin sessions + audit + login attempts** ✅ DONE (commit `fb36219`)
 - `GET /admin/users/:id/sessions`, `POST /admin/users/:id/revoke-sessions`
-- `GET /admin/audit-log` (filter actor, target, paginate)
-- `GET /admin/login-attempts` (filter email, success, paginate)
-- Verify: curl
-- Commit: `feat(admin): sessions + audit-log + login-attempts endpoints`
+- `GET /admin/audit-log` (filter actor, target, action, since, until, paginate)
+- `GET /admin/login-attempts` (filter email, success, since, until, paginate)
+- Implementation: 2 repo methods baru di `internal/auth/repo.go` (ListAuditLogs + ListLoginAttempts dgn filter struct + total count). 4 handler methods di `internal/admin/handler.go`. Re-use ListUserSessions + RevokeAllRefreshByUser. Revoke-sessions audits dgn revoked_count + reason meta.
+- Live E2E verified: list sessions (5 active), invalid_id 400, user_not_found 404, audit-log default 32 rows w/ pagination, filter action, invalid_actor_id, invalid_time, login-attempts default 24 rows, success=false 10 failed, invalid_success 400, revoke-sessions self-revoke 5 tokens (access token still valid until exp — expected since only refresh dies).
 
 #### 1.G Frontend Auth + Self
 
@@ -1725,7 +1725,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.F.4 — Admin sessions + audit + login attempts read endpoints** (`GET /admin/users/:id/sessions`, `POST /admin/users/:id/revoke-sessions`, `GET /admin/audit-log`, `GET /admin/login-attempts`). Read-only endpoints w/ filter + paginate. Re-use ListUserSessions + LogAudit. Need 2 repo method baru: `ListAuditLogs(filter, limit, offset)` + `ListLoginAttempts(filter, limit, offset)`.
+**Berikut: Section 1.G — Frontend Auth + Self.** Sub-tasks: 1.G.1 login page (Next.js `frontend/app/(auth)/login/page.tsx` + form + axios call + localStorage tokens + redirect dashboard), 1.G.2 axios interceptor (refresh-on-401 retry, logout-on-fail, must_change_password gate redirect), 1.G.3 force-change-password page, 1.G.4 self profile (/me + /change-password UI), 1.G.5 logout. Local Windows build via codex; deploy ke server lewat `git pull` + `npm run build` + Next static export ke `frontend/out/` yang udah di-mount via Fiber Static.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
