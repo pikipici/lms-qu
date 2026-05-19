@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E FULL + 1.F.1 DONE. Admin user CRUD endpoints LIVE end-to-end (list/create/update/delete + audit log + role guard + last-admin/self-delete protection). Berikut: Task 1.F.2 (lifecycle: reset-password/suspend/unsuspend/unlock).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E FULL + 1.F.1 + 1.F.2 DONE. Admin user CRUD + lifecycle endpoints LIVE end-to-end (list/create/update/delete + reset-password/suspend/unsuspend/unlock + audit). Berikut: Task 1.F.3 (role promote/demote with re-auth).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.F.1 marked done, admin user CRUD live-verified)
+> Last updated: 2026-05-19 (Section 18: Task 1.F.2 marked done, lifecycle endpoints live-verified)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1512,13 +1512,13 @@ Setelah tools jadi, runbook deploy jadi:
 - Implementation: new pkg `internal/admin` (handler.go 409 LOC + handler_test.go 622 LOC). New repo methods di `internal/auth/repo.go`: `ListUsers(filter, limit, offset)`, `UpdateUserName`, `SuspendUser`. 16-char crypto/rand password generator (charset stripped of ambiguous 0/O/1/l). Last-admin protection (cannot delete last admin) + cannot-delete-self. Mounted dgn `RoleGuard("admin")` + `BearerAuth` + `ForceChangePassword`.
 - Live E2E verified: list (3 users), filter (?role=guru), search (?q=siswa), patch name, delete + status=suspended check, all 5 audit rows captured. Edge cases: last_admin_protected (400), email_already_exists (409), weak_password (400), invalid_role (400), invalid_id (400), no-bearer (401), siswa→/admin (403 insufficient_role).
 
-**Task 1.F.2 — Admin user lifecycle endpoints**
+**Task 1.F.2 — Admin user lifecycle endpoints** ✅ DONE (commit `e175944`)
 - `POST /admin/users/:id/reset-password` (manual atau generate)
 - `POST /admin/users/:id/suspend`, `POST /admin/users/:id/unsuspend`
 - `POST /admin/users/:id/unlock`
 - Semua: revoke all refresh user → audit log
-- Verify: integration
-- Commit: `feat(admin): user lifecycle (reset/suspend/unlock)`
+- Implementation: 3 repo methods baru di `internal/auth/repo.go` (AdminResetUserPassword, UnsuspendUser, UnlockUser). 4 handler methods di `internal/admin/handler.go`. Reset-password set must_change_password=true + revoke refresh; suspend revoke + guards (last_admin, cannot_suspend_self, already_suspended); unsuspend guard not_suspended; unlock reset failed_login_count=0 + status=active + guard not_locked.
+- Live E2E verified: reset manual + generate (16-char, login w/ new pass works, old pass 401), suspend dgn reason → audit + login returns user_suspended 403, suspend again → already_suspended 400, unsuspend → active, unsuspend again → not_suspended 400, lock via DB → unlock → status=active + failed_login_count=0, audit chain captured (created/password_reset×2/suspended/unsuspended/unlocked dgn meta lengkap).
 
 **Task 1.F.3 — Admin role promote/demote (re-auth)**
 - `POST /admin/users/:id/role` body `{new_role, current_password}`
@@ -1725,7 +1725,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.F.2 — Admin user lifecycle endpoints** (POST /admin/users/:id/reset-password, /suspend, /unsuspend, /unlock). Semua aksi revoke all refresh user + audit log. Reset-password support manual atau generate (re-use 16-char generator dari 1.F.1). Unlock perlu repo method baru `UnlockUser` (set status=active + reset failed_login_count). Lalu 1.F.3 (role promote/demote with re-auth) + 1.F.4 (sessions/audit/login-attempts read endpoints).
+**Berikut: Task 1.F.3 — Admin role promote/demote (re-auth)** (POST /admin/users/:id/role body `{new_role, current_password}`). Logic: verify current admin's password (sentinel ErrInvalidCredentials) → guard last-admin demote (CountAdmins==1 + new_role != admin → 400) → update role → audit (admin_role_changed dgn old_role + new_role meta). Lalu 1.F.4 (sessions/audit/login-attempts read endpoints).
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
