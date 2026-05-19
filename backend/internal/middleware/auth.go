@@ -9,14 +9,15 @@ import (
 )
 
 const (
-	LocalsUserID    = "user_id"
-	LocalsUserRole  = "user_role"
-	LocalsUserEmail = "user_email"
+	LocalsUserID             = "user_id"
+	LocalsUserRole           = "user_role"
+	LocalsUserEmail          = "user_email"
+	LocalsMustChangePassword = "user_must_change_password"
 )
 
 // UserVerifier verifies a raw bearer token and returns user identity fields.
 type UserVerifier interface {
-	VerifyAccessToken(rawToken string) (userID uuid.UUID, role string, email string, err error)
+	VerifyAccessToken(rawToken string) (userID uuid.UUID, role string, email string, mustChange bool, err error)
 }
 
 // BearerAuth requires a valid Authorization: Bearer <token> header.
@@ -32,7 +33,7 @@ func BearerAuth(verifier UserVerifier) fiber.Handler {
 			return unauthorized(c, "invalid authorization header")
 		}
 
-		userID, role, email, err := verifier.VerifyAccessToken(strings.TrimSpace(parts[1]))
+		userID, role, email, mustChange, err := verifier.VerifyAccessToken(strings.TrimSpace(parts[1]))
 		if err != nil {
 			return unauthorized(c, "invalid or expired token")
 		}
@@ -40,6 +41,7 @@ func BearerAuth(verifier UserVerifier) fiber.Handler {
 		c.Locals(LocalsUserID, userID)
 		c.Locals(LocalsUserRole, role)
 		c.Locals(LocalsUserEmail, email)
+		c.Locals(LocalsMustChangePassword, mustChange)
 		return c.Next()
 	}
 }
@@ -58,6 +60,13 @@ func UserIDFromCtx(c *fiber.Ctx) (uuid.UUID, error) {
 		return uuid.Nil, ErrNoUserContext
 	}
 	return id, nil
+}
+
+// MustChangePasswordFromCtx reports whether the authenticated user is
+// required to change their password before accessing non-self-service routes.
+func MustChangePasswordFromCtx(c *fiber.Ctx) bool {
+	v, _ := c.Locals(LocalsMustChangePassword).(bool)
+	return v
 }
 
 func unauthorized(c *fiber.Ctx, message string) error {

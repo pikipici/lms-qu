@@ -13,9 +13,8 @@
 //
 //	go run ./cmd/seed-admin
 //
-// Fase 0 status: this binary connects to the DB and validates configuration.
-// The actual user insertion lands in Fase 1 once the User model is committed.
-// Until then it prints the planned action so we can verify the wiring.
+// Inserts the very first admin user with MustChangePassword=true.
+// Refuses to run if any admin already exists.
 package main
 
 import (
@@ -26,7 +25,9 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"golang.org/x/term"
@@ -55,7 +56,6 @@ func run() error {
 		return err
 	}
 	defer func() { _ = closeDB() }()
-	_ = gdb // Fase 1 will use it to insert the user.
 
 	email, password, name, err := collectInputs(cfg)
 	if err != nil {
@@ -66,18 +66,47 @@ func run() error {
 		return err
 	}
 
-	// TODO(Fase 1): replace stub with real flow once User model exists:
-	//   1. SELECT count from users WHERE role='admin'; reject if >0.
-	//   2. bcrypt password (cost from cfg.JWT.BcryptCost).
-	//   3. INSERT user with role=admin, status=active, must_change_password=true.
-	//   4. AuditLog: actor_id=NULL, action='admin_seeded'.
-	logger.Info("seed-admin (stub)",
-		slog.String("email", email),
-		slog.String("name", name),
-		slog.Int("password_len", len(password)),
-		slog.String("note", "user insertion happens in Fase 1; this run only validated config + DB"),
+	repo := auth.NewRepo(gdb)
+
+	adminCount, err := repo.CountAdmins(ctx)
+	if err != nil {
+		return fmt.Errorf("seed-admin: count admins: %w", err)
+	}
+	if adminCount > 0 {
+		return errors.New("seed-admin: an admin already exists; use /admin/users (or cmd/reset-admin) instead")
+	}
+
+	hash, err := auth.HashPassword(password, cfg.JWT.BcryptCost)
+	if err != nil {
+		return fmt.Errorf("seed-admin: hash password: %w", err)
+	}
+
+	newUser := &auth.User{
+		Name:               name,
+		Email:              strings.ToLower(strings.TrimSpace(email)),
+		PasswordHash:       hash,
+		Role:               auth.Admin,
+		Status:             auth.Active,
+		MustChangePassword: true,
+	}
+	if err := repo.CreateUser(ctx, newUser); err != nil {
+		return fmt.Errorf("seed-admin: create user: %w", err)
+	}
+
+	if err := repo.LogAudit(ctx, &auth.AuditLog{
+		Action:   "admin_seeded",
+		TargetID: &newUser.ID,
+		At:       time.Now(),
+	}); err != nil {
+		// Best-effort: user was already created; surface but don't roll back.
+		logger.Warn("audit log failed", slog.String("err", err.Error()))
+	}
+
+	logger.Info("seed-admin: created",
+		slog.String("email", newUser.Email),
+		slog.String("user_id", newUser.ID.String()),
 	)
-	fmt.Println("seed-admin: configuration & DB OK. Insert logic lands in Fase 1.")
+	fmt.Printf("seed-admin: admin user created (id=%s, email=%s). Login lalu wajib ganti password.\n", newUser.ID, newUser.Email)
 	return nil
 }
 

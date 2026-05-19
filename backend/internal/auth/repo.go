@@ -197,3 +197,13 @@ func (r *Repo) CountRecentFailedAttempts(ctx context.Context, email string, ip *
 func (r *Repo) LogAudit(ctx context.Context, entry *AuditLog) error {
 	return r.db.WithContext(ctx).Create(entry).Error
 }
+
+// CountAdmins returns the number of admin users in the database.
+// Used by cmd/seed-admin to enforce single-bootstrap policy.
+func (r *Repo) CountAdmins(ctx context.Context) (int64, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&User{}).Where("role = ?", Admin).Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}

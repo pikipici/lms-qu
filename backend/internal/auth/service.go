@@ -308,25 +308,25 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, ip, userAgent strin
 }
 
 // VerifyAccessToken parses a bearer access token, verifies its signature,
-// loads the user, status-checks (Active only), and returns the identity tuple
-// needed by the middleware layer.
-func (s *Service) VerifyAccessToken(rawToken string) (uuid.UUID, string, string, error) {
+// loads the user, status-checks (Active only), and returns the identity
+// tuple plus must-change-password flag needed by the middleware layer.
+func (s *Service) VerifyAccessToken(rawToken string) (uuid.UUID, string, string, bool, error) {
 	claims, err := VerifyAccess(s.cfg.JWT, rawToken)
 	if err != nil {
-		return uuid.Nil, "", "", fmt.Errorf("auth: verify access: %w", err)
+		return uuid.Nil, "", "", false, fmt.Errorf("auth: verify access: %w", err)
 	}
 
 	// Middleware currently only passes the raw token, so this lookup cannot use
 	// the request context. Acceptable for the MVP; we lose request-scoped values.
 	user, err := s.repo.FindUserByID(context.Background(), claims.UserID)
 	if err != nil {
-		return uuid.Nil, "", "", fmt.Errorf("auth: load user: %w", err)
+		return uuid.Nil, "", "", false, fmt.Errorf("auth: load user: %w", err)
 	}
 	if user.Status != Active {
-		return uuid.Nil, "", "", errors.New("auth: user not active")
+		return uuid.Nil, "", "", false, errors.New("auth: user not active")
 	}
 
-	return user.ID, string(user.Role), user.Email, nil
+	return user.ID, string(user.Role), user.Email, user.MustChangePassword, nil
 }
 
 // Logout revokes a single refresh token by JWT. It is idempotent: invalid,
