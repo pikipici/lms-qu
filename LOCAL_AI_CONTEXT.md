@@ -10,8 +10,17 @@
 ## Paths
 - Local repo: `C:\Users\pikip\Documents\program\lms`
 - Server target: `rdpkhorur:/home/ubuntu/lms`
+- Server bare repo (git remote `server`): `rdpkhorur:/home/ubuntu/git-repos/lms.git`
 - SSH alias: `rdpkhorur` (assumed configured)
 - Browser preview tunnel: `ssh -L 8200:127.0.0.1:8200 rdpkhorur` → http://localhost:8200
+
+## Server runtime facts
+- PostgreSQL: **port 5435** (bukan default 5432). DB `lms`, user `lms`.
+- DATABASE_URL format: `postgres://lms:<password>@localhost:5435/lms?sslmode=disable`
+- `migrate` CLI v4.17.1 di `/usr/local/bin/migrate`.
+- Go 1.24, Node 20.
+- Server dir setelah clone bare: `/home/ubuntu/lms` (tracking remote `server` → bare repo).
+- Push flow: `git push server main` dari local → ssh ke server → `cd /home/ubuntu/lms && git pull` → build → restart systemd.
 
 ## Working agreements
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
@@ -21,7 +30,7 @@
 - 60 locked decisions, 10 open decisions, ~7 minggu estimasi.
 
 ## Phase tracker
-- [x] Fase 0 — Setup (in progress)
+- [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
 - [ ] Fase 1 — Auth & Admin Panel
 - [ ] Fase 2 — Kelas, Enrollment, Bulk Import
 - [ ] Fase 3 — Bab & Materi + Pengumuman
