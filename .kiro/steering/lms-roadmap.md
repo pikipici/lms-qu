@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B FULL + 1.C FULL + 1.E.1 done. Real admin user `admin@sekolah.id` created, full auth flow E2E verified (login → /refresh → /sessions → /logout-all GREEN). Berikut: Task 1.D (self endpoints /auth/me + /auth/change-password) lalu wire ForceChangePassword middleware.
+> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B FULL + 1.C FULL + 1.D FULL + 1.E.1 done. Bootstrap admin flow LIVE end-to-end (login → /me → /change-password → unblocked → re-login w/ new pass). Berikut: Task 1.E.2 (`cmd/reset-admin`) atau Task 1.F (admin user CRUD endpoints).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.C.2 + 1.E.1 marked done)
+> Last updated: 2026-05-19 (Section 18: Task 1.D.1 + 1.D.2 marked done, ForceChangePassword wired)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1479,15 +1479,17 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.D Self Endpoints (`/auth/me`, change-password, sessions)
 
-**Task 1.D.1 — GET /auth/me (return current user profile)**
-- Verify: curl with token → 200 user JSON
-- Commit: `feat(auth): GET /auth/me`
+**Task 1.D.1 — GET /auth/me (return current user profile)** ✅ DONE (commit `188d2ab`, 2026-05-19, bundled dgn 1.D.2)
+- File: `backend/internal/auth/handler.go` (Me handler) + `service.go` (Service.Me method)
+- Done: GET /api/v1/auth/me dgn bearer → 200 `{user: {...}}` (PasswordHash hidden by json:"-"). Whitelisted di ForceChangePassword middleware.
+- E2E PASS di server: bearer valid → 200 dgn user JSON.
 
-**Task 1.D.2 — POST /auth/change-password (current_password + new_password)**
-- Logic: verify current → bcrypt new → set MustChangePassword=false → revoke all refresh kecuali current (decision #6 — revoke OTHERS, locked default; bisa diubah ke ALL kalau user pilih opsi konservatif)
-- Audit log: `password_changed`
-- Verify: integration test
-- Commit: `feat(auth): POST /auth/change-password + revoke other sessions`
+**Task 1.D.2 — POST /auth/change-password (current_password + new_password)** ✅ DONE (commit `188d2ab`, 2026-05-19, bundled dgn 1.D.1)
+- File: `backend/internal/auth/handler.go` (ChangePassword handler) + `service.go` (Service.ChangePassword + 3 sentinel errors)
+- Done: POST /api/v1/auth/change-password dgn bearer + body `{current_password, new_password}` → 204. Flow: validate len(new) >=8 (`ErrWeakPassword`) → FindUserByID → VerifyPassword(current) (`ErrCurrentPasswordIncorrect` + audit `password_change_failed`) → check current != new (`ErrSamePassword`) → HashPassword (cost from cfg) → UpdateUserPassword (clears must_change_password=true) → RevokeAllRefreshByUser (reason=PasswordChanged) → audit `password_changed`.
+- ⚠️ DECISION: Revoke ALL refresh (conservative default), bukan "except current". Frontend wajib re-login setelah change-password. Acceptable UX untuk bootstrap admin; bisa di-improve nanti dgn `current_refresh_token` di body kalo perlu.
+- ForceChangePassword middleware wired ke protected group di `cmd/server/main.go`. Whitelist: /me, /change-password, /logout, /logout-all.
+- E2E PASS di server: must_change=true admin → /me ✓ → /sessions 403 must_change → /change-password 204 → /sessions 200 (sessions empty after revoke-all) → login old pass 401, login new pass 200.
 
 #### 1.E Admin Bootstrap CLI (full implementation)
 
@@ -1721,7 +1723,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.D.1 + 1.D.2 — Self endpoints `GET /auth/me` + `POST /auth/change-password`** dan WIRE `ForceChangePassword` middleware ke protected group. Setelah ini admin baru bisa proper login → ganti password → unblock semua route. Eksekusi via codex.
+**Berikut: Task 1.E.2 — Lengkapi `cmd/reset-admin/main.go`** (CLI: --email + --password flag → find admin → bcrypt → update + revoke all refresh + audit `admin_reset_via_cli` actor=NULL). Atau langsung **Task 1.F (Admin user CRUD endpoints)**. Rekomendasi: 1.E.2 dulu — CLI utility kecil, tapi penting untuk admin lockout recovery (#53). Lalu skip ke 1.F.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
