@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: Section 1.A FULL + 1.B.1+1.B.2+1.B.3 done (login service + crypto + repo, all tests PASS). Berikut: Task 1.B.4 (POST /auth/login HTTP handler).
+> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B.1-1.B.4 done (auth fully wired up to POST /auth/login E2E green). Berikut: Task 1.B.5 (refresh rotation + reuse detection).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.B.3 marked done, point ke 1.B.4)
+> Last updated: 2026-05-19 (Section 18: Task 1.B.4 marked done, point ke 1.B.5)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1438,12 +1438,12 @@ Setelah tools jadi, runbook deploy jadi:
 - Internal `authRepo` interface (subset of *Repo) untuk tests via mockRepo (no DB driver added). 9 test cases pass: success, wrong password, user not found (no leak), suspended, locked, rate-limited (before lookup), auto-lock at 10th fail, email normalization, empty email no-logging.
 - Server `go build` + `go vet` + `go test` PASS (0.270s).
 
-**Task 1.B.4 — Login HTTP handler + route + auth-login rate limiter middleware**
-- Files: `backend/internal/auth/handler.go`, mount di `cmd/server/main.go`
-- Route: `POST /api/v1/auth/login` body `{email, password}` → 200 `{access_token, refresh_token, user}` atau 401
-- Use `RATE_LIMIT_LOGIN_PER_15MIN` config
-- Verify: di server `curl -X POST 127.0.0.1:8200/api/v1/auth/login -d '{"email":"x","password":"y"}'` → 401, 5 fail beruntun → 429
-- Commit: `feat(auth): POST /auth/login handler + per-IP+email rate limiter`
+**Task 1.B.4 — Login HTTP handler + route + auth-login rate limiter middleware** ✅ DONE (commit `f254b35`, 2026-05-19)
+- Files: `backend/internal/auth/handler.go` (132 LOC) + `handler_test.go` (178 LOC) + `cmd/server/main.go` mount
+- Done: Handler struct + `Login(c)` + `LoginRateLimit(perWindow)` middleware. Body `{email, password}` → 200 `{user, tokens:{access_token, access_expires_at, refresh_token, refresh_expires_at}}`. Sentinel mapping: ErrInvalidCredentials→401, ErrUserSuspended/ErrUserLocked→403, ErrRateLimited→429. Rate limit middleware key = `ip|email` (peek body via json.Unmarshal, no BodyParser interference), Max=cfg.RateLimit.LoginPer15Min, window=15min.
+- Test: 7 cases (success, invalid_credentials, suspended, locked, rate_limited, bad json 400, missing fields 400). Server build/vet/test PASS.
+- E2E verified di server (8200): bad json→400, empty body→400, unknown user→401, 5 rapid same-email attempts → attempt 5 jadi 429 (Fiber limiter `count >= Max` semantik; jadi block AT 5th, bukan AFTER 5th — acceptable per locked decision "5 gagal/15min").
+- Dual rate limit: middleware coarse (counts ALL requests, IP+email key) + service-layer precise (counts only FAILED LoginAttempt rows). Defense-in-depth.
 
 **Task 1.B.5 — Refresh rotation + reuse detection**
 - Files: extend `service.go` (`Refresh(refreshToken, ip, ua)`)
@@ -1720,7 +1720,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.B.4 — POST /api/v1/auth/login HTTP handler** + per-IP+email rate limiter middleware (`RATE_LIMIT_LOGIN_PER_15MIN` config). Body `{email, password}` → 200 `{access_token, refresh_token, user}` atau 401/429. Eksekusi via codex sub-agent.
+**Berikut: Task 1.B.5 — Refresh rotation + reuse detection** (extend `service.go` dengan `Refresh(refreshToken, ip, ua)`). Verify JWT → find RefreshToken by JTI → if revoked: revoke chain user (reuse_detected) + return 401 → else mark old `revoked_at=now`, `replaced_by_jti=new`, issue new pair. Eksekusi via codex.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
