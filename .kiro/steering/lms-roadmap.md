@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B.1-1.B.5 done (refresh rotation + reuse detection PASS, all auth services). Berikut: Task 1.B.6 (refresh/logout/logout-all/sessions handlers).
+> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B FULL + 1.C.1 done (semua auth endpoints LIVE: /login, /refresh, /logout, /logout-all, /sessions; bearer middleware ready). Berikut: Task 1.C.2 (role guard + force-change-password middleware) atau 1.E.1 (seed-admin full implementation) untuk bisa real-user E2E test.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.B.5 marked done, point ke 1.B.6)
+> Last updated: 2026-05-19 (Section 18: Task 1.B.6 + 1.C.1 marked done)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1453,19 +1453,18 @@ Setelah tools jadi, runbook deploy jadi:
 - 9 test cases pass: success rotation (verify old.RevokedAt set + ReplacedByJTI = new), invalid JWT, wrong secret, unknown JTI (no chain revoke — could be replay before deploy), reuse detection chain revoke (verify other user tokens revoked), expired persisted token, user suspended, user locked, user mismatch.
 - Server `go test -v -run Refresh` shows all 9 PASS in 0.018s. Full suite PASS (0.139s).
 
-**Task 1.B.6 — POST /auth/refresh + POST /auth/logout + POST /auth/logout-all + GET /auth/sessions**
-- Routes + per-token rate limit (`RATE_LIMIT_REFRESH_PER_MIN=10`)
-- Verify: end-to-end via curl di server
-- Commit: `feat(auth): refresh + logout + sessions endpoints`
+**Task 1.B.6 — POST /auth/refresh + POST /auth/logout + POST /auth/logout-all + GET /auth/sessions** ✅ DONE (commit `9855c56`, 2026-05-19, bundled dgn 1.C.1)
+- Files: extend handler.go (+140 LOC), service.go (+63 LOC), service_test.go (+210 LOC), handler_test.go (+255 LOC), cmd/server/main.go (+9 LOC mount)
+- Done: handlers Refresh/Logout/LogoutAll/Sessions + service methods Logout/LogoutAll/ListSessions/VerifyAccessToken. authService interface replaces loginService. RefreshRateLimit middleware dgn key=ip+token-prefix-16char (no full JWT in memory). Refresh sentinel mapping: ErrInvalidCredentials/ErrRefreshReuse→401, ErrUserSuspended/ErrUserLocked→403. Logout idempotent (bad token→204, not 401). LogoutAll/Sessions need bearer (via middleware.BearerAuth + UserIDFromCtx).
+- Server build/vet/test PASS, E2E confirmed: refresh empty→400/bad→401, logout empty→400/bad→204, logout-all/sessions no-bearer→401, bad-bearer→401.
 
 #### 1.C Auth Middleware
 
-**Task 1.C.1 — Auth middleware (parse access JWT → set ctx user)**
-- Files: `backend/internal/middleware/auth.go`
-- Logic: read `Authorization: Bearer <token>`, verify, load user from DB (status check), set `c.Locals("user_id", "role", "email")`
-- Whitelist anon: `/auth/login`, `/auth/refresh`, `/healthz`, `/readyz`, static frontend
-- Verify: handler protected → 401 tanpa token, 200 dengan token valid
-- Commit: `feat(middleware): auth bearer + user context`
+**Task 1.C.1 — Auth middleware (parse access JWT → set ctx user)** ✅ DONE (commit `9855c56`, 2026-05-19, bundled dgn 1.B.6)
+- Files: `backend/internal/middleware/auth.go` (69 LOC)
+- Done: `BearerAuth(verifier UserVerifier) fiber.Handler` reads `Authorization: Bearer <token>`, verifies via injected verifier, sets `c.Locals(LocalsUserID uuid.UUID, LocalsUserRole string, LocalsUserEmail string)`. Helper `UserIDFromCtx(c)` for handler retrieval. `ErrNoUserContext` sentinel. UserVerifier interface (auth package's *Service satisfies it via VerifyAccessToken method) keeps middleware decoupled — no import cycle.
+- Whitelist via route placement (anonymous routes mounted on `authGroup` directly; protected on `authGroup.Group("", BearerAuth)`).
+- Server build PASS, E2E: no bearer → 401 unauthorized, bad bearer → 401, valid bearer akan kebuka di Task 1.E.1 setelah seed-admin jalan.
 
 **Task 1.C.2 — Role guard middleware (admin/guru/siswa) + ForceChangePassword middleware**
 - Files: `backend/internal/middleware/role.go`, `backend/internal/middleware/force_change.go`
@@ -1721,7 +1720,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.B.6 — Refresh/Logout/Sessions HTTP handlers** — POST /api/v1/auth/refresh + POST /auth/logout + POST /auth/logout-all + GET /auth/sessions. Per-token rate limit (`RATE_LIMIT_REFRESH_PER_MIN=10`). Eksekusi via codex.
+**Berikut: pilih lanjut antara Task 1.C.2 (role guard + force-change-password middleware), atau Task 1.E.1 (`cmd/seed-admin` full implementation supaya bisa real-user E2E test).** Rekomendasi: 1.E.1 dulu — bikin admin user via CLI, lalu real login → /refresh → /sessions → /logout E2E confirm sebelum scale ke role guard.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
