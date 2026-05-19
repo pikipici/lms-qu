@@ -188,7 +188,18 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	)
 	authGroup.Post("/logout", authHandler.Logout)
 
-	protected := authGroup.Group("", middleware.BearerAuth(authSvc))
+	// Protected routes (bearer + force-change-password gate).
+	// ForceChangePassword whitelist lets through:
+	//   GET  /api/v1/auth/me
+	//   POST /api/v1/auth/change-password
+	//   POST /api/v1/auth/logout
+	//   POST /api/v1/auth/logout-all
+	protected := authGroup.Group("",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+	)
+	protected.Get("/me", authHandler.Me)
+	protected.Post("/change-password", authHandler.ChangePassword)
 	protected.Post("/logout-all", authHandler.LogoutAll)
 	protected.Get("/sessions", authHandler.Sessions)
 }

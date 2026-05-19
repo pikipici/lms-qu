@@ -21,6 +21,7 @@ type mockRepo struct {
 	userByID           map[uuid.UUID]*User
 	failedCount        int64
 	findByEmailCalls   int
+	findByIDCalls      int
 	lastFindEmail      string
 	countCalls         int
 	countEmail         string
@@ -36,8 +37,11 @@ type mockRepo struct {
 	rotateCalls        int
 	revokeCalls        int
 	revokeAllUserCalls int
+	revokeAllReasons   []RevokedReason
 	chainRevokeCalls   int
 	chainRevokedJTIs   []uuid.UUID
+	updatePasswordCalls int
+	lastPasswordHash    string
 	listSessionsResult []RefreshToken
 	loginAttempts      []*LoginAttempt
 	audits             []*AuditLog
@@ -630,6 +634,151 @@ func TestLogoutAll_RevokesAllUserTokens(t *testing.T) {
 	assertOneAuditAction(t, repo, "logout_all")
 }
 
+func TestMe_ReturnsUser(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+
+	got, err := svc.Me(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("Me() error = %v", err)
+	}
+	if got.ID != user.ID {
+		t.Fatalf("Me() user ID = %s, want %s", got.ID, user.ID)
+	}
+}
+
+func TestMe_NotFound_ReturnsError(t *testing.T) {
+	svc, _, cleanup := newTestService(t)
+	defer cleanup()
+
+	_, err := svc.Me(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatal("Me() error = nil, want non-nil")
+	}
+}
+
+func TestChangePassword_Success_HashesAndRevokesAll(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	oldHash, err := HashPassword("OldPass1!", testServiceConfig().JWT.BcryptCost)
+	if err != nil {
+		t.Fatalf("HashPassword() error = %v", err)
+	}
+	user.PasswordHash = oldHash
+	user.MustChangePassword = true
+	repo.addUser(user)
+
+	jtiA := uuid.New()
+	jtiB := uuid.New()
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		jtiA: &RefreshToken{
+			JTI:       jtiA,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+		jtiB: &RefreshToken{
+			JTI:       jtiB,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+	}
+
+	err = svc.ChangePassword(context.Background(), user.ID, "OldPass1!", "NewPass2@", "1.2.3.4", "ua")
+	if err != nil {
+		t.Fatalf("ChangePassword() error = %v", err)
+	}
+	if repo.updatePasswordCalls != 1 {
+		t.Fatalf("UpdateUserPassword calls = %d, want 1", repo.updatePasswordCalls)
+	}
+	if user.MustChangePassword {
+		t.Fatal("user.MustChangePassword = true, want false")
+	}
+	if err := VerifyPassword(user.PasswordHash, "NewPass2@"); err != nil {
+		t.Fatalf("VerifyPassword(new hash) error = %v", err)
+	}
+	if user.PasswordHash == oldHash {
+		t.Fatal("user.PasswordHash was not changed")
+	}
+	if repo.revokeAllUserCalls != 1 {
+		t.Fatalf("RevokeAllRefreshByUser calls = %d, want 1", repo.revokeAllUserCalls)
+	}
+	if len(repo.revokeAllReasons) != 1 || repo.revokeAllReasons[0] != PasswordChanged {
+		t.Fatalf("revokeAllReasons = %v, want [%s]", repo.revokeAllReasons, PasswordChanged)
+	}
+	for _, jti := range []uuid.UUID{jtiA, jtiB} {
+		token := repo.refreshByJTI[jti]
+		if token.RevokedAt == nil {
+			t.Fatalf("refresh %s RevokedAt = nil, want set", jti)
+		}
+		if token.RevokedReason == nil || *token.RevokedReason != string(PasswordChanged) {
+			t.Fatalf("refresh %s RevokedReason = %v, want %s", jti, token.RevokedReason, PasswordChanged)
+		}
+	}
+	assertOneAuditAction(t, repo, "password_changed")
+	if repo.audits[0].TargetID == nil || *repo.audits[0].TargetID != user.ID {
+		t.Fatalf("audit TargetID = %v, want %s", repo.audits[0].TargetID, user.ID)
+	}
+}
+
+func TestChangePassword_WrongCurrent_ReturnsErrCurrentPasswordIncorrect(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+
+	err := svc.ChangePassword(context.Background(), user.ID, "wrong-current", "NewPass2@", "1.2.3.4", "ua")
+	if !errors.Is(err, ErrCurrentPasswordIncorrect) {
+		t.Fatalf("ChangePassword() error = %v, want %v", err, ErrCurrentPasswordIncorrect)
+	}
+	if repo.updatePasswordCalls != 0 {
+		t.Fatalf("UpdateUserPassword calls = %d, want 0", repo.updatePasswordCalls)
+	}
+	if repo.revokeAllUserCalls != 0 {
+		t.Fatalf("RevokeAllRefreshByUser calls = %d, want 0", repo.revokeAllUserCalls)
+	}
+	assertOneAuditAction(t, repo, "password_change_failed")
+	assertAuditReason(t, repo.audits[0], "invalid_current_password")
+}
+
+func TestChangePassword_WeakPassword_ReturnsErrWeakPassword(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+
+	err := svc.ChangePassword(context.Background(), uuid.New(), "OldPass1!", "short", "1.2.3.4", "ua")
+	if !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("ChangePassword() error = %v, want %v", err, ErrWeakPassword)
+	}
+	if repo.findByIDCalls != 0 {
+		t.Fatalf("FindUserByID calls = %d, want 0", repo.findByIDCalls)
+	}
+	if repo.updatePasswordCalls != 0 {
+		t.Fatalf("UpdateUserPassword calls = %d, want 0", repo.updatePasswordCalls)
+	}
+}
+
+func TestChangePassword_SamePassword_ReturnsErrSamePassword(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+
+	err := svc.ChangePassword(context.Background(), user.ID, loginTestPassword, loginTestPassword, "1.2.3.4", "ua")
+	if !errors.Is(err, ErrSamePassword) {
+		t.Fatalf("ChangePassword() error = %v, want %v", err, ErrSamePassword)
+	}
+	if repo.updatePasswordCalls != 0 {
+		t.Fatalf("UpdateUserPassword calls = %d, want 0", repo.updatePasswordCalls)
+	}
+	if repo.revokeAllUserCalls != 0 {
+		t.Fatalf("RevokeAllRefreshByUser calls = %d, want 0", repo.revokeAllUserCalls)
+	}
+}
+
 func TestListSessions_ReturnsRepoResult(t *testing.T) {
 	svc, repo, cleanup := newTestService(t)
 	defer cleanup()
@@ -677,11 +826,22 @@ func (m *mockRepo) FindUserByEmail(ctx context.Context, email string) (*User, er
 }
 
 func (m *mockRepo) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	m.findByIDCalls++
 	user, ok := m.userByID[id]
 	if !ok {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return user, nil
+}
+
+func (m *mockRepo) UpdateUserPassword(ctx context.Context, userID uuid.UUID, newHash string) error {
+	m.updatePasswordCalls++
+	m.lastPasswordHash = newHash
+	if user, ok := m.userByID[userID]; ok {
+		user.PasswordHash = newHash
+		user.MustChangePassword = false
+	}
+	return nil
 }
 
 func (m *mockRepo) IncFailedLogin(ctx context.Context, userID uuid.UUID) error {
@@ -761,6 +921,7 @@ func (m *mockRepo) RevokeRefresh(ctx context.Context, jti uuid.UUID, reason Revo
 
 func (m *mockRepo) RevokeAllRefreshByUser(ctx context.Context, userID uuid.UUID, reason RevokedReason) (int64, error) {
 	m.revokeAllUserCalls++
+	m.revokeAllReasons = append(m.revokeAllReasons, reason)
 	var n int64
 	for _, t := range m.refreshByJTI {
 		if t.UserID == userID && t.RevokedAt == nil {

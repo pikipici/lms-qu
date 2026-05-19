@@ -20,12 +20,15 @@ type stubSvc struct {
 	result *LoginResult
 	err    error
 
-	refreshResult *LoginResult
-	refreshErr    error
-	logoutErr     error
-	logoutAllErr  error
-	sessions      []RefreshToken
-	sessionsErr   error
+	refreshResult    *LoginResult
+	refreshErr       error
+	logoutErr        error
+	logoutAllErr     error
+	sessions         []RefreshToken
+	sessionsErr      error
+	meUser           *User
+	meErr            error
+	changePasswordErr error
 
 	calls     int
 	email     string
@@ -33,14 +36,20 @@ type stubSvc struct {
 	ip        string
 	userAgent string
 
-	refreshCalls    int
-	refreshToken    string
-	logoutCalls     int
-	logoutToken     string
-	logoutAllCalls  int
-	logoutAllUserID uuid.UUID
-	sessionsCalls   int
-	sessionsUserID  uuid.UUID
+	refreshCalls         int
+	refreshToken         string
+	logoutCalls          int
+	logoutToken          string
+	logoutAllCalls       int
+	logoutAllUserID      uuid.UUID
+	sessionsCalls        int
+	sessionsUserID       uuid.UUID
+	meCalls              int
+	meUserID             uuid.UUID
+	changePasswordCalls  int
+	changePasswordUserID uuid.UUID
+	changeCurrentPassword string
+	changeNewPassword     string
 }
 
 func (s *stubSvc) Login(ctx context.Context, email, password, ip, userAgent string) (*LoginResult, error) {
@@ -83,6 +92,22 @@ func (s *stubSvc) ListSessions(ctx context.Context, userID uuid.UUID) ([]Refresh
 	s.sessionsCalls++
 	s.sessionsUserID = userID
 	return s.sessions, s.sessionsErr
+}
+
+func (s *stubSvc) Me(ctx context.Context, userID uuid.UUID) (*User, error) {
+	s.meCalls++
+	s.meUserID = userID
+	return s.meUser, s.meErr
+}
+
+func (s *stubSvc) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword, ip, userAgent string) error {
+	s.changePasswordCalls++
+	s.changePasswordUserID = userID
+	s.changeCurrentPassword = currentPassword
+	s.changeNewPassword = newPassword
+	s.ip = ip
+	s.userAgent = userAgent
+	return s.changePasswordErr
 }
 
 func TestHandler_Login_Success(t *testing.T) {
@@ -330,6 +355,139 @@ func TestHandler_Sessions_Success(t *testing.T) {
 	}
 }
 
+func TestHandler_Me_NoContext_401(t *testing.T) {
+	app := testAuthApp(&stubSvc{})
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusUnauthorized)
+	}
+}
+
+func TestHandler_Me_Success(t *testing.T) {
+	userID := uuid.New()
+	svc := &stubSvc{
+		meUser: &User{
+			ID:     userID,
+			Name:   "Test User",
+			Email:  "me@example.com",
+			Role:   Guru,
+			Status: Active,
+		},
+	}
+	app := testAuthContextApp(svc, userID)
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+	}
+	var body struct {
+		User struct {
+			Email string `json:"email"`
+		} `json:"user"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if body.User.Email != "me@example.com" {
+		t.Fatalf("user.email = %q, want me@example.com", body.User.Email)
+	}
+	if svc.meCalls != 1 {
+		t.Fatalf("Me calls = %d, want 1", svc.meCalls)
+	}
+	if svc.meUserID != userID {
+		t.Fatalf("Me userID = %s, want %s", svc.meUserID, userID)
+	}
+}
+
+func TestHandler_ChangePassword_Success(t *testing.T) {
+	userID := uuid.New()
+	svc := &stubSvc{}
+	app := testAuthContextApp(svc, userID)
+
+	resp := postJSON(t, app, "/change-password", `{"current_password":"OldPass1!","new_password":"NewPass2@"}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusNoContent {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusNoContent)
+	}
+	if svc.changePasswordCalls != 1 {
+		t.Fatalf("ChangePassword calls = %d, want 1", svc.changePasswordCalls)
+	}
+	if svc.changePasswordUserID != userID {
+		t.Fatalf("ChangePassword userID = %s, want %s", svc.changePasswordUserID, userID)
+	}
+	if svc.changeCurrentPassword != "OldPass1!" {
+		t.Fatalf("current password = %q, want OldPass1!", svc.changeCurrentPassword)
+	}
+	if svc.changeNewPassword != "NewPass2@" {
+		t.Fatalf("new password = %q, want NewPass2@", svc.changeNewPassword)
+	}
+	if svc.userAgent != "handler-test" {
+		t.Fatalf("userAgent = %q, want handler-test", svc.userAgent)
+	}
+	if svc.ip == "" {
+		t.Fatal("ip is empty")
+	}
+}
+
+func TestHandler_ChangePassword_BadJSON(t *testing.T) {
+	app := testAuthContextApp(&stubSvc{}, uuid.New())
+
+	resp := postJSON(t, app, "/change-password", `{not json`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusBadRequest)
+	}
+}
+
+func TestHandler_ChangePassword_MissingFields(t *testing.T) {
+	app := testAuthContextApp(&stubSvc{}, uuid.New())
+
+	resp := postJSON(t, app, "/change-password", `{}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusBadRequest)
+	}
+}
+
+func TestHandler_ChangePassword_WrongCurrent(t *testing.T) {
+	assertChangePasswordError(t, ErrCurrentPasswordIncorrect, "invalid_current_password")
+}
+
+func TestHandler_ChangePassword_Weak(t *testing.T) {
+	assertChangePasswordError(t, ErrWeakPassword, "weak_password")
+}
+
+func TestHandler_ChangePassword_Same(t *testing.T) {
+	assertChangePasswordError(t, ErrSamePassword, "same_password")
+}
+
+func TestHandler_ChangePassword_NoContext_401(t *testing.T) {
+	app := testAuthApp(&stubSvc{})
+
+	resp := postJSON(t, app, "/change-password", `{"current_password":"OldPass1!","new_password":"NewPass2@"}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusUnauthorized)
+	}
+}
+
 func assertLoginError(t *testing.T, err error, wantStatus int, wantCode string) {
 	t.Helper()
 
@@ -372,6 +530,27 @@ func assertRefreshError(t *testing.T, err error, wantStatus int, wantCode string
 	}
 }
 
+func assertChangePasswordError(t *testing.T, err error, wantCode string) {
+	t.Helper()
+
+	app := testAuthContextApp(&stubSvc{changePasswordErr: err}, uuid.New())
+	resp := postJSON(t, app, "/change-password", `{"current_password":"OldPass1!","new_password":"NewPass2@"}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusBadRequest)
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if body.Code != wantCode {
+		t.Fatalf("code = %q, want %q", body.Code, wantCode)
+	}
+}
+
 func testLoginApp(svc *stubSvc) *fiber.App {
 	app := fiber.New()
 	h := &Handler{svc: svc}
@@ -385,8 +564,22 @@ func testAuthApp(svc *stubSvc) *fiber.App {
 	app.Post("/login", h.Login)
 	app.Post("/refresh", h.Refresh)
 	app.Post("/logout", h.Logout)
+	app.Get("/me", h.Me)
+	app.Post("/change-password", h.ChangePassword)
 	app.Post("/logout-all", h.LogoutAll)
 	app.Get("/sessions", h.Sessions)
+	return app
+}
+
+func testAuthContextApp(svc *stubSvc, userID uuid.UUID) *fiber.App {
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals(middleware.LocalsUserID, userID)
+		return c.Next()
+	})
+	h := &Handler{svc: svc}
+	app.Get("/me", h.Me)
+	app.Post("/change-password", h.ChangePassword)
 	return app
 }
 

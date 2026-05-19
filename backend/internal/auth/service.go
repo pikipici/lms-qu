@@ -21,6 +21,7 @@ const maxCumulativeFailedLogins = 10
 type authRepo interface {
 	FindUserByEmail(ctx context.Context, email string) (*User, error)
 	FindUserByID(ctx context.Context, id uuid.UUID) (*User, error)
+	UpdateUserPassword(ctx context.Context, userID uuid.UUID, newHash string) error
 	IncFailedLogin(ctx context.Context, userID uuid.UUID) error
 	ResetFailedLogin(ctx context.Context, userID uuid.UUID) error
 	LockUser(ctx context.Context, userID uuid.UUID, reason string) error
@@ -45,11 +46,14 @@ type Service struct {
 
 // Sentinel errors returned by Service methods.
 var (
-	ErrInvalidCredentials = errors.New("auth: invalid credentials")
-	ErrUserSuspended      = errors.New("auth: user suspended")
-	ErrUserLocked         = errors.New("auth: user locked")
-	ErrRateLimited        = errors.New("auth: too many failed attempts; try again later")
-	ErrRefreshReuse       = errors.New("auth: refresh token reuse detected")
+	ErrInvalidCredentials       = errors.New("auth: invalid credentials")
+	ErrUserSuspended            = errors.New("auth: user suspended")
+	ErrUserLocked               = errors.New("auth: user locked")
+	ErrRateLimited              = errors.New("auth: too many failed attempts; try again later")
+	ErrRefreshReuse             = errors.New("auth: refresh token reuse detected")
+	ErrCurrentPasswordIncorrect = errors.New("auth: current password incorrect")
+	ErrWeakPassword             = errors.New("auth: new password must be at least 8 characters")
+	ErrSamePassword             = errors.New("auth: new password must differ from current")
 )
 
 // LoginResult contains the authenticated user and issued token pair.
@@ -358,6 +362,57 @@ func (s *Service) LogoutAll(ctx context.Context, userID uuid.UUID, ip, userAgent
 	return nil
 }
 
+// Me returns the authenticated user's profile.
+func (s *Service) Me(ctx context.Context, userID uuid.UUID) (*User, error) {
+	user, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("auth: load user: %w", err)
+	}
+	return user, nil
+}
+
+// ChangePassword verifies the current password, hashes the new one, persists
+// it (clearing must_change_password), revokes all refresh tokens for the user,
+// and audits the action. It returns ErrCurrentPasswordIncorrect when the
+// current password does not match.
+func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword, ip, userAgent string) error {
+	if len(newPassword) < 8 {
+		return ErrWeakPassword
+	}
+
+	user, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("auth: load user: %w", err)
+	}
+
+	now := s.now()
+	ipAddr := ipPtr(ip)
+	ua := uaPtr(userAgent)
+	if err := VerifyPassword(user.PasswordHash, currentPassword); err != nil {
+		s.logAuditTarget(ctx, "password_change_failed", &user.ID, roleStrPtr(user.Role), &user.ID, auditMeta(map[string]string{
+			"reason": "invalid_current_password",
+		}), ipAddr, ua, now)
+		return ErrCurrentPasswordIncorrect
+	}
+	if newPassword == currentPassword {
+		return ErrSamePassword
+	}
+
+	newHash, err := HashPassword(newPassword, s.cfg.JWT.BcryptCost)
+	if err != nil {
+		return fmt.Errorf("auth: hash new password: %w", err)
+	}
+	if err := s.repo.UpdateUserPassword(ctx, user.ID, newHash); err != nil {
+		return fmt.Errorf("auth: update password: %w", err)
+	}
+
+	// Conservative default: revoke all refresh tokens, including this device,
+	// because the endpoint is authenticated by access token without refresh JTI.
+	_, _ = s.repo.RevokeAllRefreshByUser(ctx, user.ID, PasswordChanged)
+	s.logAuditTarget(ctx, "password_changed", &user.ID, roleStrPtr(user.Role), &user.ID, nil, ipAddr, ua, now)
+	return nil
+}
+
 // ListSessions returns active, unexpired refresh sessions for a user.
 func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error) {
 	sessions, err := s.repo.ListUserSessions(ctx, userID)
@@ -383,6 +438,19 @@ func (s *Service) logAudit(ctx context.Context, action string, actorID *uuid.UUI
 		ActorID:   actorID,
 		ActorRole: actorRole,
 		Action:    action,
+		Meta:      meta,
+		IP:        ip,
+		UserAgent: userAgent,
+		At:        at,
+	})
+}
+
+func (s *Service) logAuditTarget(ctx context.Context, action string, actorID *uuid.UUID, actorRole *string, targetID *uuid.UUID, meta datatypes.JSON, ip, userAgent *string, at time.Time) {
+	_ = s.repo.LogAudit(ctx, &AuditLog{
+		ActorID:   actorID,
+		ActorRole: actorRole,
+		Action:    action,
+		TargetID:  targetID,
 		Meta:      meta,
 		IP:        ip,
 		UserAgent: userAgent,

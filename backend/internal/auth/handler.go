@@ -28,6 +28,8 @@ type authService interface {
 	Refresh(ctx context.Context, refreshToken, ip, userAgent string) (*LoginResult, error)
 	Logout(ctx context.Context, refreshToken, ip, userAgent string) error
 	LogoutAll(ctx context.Context, userID uuid.UUID, ip, userAgent string) error
+	Me(ctx context.Context, userID uuid.UUID) (*User, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword, ip, userAgent string) error
 	ListSessions(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error)
 }
 
@@ -184,6 +186,58 @@ func (h *Handler) Sessions(c *fiber.Ctx) error {
 		return fmt.Errorf("auth sessions: %w", err)
 	}
 	return c.Status(fiber.StatusOK).JSON(sessionsResponse{Sessions: sessions})
+}
+
+// Me returns the authenticated user's profile.
+func (h *Handler) Me(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
+	}
+
+	user, err := h.svc.Me(c.UserContext(), userID)
+	if err != nil {
+		return fmt.Errorf("auth me: %w", err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": user})
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword updates the authenticated user's password.
+func (h *Handler) ChangePassword(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
+	}
+
+	var req changePasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+	}
+	if strings.TrimSpace(req.CurrentPassword) == "" || strings.TrimSpace(req.NewPassword) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "current_password and new_password are required")
+	}
+
+	ip := c.IP()
+	userAgent := string(c.Request().Header.UserAgent())
+	err = h.svc.ChangePassword(c.UserContext(), userID, req.CurrentPassword, req.NewPassword, ip, userAgent)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrCurrentPasswordIncorrect):
+			return authError(c, fiber.StatusBadRequest, "current password is incorrect", "invalid_current_password")
+		case errors.Is(err, ErrWeakPassword):
+			return authError(c, fiber.StatusBadRequest, "new password must be at least 8 characters", "weak_password")
+		case errors.Is(err, ErrSamePassword):
+			return authError(c, fiber.StatusBadRequest, "new password must differ from current", "same_password")
+		default:
+			return fmt.Errorf("auth change-password: %w", err)
+		}
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // LoginRateLimit returns a coarse per-IP-and-email limiter for /auth/login.
