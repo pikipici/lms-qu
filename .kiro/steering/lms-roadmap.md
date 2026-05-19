@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B.1-1.B.4 done (auth fully wired up to POST /auth/login E2E green). Berikut: Task 1.B.5 (refresh rotation + reuse detection).
+> Status: v0.7.2 — Fase 1 in progress: 1.A FULL + 1.B.1-1.B.5 done (refresh rotation + reuse detection PASS, all auth services). Berikut: Task 1.B.6 (refresh/logout/logout-all/sessions handlers).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Task 1.B.4 marked done, point ke 1.B.5)
+> Last updated: 2026-05-19 (Section 18: Task 1.B.5 marked done, point ke 1.B.6)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1445,12 +1445,13 @@ Setelah tools jadi, runbook deploy jadi:
 - E2E verified di server (8200): bad json→400, empty body→400, unknown user→401, 5 rapid same-email attempts → attempt 5 jadi 429 (Fiber limiter `count >= Max` semantik; jadi block AT 5th, bukan AFTER 5th — acceptable per locked decision "5 gagal/15min").
 - Dual rate limit: middleware coarse (counts ALL requests, IP+email key) + service-layer precise (counts only FAILED LoginAttempt rows). Defense-in-depth.
 
-**Task 1.B.5 — Refresh rotation + reuse detection**
-- Files: extend `service.go` (`Refresh(refreshToken, ip, ua)`)
-- Logic: verify JWT → find RefreshToken by JTI → if revoked: revoke chain user (reuse_detected) + return 401 → else mark old `revoked_at=now`, `replaced_by_jti=new`, issue new pair
-- Test: rotation roundtrip + reuse detection revokes chain
-- Verify: `go test ./internal/auth/`
-- Commit: `feat(auth): refresh rotation with reuse detection`
+**Task 1.B.5 — Refresh rotation + reuse detection** ✅ DONE (commit `0656e4d`, 2026-05-19)
+- Files: extend `service.go` (+125 LOC) + `service_test.go` (+332 LOC)
+- Done: `Service.Refresh(ctx, refreshToken, ip, ua) (*LoginResult, error)` flow: VerifyRefresh JWT → uuid.Parse JTI → repo.FindRefreshByJTI (gorm.ErrRecordNotFound → ErrInvalidCredentials, NO chain revoke) → user mismatch check (defense) → reuse detection (RevokedAt != nil → repo.RevokeRefreshChain reason=reuse_detected → ErrRefreshReuse) → expiry check → user status gate (Suspended/Locked) → IssueAccess+IssueRefresh → repo.RotateRefresh (atomic revoke-old + insert-new) → audit `refresh_success`.
+- New sentinel: `ErrRefreshReuse` — for compromised token replay.
+- Extended authRepo interface: FindRefreshByJTI, RotateRefresh, RevokeRefreshChain.
+- 9 test cases pass: success rotation (verify old.RevokedAt set + ReplacedByJTI = new), invalid JWT, wrong secret, unknown JTI (no chain revoke — could be replay before deploy), reuse detection chain revoke (verify other user tokens revoked), expired persisted token, user suspended, user locked, user mismatch.
+- Server `go test -v -run Refresh` shows all 9 PASS in 0.018s. Full suite PASS (0.139s).
 
 **Task 1.B.6 — POST /auth/refresh + POST /auth/logout + POST /auth/logout-all + GET /auth/sessions**
 - Routes + per-token rate limit (`RATE_LIMIT_REFRESH_PER_MIN=10`)
@@ -1720,7 +1721,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.B.5 — Refresh rotation + reuse detection** (extend `service.go` dengan `Refresh(refreshToken, ip, ua)`). Verify JWT → find RefreshToken by JTI → if revoked: revoke chain user (reuse_detected) + return 401 → else mark old `revoked_at=now`, `replaced_by_jti=new`, issue new pair. Eksekusi via codex.
+**Berikut: Task 1.B.6 — Refresh/Logout/Sessions HTTP handlers** — POST /api/v1/auth/refresh + POST /auth/logout + POST /auth/logout-all + GET /auth/sessions. Per-token rate limit (`RATE_LIMIT_REFRESH_PER_MIN=10`). Eksekusi via codex.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
