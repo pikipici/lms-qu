@@ -9,6 +9,7 @@
 
 ## Paths
 - Local repo: `C:\Users\pikip\Documents\program\lms`
+- GitHub: `git@github.com:pikipici/lms-qu.git` (remote `origin`, primary truth)
 - Server target: `rdpkhorur:/home/ubuntu/lms`
 - Server bare repo (git remote `server`): `rdpkhorur:/home/ubuntu/git-repos/lms.git`
 - SSH alias: `rdpkhorur` (assumed configured)
@@ -20,7 +21,10 @@
 - `migrate` CLI v4.17.1 di `/usr/local/bin/migrate`.
 - Go 1.24, Node 20.
 - Server dir setelah clone bare: `/home/ubuntu/lms` (tracking remote `server` → bare repo).
-- Push flow: `git push server main` dari local → ssh ke server → `cd /home/ubuntu/lms && git pull` → build → restart systemd.
+- Push flow:
+  - `git push origin main` — push ke GitHub (truth)
+  - `git push server main` — trigger deploy mirror ke bare repo
+  - di server: `cd /home/ubuntu/lms && git pull origin main && cd backend && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api`
 
 ## Working agreements
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
