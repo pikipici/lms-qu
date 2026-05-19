@@ -182,6 +182,15 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 		auth.LoginRateLimit(cfg.RateLimit.LoginPer15Min),
 		authHandler.Login,
 	)
+	authGroup.Post("/refresh",
+		auth.RefreshRateLimit(cfg.RateLimit.RefreshPerMin),
+		authHandler.Refresh,
+	)
+	authGroup.Post("/logout", authHandler.Logout)
+
+	protected := authGroup.Group("", middleware.BearerAuth(authSvc))
+	protected.Post("/logout-all", authHandler.LogoutAll)
+	protected.Get("/sessions", authHandler.Sessions)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

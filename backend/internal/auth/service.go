@@ -27,7 +27,10 @@ type authRepo interface {
 	IssueRefresh(ctx context.Context, t *RefreshToken) error
 	FindRefreshByJTI(ctx context.Context, jti uuid.UUID) (*RefreshToken, error)
 	RotateRefresh(ctx context.Context, oldJTI uuid.UUID, newToken *RefreshToken) error
+	RevokeRefresh(ctx context.Context, jti uuid.UUID, reason RevokedReason) error
+	RevokeAllRefreshByUser(ctx context.Context, userID uuid.UUID, reason RevokedReason) (int64, error)
 	RevokeRefreshChain(ctx context.Context, jti uuid.UUID) error
+	ListUserSessions(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error)
 	LogLoginAttempt(ctx context.Context, attempt *LoginAttempt) error
 	CountRecentFailedAttempts(ctx context.Context, email string, ip *string, since time.Time) (int64, error)
 	LogAudit(ctx context.Context, entry *AuditLog) error
@@ -302,6 +305,66 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, ip, userAgent strin
 		RefreshJTI:       newRefreshJTI,
 		RefreshExpiresAt: newRefreshExpiresAt,
 	}, nil
+}
+
+// VerifyAccessToken parses a bearer access token, verifies its signature,
+// loads the user, status-checks (Active only), and returns the identity tuple
+// needed by the middleware layer.
+func (s *Service) VerifyAccessToken(rawToken string) (uuid.UUID, string, string, error) {
+	claims, err := VerifyAccess(s.cfg.JWT, rawToken)
+	if err != nil {
+		return uuid.Nil, "", "", fmt.Errorf("auth: verify access: %w", err)
+	}
+
+	// Middleware currently only passes the raw token, so this lookup cannot use
+	// the request context. Acceptable for the MVP; we lose request-scoped values.
+	user, err := s.repo.FindUserByID(context.Background(), claims.UserID)
+	if err != nil {
+		return uuid.Nil, "", "", fmt.Errorf("auth: load user: %w", err)
+	}
+	if user.Status != Active {
+		return uuid.Nil, "", "", errors.New("auth: user not active")
+	}
+
+	return user.ID, string(user.Role), user.Email, nil
+}
+
+// Logout revokes a single refresh token by JWT. It is idempotent: invalid,
+// unknown, expired, or already-revoked tokens still return nil so clients do
+// not learn token validity.
+func (s *Service) Logout(ctx context.Context, refreshToken, ip, userAgent string) error {
+	jtiStr, userID, err := VerifyRefresh(s.cfg.JWT, refreshToken)
+	if err != nil {
+		return nil
+	}
+
+	jti, err := uuid.Parse(jtiStr)
+	if err != nil {
+		return nil
+	}
+
+	_ = s.repo.RevokeRefresh(ctx, jti, Logout)
+	s.logAudit(ctx, "logout", &userID, nil, nil, ipPtr(ip), uaPtr(userAgent), s.now())
+	return nil
+}
+
+// LogoutAll revokes every active refresh token for a user.
+func (s *Service) LogoutAll(ctx context.Context, userID uuid.UUID, ip, userAgent string) error {
+	if _, err := s.repo.RevokeAllRefreshByUser(ctx, userID, Logout); err != nil {
+		return fmt.Errorf("auth: revoke all refresh: %w", err)
+	}
+
+	s.logAudit(ctx, "logout_all", &userID, nil, nil, ipPtr(ip), uaPtr(userAgent), s.now())
+	return nil
+}
+
+// ListSessions returns active, unexpired refresh sessions for a user.
+func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error) {
+	sessions, err := s.repo.ListUserSessions(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("auth: list sessions: %w", err)
+	}
+	return sessions, nil
 }
 
 func (s *Service) logLoginAttempt(ctx context.Context, email string, ip, userAgent *string, success bool, reason *string, at time.Time) {

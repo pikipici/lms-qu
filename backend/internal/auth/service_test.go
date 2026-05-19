@@ -17,28 +17,31 @@ const loginTestPassword = "S3cret!Pass"
 var fixedLoginNow = time.Date(2026, 5, 19, 10, 0, 0, 0, time.UTC)
 
 type mockRepo struct {
-	userByEmail       map[string]*User
-	userByID          map[uuid.UUID]*User
-	failedCount       int64
-	findByEmailCalls  int
-	lastFindEmail     string
-	countCalls        int
-	countEmail        string
-	countIP           *string
-	countSince        time.Time
-	incCalls          int
-	resetCalls        int
-	lockCalls         int
-	lockReasons       []string
-	issueRefreshCalls int
-	issuedRefreshes   []*RefreshToken
-	refreshByJTI      map[uuid.UUID]*RefreshToken
-	rotateCalls       int
-	chainRevokeCalls  int
-	chainRevokedJTIs  []uuid.UUID
-	loginAttempts     []*LoginAttempt
-	audits            []*AuditLog
-	errFindByEmail    error
+	userByEmail        map[string]*User
+	userByID           map[uuid.UUID]*User
+	failedCount        int64
+	findByEmailCalls   int
+	lastFindEmail      string
+	countCalls         int
+	countEmail         string
+	countIP            *string
+	countSince         time.Time
+	incCalls           int
+	resetCalls         int
+	lockCalls          int
+	lockReasons        []string
+	issueRefreshCalls  int
+	issuedRefreshes    []*RefreshToken
+	refreshByJTI       map[uuid.UUID]*RefreshToken
+	rotateCalls        int
+	revokeCalls        int
+	revokeAllUserCalls int
+	chainRevokeCalls   int
+	chainRevokedJTIs   []uuid.UUID
+	listSessionsResult []RefreshToken
+	loginAttempts      []*LoginAttempt
+	audits             []*AuditLog
+	errFindByEmail     error
 }
 
 func newTestService(t *testing.T) (*Service, *mockRepo, func()) {
@@ -525,6 +528,136 @@ func TestRefresh_UserMismatch_ReturnsErrInvalidCredentials(t *testing.T) {
 	assertAuditReason(t, repo.audits[0], "user_mismatch")
 }
 
+func TestLogout_KnownToken_RevokesAndAudits(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	repo.addUser(user)
+
+	_, jti, raw, _ := issueValidRefresh(t, svc.cfg.JWT, user.ID)
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		jti: &RefreshToken{
+			JTI:       jti,
+			UserID:    user.ID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(7 * 24 * time.Hour),
+		},
+	}
+
+	if err := svc.Logout(context.Background(), raw, "1.2.3.4", "ua"); err != nil {
+		t.Fatalf("Logout() error = %v", err)
+	}
+	if repo.revokeCalls != 1 {
+		t.Fatalf("RevokeRefresh calls = %d, want 1", repo.revokeCalls)
+	}
+	if repo.refreshByJTI[jti].RevokedAt == nil {
+		t.Fatal("refresh RevokedAt = nil, want set")
+	}
+	if repo.refreshByJTI[jti].RevokedReason == nil || *repo.refreshByJTI[jti].RevokedReason != string(Logout) {
+		t.Fatalf("refresh RevokedReason = %v, want %s", repo.refreshByJTI[jti].RevokedReason, Logout)
+	}
+	assertOneAuditAction(t, repo, "logout")
+	if repo.audits[0].ActorID == nil || *repo.audits[0].ActorID != user.ID {
+		t.Fatalf("audit ActorID = %v, want %s", repo.audits[0].ActorID, user.ID)
+	}
+}
+
+func TestLogout_UnknownJWT_StillReturnsNilNoAudit(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+
+	if err := svc.Logout(context.Background(), "garbage", "1.2.3.4", "ua"); err != nil {
+		t.Fatalf("Logout() error = %v, want nil", err)
+	}
+	if repo.revokeCalls != 0 {
+		t.Fatalf("RevokeRefresh calls = %d, want 0", repo.revokeCalls)
+	}
+	if len(repo.audits) != 0 {
+		t.Fatalf("audits len = %d, want 0", len(repo.audits))
+	}
+}
+
+func TestLogoutAll_RevokesAllUserTokens(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	userA := uuid.New()
+	userB := uuid.New()
+	jtiA1 := uuid.New()
+	jtiA2 := uuid.New()
+	jtiA3 := uuid.New()
+	jtiB := uuid.New()
+	repo.refreshByJTI = map[uuid.UUID]*RefreshToken{
+		jtiA1: &RefreshToken{
+			JTI:       jtiA1,
+			UserID:    userA,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+		jtiA2: &RefreshToken{
+			JTI:       jtiA2,
+			UserID:    userA,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+		jtiA3: &RefreshToken{
+			JTI:       jtiA3,
+			UserID:    userA,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+		jtiB: &RefreshToken{
+			JTI:       jtiB,
+			UserID:    userB,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+	}
+
+	if err := svc.LogoutAll(context.Background(), userA, "1.2.3.4", "ua"); err != nil {
+		t.Fatalf("LogoutAll() error = %v", err)
+	}
+	if repo.revokeAllUserCalls != 1 {
+		t.Fatalf("RevokeAllRefreshByUser calls = %d, want 1", repo.revokeAllUserCalls)
+	}
+	for _, jti := range []uuid.UUID{jtiA1, jtiA2, jtiA3} {
+		if repo.refreshByJTI[jti].RevokedAt == nil {
+			t.Fatalf("userA token %s RevokedAt = nil, want set", jti)
+		}
+	}
+	if repo.refreshByJTI[jtiB].RevokedAt != nil {
+		t.Fatal("userB token RevokedAt set, want nil")
+	}
+	assertOneAuditAction(t, repo, "logout_all")
+}
+
+func TestListSessions_ReturnsRepoResult(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	userID := uuid.New()
+	repo.listSessionsResult = []RefreshToken{
+		{
+			JTI:       uuid.New(),
+			UserID:    userID,
+			IssuedAt:  fixedLoginNow,
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+		{
+			JTI:       uuid.New(),
+			UserID:    userID,
+			IssuedAt:  fixedLoginNow.Add(-time.Minute),
+			ExpiresAt: fixedLoginNow.Add(time.Hour),
+		},
+	}
+
+	got, err := svc.ListSessions(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ListSessions() len = %d, want 2", len(got))
+	}
+}
+
 func (m *mockRepo) addUser(user *User) {
 	m.userByEmail[user.Email] = user
 	m.userByID[user.ID] = user
@@ -612,6 +745,35 @@ func (m *mockRepo) RotateRefresh(ctx context.Context, oldJTI uuid.UUID, newToken
 	return nil
 }
 
+func (m *mockRepo) RevokeRefresh(ctx context.Context, jti uuid.UUID, reason RevokedReason) error {
+	m.revokeCalls++
+	if m.refreshByJTI == nil {
+		return nil
+	}
+	if t, ok := m.refreshByJTI[jti]; ok && t.RevokedAt == nil {
+		rev := time.Now()
+		t.RevokedAt = &rev
+		r := string(reason)
+		t.RevokedReason = &r
+	}
+	return nil
+}
+
+func (m *mockRepo) RevokeAllRefreshByUser(ctx context.Context, userID uuid.UUID, reason RevokedReason) (int64, error) {
+	m.revokeAllUserCalls++
+	var n int64
+	for _, t := range m.refreshByJTI {
+		if t.UserID == userID && t.RevokedAt == nil {
+			rev := time.Now()
+			t.RevokedAt = &rev
+			r := string(reason)
+			t.RevokedReason = &r
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (m *mockRepo) RevokeRefreshChain(ctx context.Context, jti uuid.UUID) error {
 	m.chainRevokeCalls++
 	m.chainRevokedJTIs = append(m.chainRevokedJTIs, jti)
@@ -626,6 +788,10 @@ func (m *mockRepo) RevokeRefreshChain(ctx context.Context, jti uuid.UUID) error 
 		}
 	}
 	return nil
+}
+
+func (m *mockRepo) ListUserSessions(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error) {
+	return m.listSessionsResult, nil
 }
 
 func (m *mockRepo) LogLoginAttempt(ctx context.Context, attempt *LoginAttempt) error {
