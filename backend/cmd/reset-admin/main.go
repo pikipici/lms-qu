@@ -6,10 +6,6 @@
 //
 //	./bin/reset-admin --email admin@sekolah.id
 //	./bin/reset-admin --email admin@sekolah.id --password new-secret-123
-//
-// Fase 0 status: stub. Wires config + DB; the actual UPDATE lands in Fase 1
-// once the User model exists. AuditLog row will use actor_id=NULL with
-// action='admin_reset_via_cli' (#53).
 package main
 
 import (
@@ -20,10 +16,14 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"golang.org/x/term"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -39,59 +39,149 @@ func run() error {
 	flag.Parse()
 
 	email := strings.TrimSpace(*emailFlag)
-	if email == "" {
-		flag.Usage()
-		return errors.New("reset-admin: --email is required")
+	if err := validateResetEmail(email); err != nil {
+		if email == "" {
+			flag.Usage()
+		}
+		return err
 	}
-	if !strings.Contains(email, "@") {
-		return errors.New("reset-admin: email looks malformed")
+
+	password := *pwFlag
+	if password == "" {
+		var err error
+		password, err = promptPassword()
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := validateResetInput(email, password); err != nil {
+		return err
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, closeDB, err := db.Open(ctx, cfg)
+	gdb, closeDB, err := db.Open(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = closeDB() }()
 
-	password := *pwFlag
-	if password == "" {
-		fmt.Fprint(os.Stderr, "New password: ")
-		fd := int(os.Stdin.Fd())
-		if !term.IsTerminal(fd) {
-			return errors.New("reset-admin: stdin is not a TTY; pass --password or run interactively")
-		}
-		b, perr := term.ReadPassword(fd)
-		fmt.Fprintln(os.Stderr)
-		if perr != nil {
-			return fmt.Errorf("read password: %w", perr)
-		}
-		password = string(b)
+	repo := auth.NewRepo(gdb)
+
+	user, err := repo.FindUserByEmail(ctx, email)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errors.New("reset-admin: no user with that email")
+	}
+	if err != nil {
+		return fmt.Errorf("reset-admin: find user by email: %w", err)
+	}
+
+	if user.Role != auth.Admin {
+		return fmt.Errorf("reset-admin: user %s is not an admin (role=%s); refusing", email, user.Role)
+	}
+
+	hash, err := auth.HashPassword(password, cfg.JWT.BcryptCost)
+	if err != nil {
+		return fmt.Errorf("reset-admin: hash password: %w", err)
+	}
+
+	if err := repo.UpdateUserPassword(ctx, user.ID, hash); err != nil {
+		return fmt.Errorf("reset-admin: update password: %w", err)
+	}
+
+	if user.Status == auth.Locked {
+		// TODO(#53): unlock if locked - requires new repo method.
+		// UpdateUserPassword clears must_change_password, but not status.
+		logger.Warn("reset-admin: user remains locked after password reset",
+			slog.String("email", user.Email),
+			slog.String("user_id", user.ID.String()),
+		)
+	}
+
+	if err := repo.ResetFailedLogin(ctx, user.ID); err != nil {
+		logger.Warn("reset-admin: reset failed login failed",
+			slog.String("email", user.Email),
+			slog.String("user_id", user.ID.String()),
+			slog.String("err", err.Error()),
+		)
+	}
+
+	revokedCount, err := repo.RevokeAllRefreshByUser(ctx, user.ID, auth.AdminReset)
+	if err != nil {
+		logger.Warn("reset-admin: revoke refresh tokens failed",
+			slog.String("email", user.Email),
+			slog.String("user_id", user.ID.String()),
+			slog.String("err", err.Error()),
+		)
+	}
+	logger.Info("reset-admin: revoked refresh tokens",
+		slog.String("email", user.Email),
+		slog.String("user_id", user.ID.String()),
+		slog.Int64("revoked_count", revokedCount),
+	)
+
+	action := "admin_reset_via_cli"
+	targetType := "user"
+	var targetID uuid.UUID = user.ID
+	if err := repo.LogAudit(ctx, &auth.AuditLog{
+		ActorID:    nil,
+		Action:     action,
+		TargetType: &targetType,
+		TargetID:   &targetID,
+		At:         time.Now(),
+	}); err != nil {
+		logger.Warn("reset-admin: audit log failed",
+			slog.String("email", user.Email),
+			slog.String("user_id", user.ID.String()),
+			slog.String("action", action),
+			slog.String("err", err.Error()),
+		)
+	}
+
+	fmt.Printf("reset-admin: password reset for %s (id=%s). Revoked %d refresh tokens. User must log in again with new password.\n", user.Email, user.ID, revokedCount)
+	return nil
+}
+
+func validateResetEmail(email string) error {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return errors.New("reset-admin: --email is required")
+	}
+	if !strings.Contains(email, "@") {
+		return errors.New("reset-admin: email looks malformed")
+	}
+	return nil
+}
+
+func validateResetInput(email, password string) error {
+	if err := validateResetEmail(email); err != nil {
+		return err
 	}
 	if len(password) < 8 {
 		return errors.New("reset-admin: password must be at least 8 characters")
 	}
-
-	// TODO(Fase 1): real flow:
-	//   1. SELECT id, role FROM users WHERE email = $1; ensure role='admin'.
-	//   2. bcrypt password.
-	//   3. UPDATE users SET password_hash=$1, must_change_password=TRUE,
-	//      failed_login_count=0, status='active' WHERE id=$2.
-	//   4. INSERT INTO refresh_tokens revoke-all for this user (#53).
-	//   5. AuditLog: actor_id=NULL, action='admin_reset_via_cli', target_user_id=$2.
-	slog.Info("reset-admin (stub)",
-		slog.String("email", email),
-		slog.Int("password_len", len(password)),
-		slog.String("note", "real update happens in Fase 1; this run only validated config + DB"),
-	)
-	fmt.Println("reset-admin: configuration & DB OK. Update logic lands in Fase 1.")
 	return nil
+}
+
+func promptPassword() (string, error) {
+	fmt.Fprint(os.Stderr, "New password: ")
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return "", errors.New("reset-admin: stdin is not a TTY; pass --password or run interactively")
+	}
+	b, err := term.ReadPassword(fd)
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		return "", fmt.Errorf("read password: %w", err)
+	}
+	return string(b), nil
 }
