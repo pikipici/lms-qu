@@ -26,6 +26,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
+	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"github.com/pikip/lms/backend/internal/health"
@@ -170,6 +171,17 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	hh := &health.Handler{Cfg: cfg, DB: gdb}
 	api.Get("/healthz", hh.Liveness)
 	api.Get("/readyz", hh.Readiness)
+
+	// Auth
+	authRepo := auth.NewRepo(gdb)
+	authSvc := auth.NewService(authRepo, cfg)
+	authHandler := auth.NewHandler(authSvc)
+
+	authGroup := api.Group("/auth")
+	authGroup.Post("/login",
+		auth.LoginRateLimit(cfg.RateLimit.LoginPer15Min),
+		authHandler.Login,
+	)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
