@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G.1 + 1.G.2 + 1.G.3 DONE. Backend admin domain CLOSED. FE auth stack live: login wired, refresh interceptor + (authed) route group + force-change gate, /me + /me/security pages full. Berikut: Task 1.G.4 (/me/perangkat list active sessions + logout-all).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G.1 + 1.G.2 + 1.G.3 + 1.G.4 DONE. Backend admin domain CLOSED. FE auth stack live: login, refresh interceptor, (authed) route group + force-change gate, /me + /me/security + /me/perangkat. Berikut: Task 1.H.1 (admin layout + sidebar).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.G.3 marked done, build PASS, /me + /me/security 200)
+> Last updated: 2026-05-20 (Section 18: Task 1.G.4 marked done, /me/perangkat 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1552,10 +1552,10 @@ Setelah tools jadi, runbook deploy jadi:
 - Done: `/me` GET `/auth/me` via TanStack Query (staleTime 60s), read-only profile (nama/email/role/status/last_login_at/created_at), formatted `Asia/Jakarta` via Intl. Logout button POST `/auth/logout` (best-effort, fail-closed) → clear store → /login. Force-change-password banner (#32) muncul kalau `user.must_change_password`, plus tombol Logout di-disable + toast peringatan kalau ditekan. `/me/security` form RHF + Zod (current/new/confirm dengan refine: confirm===new, new!==current, min 8 char), POST `/auth/change-password`, on 204 toast sukses + clear store + `/login` (server revoke all refresh tokens per #42, jadi client wajib re-login). Friendly errors mapped: invalid_current_password / weak_password / same_password. Back link ke `/me` di-disable (pointer-events-none + tabIndex=-1) selama mustChange=true.
 - Live verified: server `npx tsc --noEmit` PASS (TSC_OK), `next build` PASS (8 static pages — /me=11.5 kB, /me/security=1.81 kB), curl http://127.0.0.1:8200/me=200 + /me/security=200 + /api/v1/readyz=200, lms-api active. FE-only change → no service restart needed.
 
-**Task 1.G.4 — /me/perangkat — list active sessions + logout-all**
-- Files: `frontend/app/me/perangkat/page.tsx`
-- Verify: visual
-- Commit: `feat(fe): /me/perangkat sessions list + logout-all`
+**Task 1.G.4 — /me/perangkat — list active sessions + logout-all** ✅ DONE (commit `5ffae23`, 2026-05-20)
+- Files: `frontend/app/(authed)/me/perangkat/page.tsx` (255 LOC), `frontend/app/(authed)/me/page.tsx` (+3 LOC link)
+- Done: GET `/auth/sessions` via TanStack Query (staleTime 30s) → render list (masked JTI 4-dot-4, IP, issued/expires `Asia/Jakarta`, user-agent summary via heuristik browser+OS). Current session di-highlight pakai badge "Sesi ini" — best-effort decode unverified JWT payload refresh token di Zustand (atob + base64url normalize, payload.jti string check; UX hint, bukan trust boundary). Tombol "Logout dari semua perangkat" disabled saat loading/empty, POST `/auth/logout-all` → toast sukses + clear store + `/login`. Per-perangkat revoke ditunda v0.8 (no per-jti self-scope endpoint). /me dapet shortcut "Perangkat aktif" sebelah "Ganti password".
+- Live verified: server `npx tsc --noEmit` PASS (TSC_OK), `next build` PASS (9 static pages — /me/perangkat=4.28 kB), curl /me/perangkat=200, /me=200, /api/v1/auth/sessions tanpa bearer=401 (expected), lms-api active.
 
 #### 1.H Frontend Admin Panel
 
@@ -1724,7 +1724,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.G.4 — /me/perangkat (list active sessions + logout-all).** GET `/auth/sessions` → render list refresh tokens (jti masked, ip, user_agent dirapikan, issued_at, expires_at, badge "Sesi ini" untuk current jti — decode dari refresh token di Zustand). Tombol "Logout dari semua perangkat" → POST `/auth/logout-all` → clear store → /login + toast. Per-row revoke ditunda ke v0.8 (endpoint per-jti revoke belum ada, single-row revoke pakai logout-all aja sementara). Letakkan di `app/(authed)/me/perangkat/page.tsx` + tambah link "Perangkat aktif" di footer /me.
+**Berikut: Task 1.H.1 — Admin layout + sidebar.** Bikin `frontend/app/(authed)/admin/layout.tsx` — guard role=admin (kalau bukan admin, redirect ke landing role-spesifik), pakai shell shadcn (sidebar kiri + content). Sidebar item: Dashboard `/admin`, Pengguna `/admin/pengguna`, Audit Log `/admin/audit-log`, Login Attempts `/admin/login-attempts`. Header strip kanan: nama user + dropdown (Profil → /me, Logout → POST /auth/logout). Halaman `/admin` index taruh dashboard placeholder (cards stat skeleton), aktif data-binding nanti di tasks setelahnya. Verify: login admin → /admin render layout, login guru → /admin redirect ke /guru, anonymous → /login (sudah dihandle AuthGuard parent).
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
