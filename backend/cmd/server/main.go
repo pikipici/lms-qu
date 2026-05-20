@@ -297,6 +297,12 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB, objectStore s
 	adminGroup.Post("/import-csv/:job_id/cancel", importHandler.Cancel)
 	adminGroup.Post("/import-csv/:job_id/confirm", importHandler.Confirm)
 	adminGroup.Get("/import-csv/:job_id/credentials.csv", importHandler.DownloadCredentials)
+
+	// Hourly cleanup cron (Task 2.D.6): expire stale preview jobs + evict
+	// post-TTL credentials.csv blobs from R2. Started here so it shares
+	// the request-scoped context cancellation on shutdown.
+	importCleaner := importjob.NewCleaner(importRepo, objectStore)
+	go importCleaner.Run(rootCtx)
 	kelasGroup := api.Group("/kelas",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),

@@ -106,6 +106,51 @@ func (r *Repo) SetErrorsJSON(ctx context.Context, id uuid.UUID, errorsJSON []byt
 		UpdateColumn("errors_json", datatypes.JSON(errorsJSON)).Error
 }
 
+// ExpireCredentialsBefore returns every completed job whose CompletedAt is
+// older than cutoff AND still has a credentials_csv key set, then nulls out
+// the credentials_csv column for those rows in a single transaction. The
+// returned slice contains the rows BEFORE the null-out, so the caller can
+// best-effort DeleteObject the R2 credentials.csv blob (Task 2.D.6 cleanup).
+//
+// Status stays at completed — we only drop the download handle. Audit
+// queries that filter on status='completed' still see these rows; only
+// DownloadCredentials starts returning ErrCredentialsMissing once the
+// credentials_csv pointer is gone.
+func (r *Repo) ExpireCredentialsBefore(ctx context.Context, cutoff time.Time) ([]ImportJob, error) {
+	var expired []ImportJob
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var rows []ImportJob
+		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("status = ? AND credentials_csv IS NOT NULL AND completed_at IS NOT NULL AND completed_at < ?",
+				StatusCompleted, cutoff).
+			Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+
+		ids := make([]uuid.UUID, 0, len(rows))
+		for _, r := range rows {
+			ids = append(ids, r.ID)
+		}
+		if err := tx.
+			Model(&ImportJob{}).
+			Where("id IN ?", ids).
+			UpdateColumn("credentials_csv", gorm.Expr("NULL")).Error; err != nil {
+			return err
+		}
+
+		expired = rows
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return expired, nil
+}
+
 // ExpirePreviewBefore flips every preview job whose ExpiresAt < cutoff to
 // status='expired' and returns the rows that were expired (so the caller can
 // delete their on-disk CSV). Runs in a single transaction with a row-level
