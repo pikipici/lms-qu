@@ -48,10 +48,13 @@ import {
 
 import { ApiError } from '@/lib/api';
 import {
+  type EnrollmentItem,
+  type EnrollmentJoinedVia,
   type Kelas,
   archiveKelas,
   duplicateKelas,
   getKelas,
+  listKelasEnrollments,
   updateKelas,
 } from '@/lib/kelas-api';
 import { useToast } from '@/hooks/use-toast';
@@ -592,6 +595,201 @@ function PlaceholderTab({
   );
 }
 
+// ---------- Siswa tab (Task 2.C.4) ----------
+//
+// Read-only roster of active enrollments di kelas ini. Locked decision v0.7.2:
+// guru gak punya tombol remove di MVP — admin scope, di-defer ke Fase 2 backlog
+// atau v0.9. Kalau dibutuhkan: tambahkan endpoint admin-side dulu, jangan
+// shortcut PATCH dari sini.
+
+const ENROLLMENTS_PAGE_SIZE = 20;
+
+function joinedViaLabel(via: EnrollmentJoinedVia): string {
+  switch (via) {
+    case 'admin':
+      return 'Diundang admin';
+    case 'kode':
+      return 'Via kode invite';
+    default:
+      return via;
+  }
+}
+
+function SiswaTab({ kelasID }: { kelasID: string }) {
+  const [page, setPage] = React.useState(1);
+
+  const query = useQuery({
+    queryKey: ['guru', 'kelas', 'enrollments', kelasID, page],
+    queryFn: () =>
+      listKelasEnrollments(kelasID, {
+        page,
+        pageSize: ENROLLMENTS_PAGE_SIZE,
+      }),
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+  });
+
+  if (query.isPending) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Siswa</CardTitle>
+          <CardDescription>Memuat daftar siswa…</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-12 animate-pulse rounded-md border bg-muted/40"
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (query.isError) {
+    const err = query.error;
+    const isForbidden = err instanceof ApiError && err.code === 'forbidden';
+    const requestId = err instanceof ApiError ? err.requestId : undefined;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Gagal memuat daftar siswa</CardTitle>
+          <CardDescription>
+            {isForbidden
+              ? 'Lu hanya bisa lihat siswa di kelas yang lu kelola.'
+              : err instanceof ApiError
+                ? err.message
+                : 'Terjadi kesalahan tidak terduga.'}
+            {requestId ? ` (req: ${requestId})` : ''}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => query.refetch()}
+            disabled={query.isFetching}
+          >
+            <RotateCcw className="size-4" />
+            Coba lagi
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const data = query.data!;
+  const items: EnrollmentItem[] = data.items;
+  const total = data.total;
+  const totalPages = data.total_pages;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="space-y-1.5">
+          <CardTitle className="text-base">Siswa</CardTitle>
+          <CardDescription>
+            {total === 0
+              ? 'Belum ada siswa terdaftar di kelas ini.'
+              : `Total ${total} siswa aktif. Bagikan kode invite untuk
+                  menambah peserta baru.`}
+          </CardDescription>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+        >
+          <RotateCcw className="size-4" />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {items.length === 0 ? (
+          <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+            Belum ada siswa. Bagikan kode invite di header untuk mulai
+            mengundang.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Nama</th>
+                  <th className="px-3 py-2 font-medium">Email</th>
+                  <th className="px-3 py-2 font-medium">Bergabung via</th>
+                  <th className="px-3 py-2 font-medium">Tanggal join</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.siswa_id} className="border-t">
+                    <td className="px-3 py-2 font-medium">
+                      {item.nama || (
+                        <span className="text-muted-foreground">
+                          (tanpa nama)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {item.email || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {joinedViaLabel(item.joined_via)}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {formatDate(item.joined_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Halaman {data.page} dari {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || query.isFetching}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages || query.isFetching}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          Read-only di MVP. Untuk mengeluarkan siswa, hubungi admin.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---------- Page ----------
 
 type TabKey = 'pengaturan' | 'siswa' | 'pengumuman';
@@ -774,14 +972,7 @@ function GuruKelasDetailContent({ id }: { id: string }) {
         </Card>
       )}
 
-      {tab === 'siswa' && (
-        <PlaceholderTab
-          Icon={Users}
-          title="Siswa"
-          body="Daftar siswa di kelas ini, undang via kode invite, atau bulk import via CSV."
-          taskRef="Task 2.C / 2.D"
-        />
-      )}
+      {tab === 'siswa' && <SiswaTab kelasID={kelas.id} />}
 
       {tab === 'pengumuman' && (
         <PlaceholderTab

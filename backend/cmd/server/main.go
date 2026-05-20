@@ -230,7 +230,7 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 
 	// Kelas (Phase 2): guru manages own kelas, admin sees all.
 	kelasRepo := kelas.NewRepo(gdb)
-	kelasSvc := kelas.NewService(kelasRepo, authRepo)
+	kelasSvc := kelas.NewService(kelasRepo, authRepo, authRepo)
 	kelasHandler := kelas.NewHandler(kelasSvc)
 
 	// Admin bulk-enroll (Phase 2.C.2): assign multiple siswa directly into a
@@ -249,6 +249,7 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	kelasGroup.Patch("/:id", kelasHandler.Update)
 	kelasGroup.Post("/:id/archive", kelasHandler.Archive)
 	kelasGroup.Post("/:id/duplicate", kelasHandler.Duplicate)
+	kelasGroup.Get("/:id/enrollments", kelasHandler.ListEnrollments)
 
 	// Siswa-side enrollment (Phase 2.C): siswa joins a kelas via kode invite.
 	// Rate-limited per IP+siswa to deter scraping. Mounted under /siswa group

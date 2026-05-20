@@ -99,3 +99,44 @@ export async function duplicateKelas(
     body: input,
   });
 }
+
+// ----- Enrollment list (Task 2.C.4) -----
+//
+// Backend: GET /api/v1/kelas/:id/enrollments
+//   Query params: page, page_size, include_removed
+//   Auth: guru-owner OR admin (canManage gate)
+//   Removed enrollments hidden by default; include_removed=true is admin-side.
+
+export type EnrollmentStatus = 'active' | 'removed';
+export type EnrollmentJoinedVia = 'admin' | 'kode';
+
+export interface EnrollmentItem {
+  siswa_id: string;
+  nama: string;
+  email: string;
+  status: EnrollmentStatus;
+  joined_via: EnrollmentJoinedVia;
+  joined_at: string;
+}
+
+export interface EnrollmentListResponse {
+  items: EnrollmentItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export async function listKelasEnrollments(
+  kelasID: string,
+  params: { page?: number; pageSize?: number; includeRemoved?: boolean } = {},
+): Promise<EnrollmentListResponse> {
+  const q = new URLSearchParams();
+  if (params.page) q.set('page', String(params.page));
+  if (params.pageSize) q.set('page_size', String(params.pageSize));
+  if (params.includeRemoved) q.set('include_removed', 'true');
+  const qs = q.toString();
+  return api<EnrollmentListResponse>(
+    `/kelas/${kelasID}/enrollments${qs ? `?${qs}` : ''}`,
+  );
+}

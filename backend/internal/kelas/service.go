@@ -43,6 +43,7 @@ type kelasRepo interface {
 	Unarchive(ctx context.Context, id uuid.UUID) error
 	Enroll(ctx context.Context, kelasID, siswaID uuid.UUID, via JoinedVia) (bool, error)
 	FindEnrollment(ctx context.Context, kelasID, siswaID uuid.UUID) (*Enrollment, error)
+	ListEnrollmentsByKelas(ctx context.Context, kelasID uuid.UUID, limit, offset int) ([]Enrollment, int64, error)
 	ListEnrollmentsBySiswa(ctx context.Context, siswaID uuid.UUID, limit, offset int) ([]Enrollment, int64, error)
 }
 
@@ -52,16 +53,27 @@ type auditLogger interface {
 	LogAudit(ctx context.Context, entry *auth.AuditLog) error
 }
 
+// userLookup hydrates enrollment rows with user details (nama + email) so the
+// guru/admin tab Siswa can render without N+1 round-trips. Implemented by
+// *auth.Repo.
+type userLookup interface {
+	FindUserByID(ctx context.Context, id uuid.UUID) (*auth.User, error)
+}
+
 // Service handles kelas business logic.
 type Service struct {
 	repo  kelasRepo
 	audit auditLogger
+	users userLookup
 	now   func() time.Time
 }
 
-// NewService wires the kelas Repo + audit logger.
-func NewService(repo kelasRepo, audit auditLogger) *Service {
-	return &Service{repo: repo, audit: audit, now: time.Now}
+// NewService wires the kelas Repo + audit logger + user lookup. The user
+// lookup is used only by ListEnrollmentsByKelas (Task 2.C.4); other methods
+// tolerate a nil users field, but production wiring should always pass a
+// non-nil lookup.
+func NewService(repo kelasRepo, audit auditLogger, users userLookup) *Service {
+	return &Service{repo: repo, audit: audit, users: users, now: time.Now}
 }
 
 // CreateInput holds new-kelas fields supplied by the guru caller.
@@ -172,6 +184,93 @@ type MyKelasItem struct {
 type MyKelasResult struct {
 	Items []MyKelasItem `json:"items"`
 	Total int64         `json:"total"`
+}
+
+// EnrollmentItem is one row in the guru-side tab Siswa list, hydrated with
+// the enrolled user's display details. Nama/Email diff dari relasi
+// langsung supaya FE bisa render tanpa round-trip terpisah.
+type EnrollmentItem struct {
+	SiswaID   uuid.UUID        `json:"siswa_id"`
+	Nama      string           `json:"nama"`
+	Email     string           `json:"email"`
+	Status    EnrollmentStatus `json:"status"`
+	JoinedVia JoinedVia        `json:"joined_via"`
+	JoinedAt  time.Time        `json:"joined_at"`
+}
+
+// EnrollmentListResult bundles the page + total for the kelas tab Siswa
+// endpoint. Total dari repo sudah ngitung semua status (active + removed)
+// karena pagination dilakukan SEBELUM in-memory filter; service nanti expose
+// total apa adanya supaya page math konsisten ketika filter berubah.
+type EnrollmentListResult struct {
+	Items []EnrollmentItem `json:"items"`
+	Total int64            `json:"total"`
+}
+
+// EnrollmentListInput is the per-call config for ListEnrollmentsByKelas.
+// IncludeRemoved=false (default) hides soft-removed rows so guru tab Siswa
+// shows only active members.
+type EnrollmentListInput struct {
+	IncludeRemoved bool
+	Limit          int
+	Offset         int
+}
+
+// ListEnrollmentsByKelas returns the enrollment roster of a kelas, hydrated
+// with each siswa's nama + email. Caller must own the kelas (or be admin).
+// Hidden by default: status=removed enrollments are filtered out unless
+// in.IncludeRemoved is true (admin-only knob, FE may not expose it in MVP).
+//
+// Tolerates dangling enrollment rows (siswa user yang udah dihapus) — di-skip
+// silently dengan log warning, biar list satu kelas gak macet karena satu
+// row bermasalah. Same approach sama ListMyKelas.
+func (s *Service) ListEnrollmentsByKelas(ctx context.Context, kelasID, callerID uuid.UUID, callerRole string, in EnrollmentListInput) (*EnrollmentListResult, error) {
+	k, err := s.repo.FindByID(ctx, kelasID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("kelas list enrollments find: %w", err)
+	}
+	if !canManage(k, callerID, callerRole) {
+		return nil, ErrForbidden
+	}
+
+	limit, offset := normalizePagination(in.Limit, in.Offset)
+	rows, total, err := s.repo.ListEnrollmentsByKelas(ctx, kelasID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("kelas list enrollments: %w", err)
+	}
+
+	items := make([]EnrollmentItem, 0, len(rows))
+	for _, e := range rows {
+		if !in.IncludeRemoved && e.Status != EnrollmentActive {
+			continue
+		}
+		nama, email := "", ""
+		if s.users != nil {
+			u, ferr := s.users.FindUserByID(ctx, e.SiswaID)
+			switch {
+			case errors.Is(ferr, gorm.ErrRecordNotFound):
+				// dangling enrollment — skip silently, same as ListMyKelas
+				continue
+			case ferr != nil:
+				return nil, fmt.Errorf("kelas list enrollments hydrate: %w", ferr)
+			default:
+				nama = u.Name
+				email = u.Email
+			}
+		}
+		items = append(items, EnrollmentItem{
+			SiswaID:   e.SiswaID,
+			Nama:      nama,
+			Email:     email,
+			Status:    e.Status,
+			JoinedVia: e.JoinedVia,
+			JoinedAt:  e.JoinedAt,
+		})
+	}
+	return &EnrollmentListResult{Items: items, Total: total}, nil
 }
 
 // ListInput holds list filters/pagination.

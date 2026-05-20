@@ -207,6 +207,24 @@ func (m *mockRepo) ListEnrollmentsBySiswa(ctx context.Context, siswaID uuid.UUID
 	return rows[offset:end], total, nil
 }
 
+func (m *mockRepo) ListEnrollmentsByKelas(ctx context.Context, kelasID uuid.UUID, limit, offset int) ([]Enrollment, int64, error) {
+	rows := make([]Enrollment, 0)
+	for _, e := range m.enrollments {
+		if e.KelasID == kelasID {
+			rows = append(rows, *e)
+		}
+	}
+	total := int64(len(rows))
+	if offset >= len(rows) {
+		return []Enrollment{}, total, nil
+	}
+	end := offset + limit
+	if end > len(rows) {
+		end = len(rows)
+	}
+	return rows[offset:end], total, nil
+}
+
 func paginate(rows []Kelas, limit, offset int) ([]Kelas, int64, error) {
 	total := int64(len(rows))
 	if offset >= len(rows) {
@@ -232,13 +250,49 @@ func (r *recordingAudit) LogAudit(ctx context.Context, entry *auth.AuditLog) err
 	return nil
 }
 
+// stubUserLookup is the in-memory userLookup used by service tests. Empty by
+// default — tests that exercise ListEnrollmentsByKelas seed users explicitly.
+type stubUserLookup struct {
+	users map[uuid.UUID]*auth.User
+	err   error
+}
+
+func newStubUserLookup() *stubUserLookup {
+	return &stubUserLookup{users: map[uuid.UUID]*auth.User{}}
+}
+
+func (s *stubUserLookup) FindUserByID(ctx context.Context, id uuid.UUID) (*auth.User, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	u, ok := s.users[id]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	cp := *u
+	return &cp, nil
+}
+
 func newSvc(t *testing.T) (*Service, *mockRepo, *recordingAudit) {
 	t.Helper()
 	repo := newMockRepo()
 	audit := &recordingAudit{}
-	svc := NewService(repo, audit)
+	users := newStubUserLookup()
+	svc := NewService(repo, audit, users)
 	svc.now = func() time.Time { return time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC) }
 	return svc, repo, audit
+}
+
+// newSvcWithUsers mirrors newSvc but also returns the stubUserLookup so tests
+// covering ListEnrollmentsByKelas can seed user rows.
+func newSvcWithUsers(t *testing.T) (*Service, *mockRepo, *recordingAudit, *stubUserLookup) {
+	t.Helper()
+	repo := newMockRepo()
+	audit := &recordingAudit{}
+	users := newStubUserLookup()
+	svc := NewService(repo, audit, users)
+	svc.now = func() time.Time { return time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC) }
+	return svc, repo, audit, users
 }
 
 func TestService_Create_HappyPath(t *testing.T) {
@@ -531,4 +585,143 @@ func lastAuditAction(r *recordingAudit) string {
 		return ""
 	}
 	return r.entries[len(r.entries)-1].Action
+}
+
+// --- ListEnrollmentsByKelas (Task 2.C.4) ---
+
+func TestService_ListEnrollmentsByKelas_HappyPath(t *testing.T) {
+	svc, repo, _, users := newSvcWithUsers(t)
+	guruID := uuid.New()
+	siswa1, siswa2 := uuid.New(), uuid.New()
+	users.users[siswa1] = &auth.User{ID: siswa1, Name: "Andi", Email: "andi@example.com", Role: auth.Siswa, Status: auth.Active}
+	users.users[siswa2] = &auth.User{ID: siswa2, Name: "Budi", Email: "budi@example.com", Role: auth.Siswa, Status: auth.Active}
+
+	k, err := svc.Create(context.Background(), guruID, CreateInput{Nama: "Kelas A", BobotSoalUlangan: 50, BobotTugas: 50}, "1.1.1.1", "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Enroll(context.Background(), k.ID, siswa1, JoinedViaKode); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Enroll(context.Background(), k.ID, siswa2, JoinedViaAdmin); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := svc.ListEnrollmentsByKelas(context.Background(), k.ID, guruID, string(auth.Guru), EnrollmentListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if res.Total != 2 || len(res.Items) != 2 {
+		t.Fatalf("unexpected items: total=%d len=%d", res.Total, len(res.Items))
+	}
+	for _, item := range res.Items {
+		if item.Nama == "" || item.Email == "" {
+			t.Fatalf("missing hydrate fields: %+v", item)
+		}
+	}
+}
+
+func TestService_ListEnrollmentsByKelas_HidesRemovedByDefault(t *testing.T) {
+	svc, repo, _, users := newSvcWithUsers(t)
+	guruID := uuid.New()
+	siswa := uuid.New()
+	users.users[siswa] = &auth.User{ID: siswa, Name: "Andi", Email: "andi@example.com", Role: auth.Siswa, Status: auth.Active}
+
+	k, err := svc.Create(context.Background(), guruID, CreateInput{Nama: "K", BobotSoalUlangan: 50, BobotTugas: 50}, "1.1.1.1", "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Enroll(context.Background(), k.ID, siswa, JoinedViaKode); err != nil {
+		t.Fatal(err)
+	}
+	// soft-remove
+	if err := repo.RemoveEnrollment(context.Background(), k.ID, siswa); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := svc.ListEnrollmentsByKelas(context.Background(), k.ID, guruID, string(auth.Guru), EnrollmentListInput{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 0 {
+		t.Fatalf("expected removed enrollment to be hidden, got %d items", len(res.Items))
+	}
+	// total still reflects raw DB rows so pagination math stays correct
+	if res.Total != 1 {
+		t.Fatalf("expected raw total=1, got %d", res.Total)
+	}
+
+	// admin opt-in: include_removed=true → row visible again
+	res, err = svc.ListEnrollmentsByKelas(context.Background(), k.ID, guruID, string(auth.Admin), EnrollmentListInput{Limit: 10, IncludeRemoved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("expected 1 item with IncludeRemoved=true, got %d", len(res.Items))
+	}
+	if res.Items[0].Status != EnrollmentRemoved {
+		t.Fatalf("status mismatch: %s", res.Items[0].Status)
+	}
+}
+
+func TestService_ListEnrollmentsByKelas_ForbiddenForOtherGuru(t *testing.T) {
+	svc, _, _, _ := newSvcWithUsers(t)
+	owner := uuid.New()
+	intruder := uuid.New()
+
+	k, err := svc.Create(context.Background(), owner, CreateInput{Nama: "K", BobotSoalUlangan: 50, BobotTugas: 50}, "1.1.1.1", "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.ListEnrollmentsByKelas(context.Background(), k.ID, intruder, string(auth.Guru), EnrollmentListInput{Limit: 10})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+
+	// admin can read foreign kelas
+	_, err = svc.ListEnrollmentsByKelas(context.Background(), k.ID, intruder, string(auth.Admin), EnrollmentListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("admin should be allowed, got %v", err)
+	}
+}
+
+func TestService_ListEnrollmentsByKelas_NotFound(t *testing.T) {
+	svc, _, _, _ := newSvcWithUsers(t)
+	_, err := svc.ListEnrollmentsByKelas(context.Background(), uuid.New(), uuid.New(), string(auth.Admin), EnrollmentListInput{Limit: 10})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestService_ListEnrollmentsByKelas_DanglingUserSkipped(t *testing.T) {
+	svc, repo, _, users := newSvcWithUsers(t)
+	guruID := uuid.New()
+	live := uuid.New()
+	dangling := uuid.New()
+	users.users[live] = &auth.User{ID: live, Name: "Live", Email: "live@x", Role: auth.Siswa, Status: auth.Active}
+	// dangling siswa intentionally missing from users map
+
+	k, err := svc.Create(context.Background(), guruID, CreateInput{Nama: "K", BobotSoalUlangan: 50, BobotTugas: 50}, "1.1.1.1", "ua")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Enroll(context.Background(), k.ID, live, JoinedViaKode); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Enroll(context.Background(), k.ID, dangling, JoinedViaKode); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := svc.ListEnrollmentsByKelas(context.Background(), k.ID, guruID, string(auth.Guru), EnrollmentListInput{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Total tetap 2 (raw DB), tapi items cuma 1 (live siswa). Dangling skipped.
+	if res.Total != 2 {
+		t.Fatalf("expected raw total=2, got %d", res.Total)
+	}
+	if len(res.Items) != 1 || res.Items[0].SiswaID != live {
+		t.Fatalf("expected only live siswa, got %+v", res.Items)
+	}
 }

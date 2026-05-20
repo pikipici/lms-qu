@@ -32,6 +32,7 @@ type kelasService interface {
 	Duplicate(ctx context.Context, id, callerID uuid.UUID, callerRole string, in DuplicateInput, ip, userAgent string) (*Kelas, error)
 	JoinByKode(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, userAgent string) (*JoinByKodeResult, error)
 	ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error)
+	ListEnrollmentsByKelas(ctx context.Context, kelasID, callerID uuid.UUID, callerRole string, in EnrollmentListInput) (*EnrollmentListResult, error)
 }
 
 // Handler wires HTTP routes to kelas Service.

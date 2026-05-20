@@ -20,15 +20,16 @@ import (
 )
 
 type stubSvc struct {
-	createFn      func(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error)
-	listFn        func(ctx context.Context, guruID uuid.UUID, in ListInput) (*ListResult, error)
-	listAllFn     func(ctx context.Context, in ListInput) (*ListResult, error)
-	getFn         func(ctx context.Context, id, viewerID uuid.UUID, role string) (*Kelas, error)
-	updateFn      func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Kelas, error)
-	archiveFn     func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Kelas, error)
-	duplicateFn   func(ctx context.Context, id, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Kelas, error)
-	joinFn        func(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, ua string) (*JoinByKodeResult, error)
-	listMyKelasFn func(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error)
+	createFn        func(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error)
+	listFn          func(ctx context.Context, guruID uuid.UUID, in ListInput) (*ListResult, error)
+	listAllFn       func(ctx context.Context, in ListInput) (*ListResult, error)
+	getFn           func(ctx context.Context, id, viewerID uuid.UUID, role string) (*Kelas, error)
+	updateFn        func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Kelas, error)
+	archiveFn       func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Kelas, error)
+	duplicateFn     func(ctx context.Context, id, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Kelas, error)
+	joinFn          func(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, ua string) (*JoinByKodeResult, error)
+	listMyKelasFn   func(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error)
+	listEnrollFn    func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in EnrollmentListInput) (*EnrollmentListResult, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error) {
@@ -70,6 +71,13 @@ func (s *stubSvc) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInp
 	return s.listMyKelasFn(ctx, siswaID, in)
 }
 
+func (s *stubSvc) ListEnrollmentsByKelas(ctx context.Context, kelasID, callerID uuid.UUID, role string, in EnrollmentListInput) (*EnrollmentListResult, error) {
+	if s.listEnrollFn == nil {
+		return &EnrollmentListResult{Items: []EnrollmentItem{}, Total: 0}, nil
+	}
+	return s.listEnrollFn(ctx, kelasID, callerID, role, in)
+}
+
 // newApp builds a Fiber app with locals injected (mimicking BearerAuth output).
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
 	t.Helper()
@@ -87,6 +95,7 @@ func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App 
 	app.Post("/kelas/:id/duplicate", h.Duplicate)
 	app.Post("/siswa/kelas/join", h.JoinByKode)
 	app.Get("/siswa/kelas", h.ListMyKelas)
+	app.Get("/kelas/:id/enrollments", h.ListEnrollments)
 	return app
 }
 
@@ -382,5 +391,96 @@ func TestHandler_FriendlyMessage_StripsLayeredPrefix(t *testing.T) {
 	got := friendlyMessage(errors.New("kelas: invalid input: nama is required"), "fallback")
 	if got != "nama is required" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// --- ListEnrollments (Task 2.C.4) ---
+
+func TestHandler_ListEnrollments_HappyPath(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	siswa1 := uuid.New()
+	svc := &stubSvc{
+		listEnrollFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in EnrollmentListInput) (*EnrollmentListResult, error) {
+			if kID != kelasID {
+				t.Fatalf("kelas id mismatch: %s vs %s", kID, kelasID)
+			}
+			if cID != guruID {
+				t.Fatalf("caller id mismatch")
+			}
+			if in.IncludeRemoved {
+				t.Fatalf("default include_removed should be false")
+			}
+			return &EnrollmentListResult{
+				Items: []EnrollmentItem{
+					{
+						SiswaID: siswa1, Nama: "Andi", Email: "andi@example.com",
+						Status: EnrollmentActive, JoinedVia: JoinedViaKode,
+						JoinedAt: time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC),
+					},
+				},
+				Total: 1,
+			}, nil
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "GET", "/kelas/"+kelasID.String()+"/enrollments?page=1&page_size=10", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	var out enrollmentListResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Total != 1 || len(out.Items) != 1 {
+		t.Fatalf("unexpected items: %+v", out)
+	}
+	if out.Items[0].Nama != "Andi" || out.Items[0].Email != "andi@example.com" {
+		t.Fatalf("hydrate fields missing: %+v", out.Items[0])
+	}
+	if out.Page != 1 || out.PageSize != 10 || out.TotalPages != 1 {
+		t.Fatalf("pagination mismatch: %+v", out)
+	}
+}
+
+func TestHandler_ListEnrollments_IncludeRemovedQuery(t *testing.T) {
+	captured := EnrollmentListInput{}
+	svc := &stubSvc{
+		listEnrollFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in EnrollmentListInput) (*EnrollmentListResult, error) {
+			captured = in
+			return &EnrollmentListResult{Items: []EnrollmentItem{}, Total: 0}, nil
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Admin), uuid.New())
+	doReq(t, app, "GET", "/kelas/"+uuid.New().String()+"/enrollments?include_removed=true", nil)
+	if !captured.IncludeRemoved {
+		t.Fatalf("include_removed query flag did not propagate")
+	}
+}
+
+func TestHandler_ListEnrollments_InvalidID(t *testing.T) {
+	app := newApp(t, &Handler{svc: &stubSvc{}}, string(auth.Guru), uuid.New())
+	resp, body := doReq(t, app, "GET", "/kelas/not-a-uuid/enrollments", nil)
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "invalid_id") {
+		t.Fatalf("missing invalid_id: %s", body)
+	}
+}
+
+func TestHandler_ListEnrollments_ServiceForbidden(t *testing.T) {
+	svc := &stubSvc{
+		listEnrollFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in EnrollmentListInput) (*EnrollmentListResult, error) {
+			return nil, ErrForbidden
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), uuid.New())
+	resp, body := doReq(t, app, "GET", "/kelas/"+uuid.New().String()+"/enrollments", nil)
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "forbidden") {
+		t.Fatalf("missing forbidden code: %s", body)
 	}
 }
