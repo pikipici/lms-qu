@@ -31,8 +31,8 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.7.2).
-- 60 locked decisions, 10 open decisions, ~7 minggu estimasi.
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.8.0 — storage ke Cloudflare R2).
+- 62 locked decisions (v0.8.0: +#61 R2 storage backend, #62 upload flow & access), 10 open decisions, ~7 minggu estimasi.
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
@@ -47,12 +47,12 @@
 
 ## Critical conventions
 - Timezone: server lock `Asia/Jakarta`, FE tampil WIB explicit.
-- Storage path: `./storage/uploads/<kategori>/<uuid>.<ext>` (kategori = tugas|soal|materi|submission|import).
+- Storage: **Cloudflare R2** (S3-compatible) — bucket `lms-prod` (live) / `lms-dev` (workspace), object key `<kategori>/<uuid>.<ext>` (kategori = tugas|soal|materi|submission|import). Akses lewat presigned GET URL (TTL 15m).
 - Auth: JWT access 15m stateless + refresh 7d stateful (RefreshToken table, rotation, reuse detection).
 - Rate limit: `/auth/login` 5/15m per (IP+email), global 120/min per IP, refresh 10/min, kelas/join 10/min, upload 30/min.
 - Optimistic concurrency: `Version` field di Bab/Kelas/SoalBab/UlanganBabSetting/Soal/Ujian.
 - Submit transition: `SELECT FOR UPDATE` + cek status di transaction, idempotent.
-- Health: `/api/v1/healthz` (liveness, no DB), `/api/v1/readyz` (DB + storage check).
+- Health: `/api/v1/healthz` (liveness, no DB), `/api/v1/readyz` (DB ping + R2 `HeadBucket` cached 30s).
 - Request ID: middleware bikin `X-Request-ID` di semua request, propagate ke slog.
 
 ## Deploy

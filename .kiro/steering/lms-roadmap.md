@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 + 2.B FULL + 2.C.1 + 2.C.2 + 2.C.3 DONE (kelas/enrollment/import_jobs schema + GORM repos + kode invite generator + CRUD endpoints + FE guru shell list/create/detail/edit/duplicate/archive + siswa join via kode invite + admin bulk-enroll + siswa list-my-kelas backend + FE siswa dashboard/join form). Berikut: Task 2.C.4 (FE guru tab Siswa di kelas detail).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C.1-3 still DONE; Fase 2.D bulk import & semua fase ber-file (3, 4, 5, 6) di-rewrite untuk R2. Locked decisions baru: #61 R2 storage strategy, #62 upload flow + access control (presigned URL via backend). Berikut: Task 2.C.4 (FE guru tab Siswa di kelas detail), lalu Task 2.D.0 (R2 prerequisite: bucket + token + storage client wrapper) sebelum 2.D.1.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 2.C.3 marked done; backend list-my-kelas + FE siswa shell + dashboard + gabung form shipped, npm build 20 pages, E2E smoke 10 scenario hijau termasuk filter active enrollment + role guard + FE static 200)
+> Last updated: 2026-05-20 (Storage strategy migrated to Cloudflare R2: locked decisions #6 + #44 + #46 + #58 revised, #61 + #62 added; tech stack + Section 7/9/13 + Fase 2.D-8 phasing + Section 11 risks + Section 18 Task 2.D.0 prerequisite di-update)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -27,7 +27,7 @@
 
 ---
 
-## 0. Locked Decisions (v0.7.2)
+## 0. Locked Decisions (v0.8.0)
 
 | # | Keputusan | Pilihan |
 |---|-----------|---------|
@@ -36,7 +36,7 @@
 | 3 | Frontend | Next.js 14 + TS + Tailwind + shadcn/ui + Zustand + TanStack Query |
 | 4 | Frontend build mode | **Static export** (`output: 'export'`) — di-serve oleh Go Fiber sebagai static, mirip fb-bot |
 | 5 | Jenis soal ujian | Pilihan Ganda (MCQ) saja |
-| 6 | Storage materi | Local disk (`./storage/uploads/`) di rdpkhorur |
+| 6 | Storage materi | **Cloudflare R2** (S3-compatible object storage) — semua file user (materi, tugas, submission, soal, import CSV) di R2, tidak di local disk |
 | 7 | Anti-cheat MVP | Timer server-side + shuffle soal/opsi + log tab-switch (tanpa hard lock) |
 | 8 | Auth | JWT (access 15m + refresh 7d), bcrypt password |
 | 9 | Deploy target | rdpkhorur, mengikuti pola fb-bot (lihat Section 13) |
@@ -74,9 +74,9 @@
 | 41 | Forgot password | Halaman `/lupa-password`: cuma instruksi "Hubungi admin sekolah/guru wali kelas untuk reset password". Tidak ada PasswordResetRequest table di MVP — admin reset manual via dashboard. |
 | 42 | Session/JWT revocation | Refresh token disimpan di DB (`RefreshToken { jti, user_id, issued_at, expires_at, revoked_at, ip, user_agent }`). Access token tetap stateless 15m. Logout / suspend / lock / change-password / admin reset password → revoke semua refresh token user (kecuali current device saat self change-password, opsional). Refresh request cek `revoked_at IS NULL` + rotate (issue jti baru, mark old revoked). Compromised token mitigation. |
 | 43 | Submit concurrency | Transition `HasilSoalBab` / `HasilUjian` dari `berlangsung → submitted/expired` pakai `SELECT ... FOR UPDATE` di dalam transaction + cek status sebelum update. Auto-grade jalan dalam transaction yang sama. Idempotent: kalau status udah `submitted/expired`, return hasil yang ada (no double grade). Background job timer-expire pakai advisory lock per row. |
-| 44 | Health/readiness split | `/api/v1/healthz` (liveness, return 200 selalu kalau process hidup, no DB) + `/api/v1/readyz` (readiness, cek DB ping + storage dir writable + return 503 kalau ada yang fail). systemd `ExecStartPost` pakai readyz. Loadbalancer/uptime monitor pakai readyz. |
+| 44 | Health/readiness split | `/api/v1/healthz` (liveness, return 200 selalu kalau process hidup, no DB) + `/api/v1/readyz` (readiness, cek DB ping + R2 reachable via `HeadBucket` + return 503 kalau ada yang fail). systemd `ExecStartPost` pakai readyz. Loadbalancer/uptime monitor pakai readyz. |
 | 45 | Remedial snapshot policy | Saat reset attempt: HasilSoalBab/HasilUjian + JawabanBab/Jawaban + SoalAssignment di-soft-delete (`DeletedAt`). Attempt baru bikin **assignment baru fresh** (refetch SoalBab/Soal aktif sekarang). AuditLog catat: actor, target_siswa, target_bab/ujian, reason, jumlah_soal_lama, jumlah_soal_baru, soal_diff (added/removed IDs). Siswa lihat soal baru — penting kalau guru udah edit/tambah soal antar attempt. |
-| 46 | File upload hardening | (1) Mime detect via `http.DetectContentType` (sniff isi, jangan trust client `Content-Type`). (2) Allowlist eksplisit per kategori: tugas (pdf, docx, jpg, png, zip), gambar soal (jpg, png, webp). (3) Filename sanitize: simpan sebagai `<uuid>.<ext>`, original name di DB column terpisah. (4) Gambar soal: resize on upload (max 1920px, quality 85) pake `disintegration/imaging` atau `nfnt/resize`. (5) PDF tugas max 20MB, gambar 5MB. (6) Block executable mime explicit (application/x-executable, application/x-msdownload, application/x-sh). (7) Upload dir di luar `frontend/out/` — di-serve via authenticated endpoint, bukan static. |
+| 46 | File upload hardening | (1) Mime detect via `http.DetectContentType` (sniff isi 512 byte pertama, jangan trust client `Content-Type`); validate SEBELUM upload ke R2. (2) Allowlist eksplisit per kategori: tugas (pdf, docx, jpg, png, zip), gambar soal (jpg, png, webp), materi (pdf, mp4, jpg, png), submission (pdf, docx, jpg, png, zip), import (csv only). (3) Filename sanitize: object key di R2 = `<kategori>/<uuid>.<ext>` (lihat #58); `OriginalFilename` di DB column terpisah untuk download UX. (4) Gambar soal: resize on upload (max 1920px, quality 85) pake `disintegration/imaging` SEBELUM `PutObject` ke R2. (5) PDF tugas max 20MB, gambar 5MB, materi video max 100MB. (6) Block executable mime explicit (application/x-executable, application/x-msdownload, application/x-sh). (7) R2 bucket BUKAN public — diakses lewat presigned GET URL (lihat #62). |
 | 47 | Global rate limit | Selain `/auth/login` (5/15m per IP+email), tambahin: per-IP global 120 req/menit (Fiber `limiter` middleware), `/auth/refresh` 10/menit per refresh token, `/kelas/join` 10/menit per IP (cegah brute force kode invite), upload endpoints 30/menit per user. In-memory store cukup MVP. |
 | 48 | Bab progress formula | Per siswa per bab: `progress_persen = round( (w_materi × pct_materi + w_latihan × pct_latihan + w_ulangan × pct_ulangan + w_tugas × pct_tugas) / total_w )` dengan default bobot equal (25/25/25/25), skip komponen yang gak ada (mis. bab tanpa tugas → bobot tugas dropped, sisanya re-normalize). pct_materi = `materi_dibaca / total_materi`. pct_latihan = `1 if ada attempt latihan else 0`. pct_ulangan = `1 if HasilSoalBab(mode=ulangan, status=submitted/expired) ada else 0`. pct_tugas = `submission_graded / total_tugas`. Display: progress bar + tooltip breakdown. |
 | 49 | Request ID & observability | Middleware bikin `X-Request-ID` (UUID v4 atau dari header kalau ada) di semua request, propagate ke slog context (`request_id`, `user_id`, `path`, `method`). Response header echo balik. Error response include `request_id` supaya user bisa report ke admin. Dipasang dari Fase 0, bukan Fase 8. |
@@ -84,13 +84,15 @@
 | 51 | Data retention policy | LoginAttempt 30 hari (auto-cleanup). AuditLog **forever** (compliance, kalau perlu archive ke cold storage di v1). Submission file: retain sampai kelas di-archive + 1 tahun, lalu hard-delete file (DB row tetap untuk nilai history). HasilSoalBab/HasilUjian deleted_at: hard delete setelah 1 tahun + audit log. Backup pg_dump: retain 30 hari rolling, monthly archive 1 tahun. Cleanup task daily cron di server. |
 | 52 | Multi-admin promotion | Admin baru bisa dibikin via `/admin/users` create form (role=admin). Tapi promote/demote dari guru→admin atau sebaliknya wajib **re-auth**: admin yang melakukan harus re-input password sendiri di modal (POST `/admin/users/:id/role` { role, current_password }). AuditLog catat actor + target + role_lama + role_baru. Tidak ada self-demote (admin gak bisa demote dirinya sendiri kalau dia satu-satunya admin). |
 | 53 | Admin lock-out recovery | `cmd/seed-admin` cuma jalan kalau belum ada admin. Kalau admin satu-satunya kena lock/forget password: `cmd/reset-admin` CLI minta email + password baru, override lewat akses fisik server. Production: butuh SSH access. AuditLog: `actor_id=NULL` + `action='admin_reset_via_cli'`. Tidak ada self-service recovery — by design (akses fisik = trust boundary). |
-| 54 | CSV import preview persistence | Upload CSV → ImportJob status=`preview` (PreviewRowsJSON jsonb + valid_count + invalid_count). Confirm → status=`processing` → `completed`. Cancel atau timeout 1 jam tanpa confirm → status=`expired`, cleanup file + row. Admin bisa close tab tanpa lose preview state — reload `/admin/pengguna/import` resume preview kalau status=preview. |
+| 54 | CSV import preview persistence | Upload CSV → R2 `import/<uuid>.csv` (lihat #58/#61) → ImportJob status=`preview` (PreviewRowsJSON jsonb + valid_count + invalid_count + ObjectKey). Confirm → status=`processing` → `completed`. Cancel atau timeout 1 jam tanpa confirm → status=`expired`, `s3.DeleteObject` + DB row tetap untuk audit. Admin bisa close tab tanpa lose preview state — reload `/admin/pengguna/import` resume preview kalau status=preview. |
 | 55 | Activity feed cursor | `GET /guru/feed?cursor=BASE64&limit=20` pakai opaque cursor `(at_unix_micro, id)` di-base64. Default 20 item. Response: `{ events: [...], next_cursor }`. Polling 30s pakai `cursor=null` (latest 20) buat refresh; load-more pakai cursor. Cegah duplicate/skip kalau dua event timestamp sama. |
 | 56 | Concurrent edit version | Tambah field `Version int default 1` di Bab, Kelas, SoalBab, Soal, UlanganBabSetting, Ujian. Increment tiap update. Request PATCH wajib include `version` di body, backend cek match → reject 409 + `{ error, current_version }` kalau mismatch. UI tampil "Konten ini diubah orang lain — refresh dulu". Cegah dua tab/device guru sama overwrite tanpa sadar. |
 | 57 | Auth boundary explicit | **Endpoint tanpa auth (anon allowed):** `/auth/login`, `/auth/refresh`, `/healthz`, `/readyz`, static files (`/`, `/login`, `/lupa-password`). **Semua lain butuh auth.** Tambahan: enrollment check di endpoint kelas-scope (siswa hanya akses kelas yang dia enrolled, guru hanya akses kelas yang dia owner). Middleware order: ratelimit → request-id → auth → role-guard → enrollment-guard. |
-| 58 | Storage path convention | Flat structure dengan kategori prefix: `./storage/uploads/<kategori>/<uuid>.<ext>` dimana kategori = `tugas`, `soal`, `materi`, `submission`, `import`. Tidak hierarki by bab/kelas — orphan cleanup lebih simple via "select uuid not in (select file_path from <ref tables>)". `OriginalFilename` disimpan di DB column terpisah untuk download UX. Saat duplicate kelas/bab → copy file ke uuid baru (jangan share). |
+| 58 | Storage path convention | **R2 object key** dengan kategori prefix: `<kategori>/<uuid>.<ext>` dimana kategori = `tugas`, `soal`, `materi`, `submission`, `import`. Single bucket `lms-prod` (per-env bucket — `lms-dev` untuk staging). Tidak hierarki by bab/kelas — orphan cleanup lebih simple via "select uuid not in (select object_key from <ref tables>)". `OriginalFilename` disimpan di DB column terpisah untuk download UX. Saat duplicate kelas/bab → `CopyObject` ke key uuid baru (jangan share). DB column rename: `FilePath` → `ObjectKey` (semua referensi file di tabel Materi/Tugas/Submission/Soal/SoalBab/ImportJob). |
 | 59 | Guru audit scope | `GET /guru/kelas/:id/audit?action=<filter>&limit=50` — guru bisa lihat audit log yang berkaitan kelas miliknya: action subset (`hasil_reset`, `bab_archived`, `bab_published`, `siswa_kicked`, `tugas_deleted`). Hanya entry dengan `target_kelas_id=<id>`. Berguna untuk transparansi kalau admin bantu reset attempt. |
 | 60 | Frontend env strategy | `NEXT_PUBLIC_API_BASE` di-bake at build time (static export limit). **Production**: rebuild dengan `NEXT_PUBLIC_API_BASE=/api/v1` (same-origin). **Dev**: `.env.development.local` set `NEXT_PUBLIC_API_BASE=http://localhost:8200/api/v1`. Dokumentasikan di `docs/DEPLOY.md`: kalau base URL berubah, FE wajib rebuild. |
+| 61 | Storage backend — Cloudflare R2 | **Backend**: `aws-sdk-go-v2` (`config`, `credentials`, `service/s3`, `service/s3/types`, `feature/s3/manager`) pointing ke R2 endpoint `https://<account_id>.r2.cloudflarestorage.com` dengan `region="auto"` + path-style addressing (`UsePathStyle=true`). **Bucket strategy**: single bucket per environment — `lms-prod` (production) / `lms-dev` (workspace/staging). Object key format mengikuti #58. **Env vars** (semua di `.env`, jangan di-commit): `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (e.g. `lms-prod`), `R2_ENDPOINT` (auto-derive dari ACCOUNT_ID kalau kosong), `R2_PRESIGN_TTL_SECONDS` (default 900 = 15 menit). **Tidak ada public R2 dev URL / custom domain** di MVP — semua akses lewat presigned URL (lihat #62). **Health**: `/readyz` panggil `s3.HeadBucket(R2_BUCKET)` sekali on-startup + cache hasil 30 detik (jangan call tiap request). **Wrapper package**: `backend/internal/storage/r2.go` expose interface `Storage { PutObject, GetObject, HeadObject, DeleteObject, CopyObject, PresignGet, PresignPut }` supaya domain code (kelas/materi/tugas/...) gak depend langsung ke aws-sdk. **Test**: stub `Storage` interface di domain tests; integration test panggil R2 real cuma di task khusus (gated by env flag). |
+| 62 | Upload flow & access control | **Upload (MVP)**: client → `POST /api/v1/<scope>/upload` (multipart) → backend validate (mime sniff, size, role/ownership) → resize image kalau perlu → `s3.PutObject(bucket, <kategori>/<uuid>.<ext>)` → insert row dgn `ObjectKey` + `OriginalFilename` + `MimeType` + `SizeBytes` → return `{ object_key, original_filename, size_bytes }`. **Tidak ada direct browser→R2 upload** di MVP — bandwidth dobel diterima trade-off untuk simpel + auth langsung di backend. (Future v0.9+ bisa migrate ke `PresignPut` direct upload tanpa breaking FE contract karena FE cuma kirim multipart.) **Download/view**: client minta `GET /api/v1/files/:object_key/url` (atau endpoint scoped: `GET /api/v1/tugas/:id/file-url`) → backend cek auth + ownership/enrollment → `PresignGet(object_key, ttl=R2_PRESIGN_TTL_SECONDS)` → return `{ url, expires_at }` → client redirect / `<a href>` / `<img src>` ke URL itu. **Inline vs attachment**: presigned URL set `ResponseContentDisposition` ke `inline; filename="<original>"` untuk gambar (di-render langsung di `<img>`) dan `attachment; filename="<original>"` untuk PDF/doc/zip (force download). **Caching**: presigned URL gak boleh di-cache lebih lama dari TTL. FE TanStack Query: `staleTime = 10 * 60 * 1000` (10 menit, di bawah TTL 15) supaya selalu fresh URL sebelum expired. **Audit**: log presign issuance untuk file sensitif (submission, credentials.csv) — `action='file_url_issued'`, `target_id=<entity_id>`, `meta={object_key, ttl}`. |
 
 **Open (perlu sesi terpisah):**
 - Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
@@ -128,7 +130,8 @@ LMS multi-guru, admin-controlled, **berbasis Bab**:
 - **Validation**: `go-playground/validator/v10`
 - **Config**: `.env` via `joho/godotenv` + `os.Getenv`
 - **Logging**: `slog` (stdlib)
-- **File upload**: Fiber multipart -> disk
+- **File upload**: Fiber multipart → backend validate → `aws-sdk-go-v2/service/s3` `PutObject` ke Cloudflare R2 (lihat decision #61/#62)
+- **Object storage**: Cloudflare R2 (S3-compatible) lewat `aws-sdk-go-v2`
 - **Test**: stdlib + `testify`
 - **Static serve**: Fiber `app.Static("/", "./frontend/out")` + SPA fallback
 
@@ -148,7 +151,11 @@ LMS multi-guru, admin-controlled, **berbasis Bab**:
 - Gak ada `next/image` optimizer di runtime (pake `unoptimized: true`)
 
 ### Storage & Infra
-- File: `./storage/uploads/<kategori>/<uuid>.<ext>`
+- File: **Cloudflare R2** (S3-compatible, path-style, `region="auto"`, endpoint `https://<account_id>.r2.cloudflarestorage.com`)
+- Bucket: `lms-prod` (production) / `lms-dev` (workspace/staging) — single bucket per env
+- Object key: `<kategori>/<uuid>.<ext>` (kategori = `tugas`, `soal`, `materi`, `submission`, `import`)
+- Akses file: presigned GET URL (TTL 15 menit) lewat backend, bucket non-public
+- Upload: client → backend multipart → `s3.PutObject` (no direct browser→R2 di MVP)
 - DB: PostgreSQL lokal di rdpkhorur (DB user/pass di `.env`)
 - Tidak ada Nginx — Go Fiber langsung listen `0.0.0.0:8200` (mirip fb-bot di 8100)
 - Akses via SSH tunnel: `ssh -L 8200:127.0.0.1:8200 rdpkhorur`
@@ -423,13 +430,13 @@ User       { ID, Name, Email(unique), PasswordHash, Role(admin|guru|siswa), Stat
 Kelas      { ID, Nama, Deskripsi, KodeInvite(unique,6), GuruID, BobotSoalUlangan(default 50), BobotTugas(default 50), Version(int default 1), CreatedAt, ArchivedAt(*) }
 Enrollment { KelasID, SiswaID, Status, JoinedAt, JoinedVia(admin|kode) }  // PK composite
 Bab        { ID, KelasID, Nomor, Judul, Deskripsi, Urutan, Status(draft|published|archived, default draft), Version(int default 1), CreatedAt, ArchivedAt(*) }
-Materi     { ID, KelasID, BabID(*), Judul, Tipe, Konten, FilePath, Urutan, CreatedAt }
+Materi     { ID, KelasID, BabID(*), Judul, Tipe, Konten, ObjectKey(*), OriginalFilename(*), MimeType(*), SizeBytes(*), Urutan, CreatedAt }
 MateriRead { MateriID, SiswaID, ReadAt }                              // PK composite
-Tugas      { ID, KelasID, BabID(*), Judul, Deskripsi, Deadline, MaxNilai, AttachmentPath, IzinkanLate(bool), PenaltyPersen(int 0-100), CreatedAt }
-Submission { ID, TugasID, SiswaID, Konten, AttachmentPath, SubmittedAt, IsLate(bool), Nilai(*), NilaiSetelahPenalty(*), Feedback, GradedAt(*), Version }
+Tugas      { ID, KelasID, BabID(*), Judul, Deskripsi, Deadline, MaxNilai, AttachmentObjectKey(*), AttachmentOriginalFilename(*), AttachmentMimeType(*), AttachmentSizeBytes(*), IzinkanLate(bool), PenaltyPersen(int 0-100), CreatedAt }
+Submission { ID, TugasID, SiswaID, Konten, AttachmentObjectKey(*), AttachmentOriginalFilename(*), AttachmentMimeType(*), AttachmentSizeBytes(*), SubmittedAt, IsLate(bool), Nilai(*), NilaiSetelahPenalty(*), Feedback, GradedAt(*), Version }
 
 // Soal Bab + gambar
-SoalBab    { ID, BabID, Pertanyaan, GambarSoal(*), OpsiA..E(*), GambarOpsiA..E(*), JawabanBenar, Poin, Mode(latihan|ulangan), Urutan, Version(int default 1), CreatedAt }
+SoalBab    { ID, BabID, Pertanyaan, GambarSoalObjectKey(*), GambarSoalOriginalFilename(*), OpsiA..E(*), GambarOpsiAObjectKey..E(*), GambarOpsiAOriginalFilename..E(*), JawabanBenar, Poin, Mode(latihan|ulangan), Urutan, Version(int default 1), CreatedAt }
 UlanganBabSetting { BabID(PK), DurasiMenit, MulaiAt(*), SelesaiAt(*), ShuffleSoal, ShuffleOpsi, JumlahSoalRandom(*), TampilkanNilaiLangsung, IzinkanReviewSetelahSubmit(default false), WaktuBukaReview(*), Aktif, Version(int default 1) }
 HasilSoalBab { ID, BabID, SiswaID, Mode(latihan|ulangan), AttemptKe, MulaiAt, SubmitAt(*), TotalNilai(*), Status(berlangsung|submitted|expired), DeletedAt(*) }
 JawabanBab   { ID, HasilSoalBabID, SoalBabID, JawabanSiswa(*), Benar, Poin }
@@ -437,7 +444,7 @@ EventBab     { ID, HasilSoalBabID, Tipe(tab_switch|blur|focus|paste), At }
 
 // Ulangan Harian + Soal bisa pakai gambar juga
 Ujian      { ID, KelasID, Judul, DurasiMenit, MulaiAt, SelesaiAt, ShuffleSoal, ShuffleOpsi, JumlahSoalRandom(*), TampilkanNilaiLangsung, IzinkanReviewSetelahSubmit(default false), WaktuBukaReview(*), Version(int default 1), CreatedAt }
-Soal       { ID, GuruID(pemilik bank), UjianID(*), Pertanyaan, GambarSoal(*), OpsiA..E(*), GambarOpsiA..E(*), JawabanBenar, Poin, Topik, Version(int default 1), CreatedAt }
+Soal       { ID, GuruID(pemilik bank), UjianID(*), Pertanyaan, GambarSoalObjectKey(*), GambarSoalOriginalFilename(*), OpsiA..E(*), GambarOpsiAObjectKey..E(*), GambarOpsiAOriginalFilename..E(*), JawabanBenar, Poin, Topik, Version(int default 1), CreatedAt }
 UjianSoal  { UjianID, SoalID, Urutan }                                // PK composite
 HasilUjian { ID, UjianID, SiswaID, MulaiAt, SubmitAt(*), TotalNilai(*), Status(berlangsung|submitted|expired), DeletedAt(*) }
 Jawaban    { ID, HasilUjianID, SoalID, JawabanSiswa(*), Benar, Poin }
@@ -465,7 +472,7 @@ RefreshToken { ID, JTI(unique), UserID, IssuedAt, ExpiresAt, RevokedAt(*), Revok
 - **MateriRead**: dipakai untuk progress per bab di sisi siswa. Auto-insert pas siswa buka viewer materi.
 - **Tugas**: `IzinkanLate` default false. `PenaltyPersen` 0-100, jadi nilai max submission late = `MaxNilai × (100 - PenaltyPersen) / 100`.
 - **Submission**: `Version` increment tiap resubmit; baris terbaru saja yang dipake (atau pakai 1 row dengan overwrite). Default: **1 row, overwrite** — hemat storage. `IsLate` di-set saat submit, `NilaiSetelahPenalty` dihitung backend pas grading.
-- **SoalBab/Soal**: gambar disimpan sebagai path relatif di `./storage/uploads/soal/<uuid>.jpg`. Gambar opsi opsional (untuk soal "pilih gambar").
+- **SoalBab/Soal**: gambar disimpan di Cloudflare R2 — `ObjectKey` format `soal/<uuid>.<ext>` (lihat decision #58/#61), `OriginalFilename` + `MimeType` + `SizeBytes` di DB column terpisah. Gambar opsi opsional (untuk soal "pilih gambar").
 - **HasilSoalBab.Status**:
   - `berlangsung`: siswa udah start, belum submit. Inilah state yang dipake recovery resume.
   - `submitted`: siswa udah submit normal.
@@ -560,7 +567,7 @@ API: `GET /siswa/kelas/:id/bab` returns `progress: { persen, breakdown: { materi
 
 ### Health & Readiness
 - `GET /healthz` — liveness, return 200 selalu kalau process hidup. No DB, no deps. Dipake systemd / load balancer dasar.
-- `GET /readyz` — readiness, cek DB ping + storage dir writable. Return 503 kalau ada yang fail. Dipake uptime monitor.
+- `GET /readyz` — readiness, cek DB ping + R2 reachable (`HeadBucket`, cached 30s). Return 503 kalau ada yang fail. Dipake uptime monitor.
 
 ### Auth
 - `POST /auth/login` { email, password } -> { access, refresh, user: { id, name, email, role, status, must_change_password } }
@@ -590,7 +597,7 @@ API: `GET /siswa/kelas/:id/bab` returns `progress: { persen, breakdown: { materi
 - `POST   /admin/import-csv/upload` (multipart) → ImportJob status=`preview`, response `{ job_id, valid_count, invalid_count, preview_rows }`
 - `GET    /admin/import-csv/:job_id` — resume preview (kalau admin reload page sebelum confirm) — return preview_rows + counts
 - `POST   /admin/import-csv/:job_id/confirm` — status preview → processing → completed, response `{ job_id, success_count, fail_count, errors }`
-- `POST   /admin/import-csv/:job_id/cancel` — status preview → expired + cleanup file
+- `POST   /admin/import-csv/:job_id/cancel` — status preview → expired + `s3.DeleteObject` ke R2 ObjectKey
 - `GET    /admin/import-csv/template.csv`
 - `GET    /admin/import-jobs/:id/credentials.csv` — sekali download (file di-cleanup setelah)
 - `POST   /admin/users/:id/enroll` { kelas_id }
@@ -811,7 +818,7 @@ lms/
 │   │   ├── nilai/            # formula nilai bab + rekap + export CSV
 │   │   ├── audit/            # audit log writer
 │   │   ├── middleware/       # auth, role guard, logging, recover
-│   │   ├── storage/          # file upload helper
+│   │   ├── storage/          # R2 client wrapper (aws-sdk-go-v2/s3)
 │   │   └── db/               # GORM setup, migrations
 │   ├── pkg/                  # shared utils (jwt, hash, validator, csv)
 │   ├── go.mod
@@ -837,7 +844,6 @@ lms/
 │   ├── next.config.js        # output: 'export'
 │   ├── package.json
 │   └── ...
-├── storage/uploads/          # gitignored, runtime files
 ├── docs/
 │   ├── DEPLOY.md             # runbook (mirip fb-bot)
 │   └── ARCHITECTURE.md
@@ -899,16 +905,17 @@ lms/
 - Backend: Kelas CRUD (guru) + bobot nilai (BobotSoalUlangan, BobotTugas) + generate kode invite unik + archive + **duplicate** + **Version field** (optimistic concurrency)
 - Backend: Siswa join via kode (rate limit 10/menit per IP), tracking JoinedVia
 - Backend: Admin assign siswa ke kelas
-- Backend: **ImportJob lifecycle** — upload (status=preview, PreviewRowsJSON, ExpiresAt=now+1h), GET resume preview, confirm (preview→processing→completed), cancel (preview→expired), hourly cleanup expired jobs
-- Backend: Bulk CSV import siswa (parser, validator) + **generate password per siswa + credentials.csv download sekali + auto-cleanup 1 jam**
-- Backend: **Storage path convention** — `./storage/uploads/<kategori>/<uuid>.<ext>`, OriginalFilename di DB column terpisah
+- Backend: **R2 storage client wrapper** (`internal/storage`) + bucket bootstrap (workspace bucket `lms-dev`, prod bucket `lms-prod`) + readyz `HeadBucket` cache (lihat #61)
+- Backend: **ImportJob lifecycle** — upload (status=preview, PreviewRowsJSON, ExpiresAt=now+1h, CSV disimpan di R2 `import/<uuid>.csv`), GET resume preview, confirm (preview→processing→completed), cancel (preview→expired + `s3.DeleteObject`), hourly cleanup expired jobs
+- Backend: Bulk CSV import siswa (parser, validator) + **generate password per siswa + credentials.csv di-upload ke R2 `import/<uuid>-credentials.csv` + presigned download sekali (TTL 15 menit) + auto-cleanup `s3.DeleteObject` 1 jam setelah CompletedAt**
+- Backend: **R2 object-key convention** — `<kategori>/<uuid>.<ext>` di kolom `ObjectKey`, OriginalFilename + MimeType + SizeBytes di DB column terpisah
 - Frontend admin: import CSV (drag-and-drop, preview tabel persistent — admin bisa close tab + balik tanpa lose state, confirm, modal sukses dengan link download credentials.csv), list kelas (read-only)
 - Frontend guru: dashboard list+create kelas + tombol Duplicate, kelas detail (tab Siswa, tab Pengaturan/bobot, tab Pengumuman placeholder), edit form pakai version (409 handler "konten ke-update orang lain")
 - Frontend siswa: dashboard, gabung kelas via kode
 
 ### Fase 3 — Bab & Materi + Pengumuman + Bab Status (3-4 hari)
 - Backend: Bab CRUD (guru) + reorder bulk endpoint + **status (draft/published/archived)** + **Version field** (optimistic concurrency) + duplicate (copy materi/soal/tugas)
-- Backend: Materi CRUD dengan field `bab_id` nullable (upload PDF, link YouTube, teks markdown) + **storage path `./storage/uploads/materi/<uuid>.<ext>` + OriginalFilename di DB**
+- Backend: Materi CRUD dengan field `bab_id` nullable (upload PDF, link YouTube, teks markdown) + **upload PDF/video → R2 `materi/<uuid>.<ext>`, ObjectKey + OriginalFilename + MimeType + SizeBytes di DB; akses lewat presigned GET URL endpoint scoped (`GET /materi/:id/file-url`)**
 - Backend: MateriRead endpoint (siswa mark-as-read)
 - Backend: endpoint siswa list bab (cuma published) + detail bab dengan progress (formula 6.4)
 - Backend: Pengumuman CRUD (per-kelas atau per-bab)
@@ -980,12 +987,12 @@ lms/
 - **Backup restore drill**: dokumentasikan + test restore di staging (minimal 1x sebelum go-live)
 - Hardening (CORS same-origin, file size limit 20MB tugas, gambar size limit 5MB per file pre-resize, mime sniff via `http.DetectContentType` + allowlist eksplisit, executable mime blocklist)
 - Cleanup tasks (daily cron):
-  - Orphan gambar soal (gak ke-reference SoalBab/Soal manapun)
-  - ImportJob credentials.csv expired (>1 jam)
+  - Orphan R2 objects per prefix (`soal/`, `materi/`, `tugas/`, `submission/`, `import/`) — cross-check ke kolom `*ObjectKey` di tabel terkait, `s3.DeleteObject` per orphan, log count
+  - ImportJob credentials.csv expired (>1 jam after CompletedAt) — `s3.DeleteObject` ke CredentialsObjectKey
   - LoginAttempt >30 hari
   - RefreshToken expired & revoked >7 hari
   - HasilSoalBab/HasilUjian deleted_at >1 tahun → hard delete + audit log
-  - Submission file: kelas archived + 1 tahun → hard delete file (DB row tetap)
+  - Submission file: kelas archived + 1 tahun → `s3.DeleteObject` ke AttachmentObjectKey (DB row tetap untuk nilai history)
 - Web performance pass (bundle size, Core Web Vitals)
 - Timezone validation: server `Asia/Jakarta`, frontend tampil WIB explicit, semua timestamp di-format konsisten
 - **Coverage gate ketat**: backend `auth/admin/soalbab/ujian/nilai` ≥ 70%, fail CI kalau di bawah
@@ -1021,9 +1028,12 @@ lms/
 - Remedial audit trail: tiap reset attempt wajib masuk `audit_log` dengan actor + target + reason (diketik guru)
 - Late penalty edge case: lock penalty saat submit (snapshot `IsLate`), jangan re-calc saat grading kalau guru ubah `PenaltyPersen`
 - Timezone: PostgreSQL pakai `TIMESTAMPTZ`, server lock TZ ke `Asia/Jakarta`, tampilkan di frontend dengan suffix WIB explicit
-- Image storage growth: gambar soal numpuk; cleanup task (Fase 8) untuk hapus orphan files yang gak ke-reference
+- Image storage growth: gambar soal numpuk di R2; cleanup task (Fase 8) untuk hapus orphan objects yang gak ke-reference (`s3.ListObjectsV2` per prefix `soal/` + cross-check ke kolom `GambarSoalObjectKey` / `GambarOpsiA..EObjectKey`)
+- R2 reachability: kalau Cloudflare R2 down/credentials expired, semua upload + presigned URL gagal. Mitigasi: `/readyz` cek `HeadBucket` + alert; queue upload retry dengan exponential backoff (Fase 8). Tidak ada fallback local disk.
+- Presigned URL leak: URL valid sampai TTL habis (default 15 menit). Mitigasi: TTL singkat + audit log `file_url_issued` untuk file sensitif (submission, credentials.csv) + jangan log URL ke stdout/file.
+- R2 cost: outbound bandwidth gratis (Cloudflare zero egress fee), tapi storage + Class A operations (PutObject/CopyObject/DeleteObject) berbayar di atas free tier (10GB storage + 1M Class A ops/bulan). Monitor di Cloudflare dashboard; resize gambar pre-upload + cleanup orphan = control utama.
 - **Password lifecycle**: password awal cuma muncul SEKALI di modal — kalau admin lupa salin, satu-satunya jalan reset ulang. Kasih copy button + confirmation sebelum tutup modal.
-- **CSV credentials file leak**: file ada di disk sementara, harus di-cleanup setelah download atau timeout 1 jam. Path harus di luar `frontend/out/` supaya gak ke-serve sebagai static.
+- **CSV credentials file leak**: object di R2 valid untuk download lewat presigned URL TTL singkat (15 menit) + auto-cleanup `s3.DeleteObject` 1 jam setelah CompletedAt. Bucket non-public, jadi gak ada cara akses tanpa presigned URL. Audit `file_url_issued` setiap kali presign di-issue.
 - **Rate limit memory**: in-memory store buat rate limit hilang kalau service restart — attacker bisa exploit. OK untuk MVP karena restart jarang. Nanti pindah ke Redis kalau ada notifikasi pakai Redis (v0.8+).
 - **Force password change bypass**: pastikan middleware cek di SEMUA endpoint kecuali whitelist. Tes manual: login user yang must_change_password=true, coba akses /api/v1/kelas -> harus 403.
 - **Random pool determinisme**: shuffle pakai seed `(mulai_at unix + siswa_id)`, simpan urutan di `*SoalAssignment` saat start. Kalau gak ada assignment, resume bakal random ulang -> jawaban tersimpan gak match. Test scenario ini di TDD.
@@ -1046,7 +1056,7 @@ lms/
 
 ---
 
-## 12. Open Decisions Tersisa (v0.7.2)
+## 12. Open Decisions Tersisa (v0.8.0)
 
 1. **Notifikasi**: bentuk apa, kapan trigger, polling/SSE/websocket — bedah di v0.8 setelah Fase 0-3 jalan.
 2. **Pengumuman dismiss state per siswa**: sekedar "udah dilihat" atau ada read receipt? — diputuskan saat Fase 3 implementasi.
@@ -1076,7 +1086,7 @@ Reference: `D:\program\facebook-bot\docs\DEPLOY.md`. Adopsi pola yang sama, dise
 - `/home/ubuntu/lms` (mirip `/home/ubuntu/fb-bot`)
 - Binary build di server: `/home/ubuntu/lms/backend/bin/lms-api`
 - Frontend static: `/home/ubuntu/lms/frontend/out/`
-- Storage: `/home/ubuntu/lms/storage/uploads/`
+- Storage: **Cloudflare R2** (lihat decision #61) — bucket `lms-prod`, kredensial di `.env` (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`); tidak ada folder lokal di server
 - `.env` di root project
 
 ### 13.3 systemd service: `lms-api.service`
@@ -1132,7 +1142,7 @@ ssh -L 8200:127.0.0.1:8200 rdpkhorur
    CREATE DATABASE lms OWNER lms;
    ```
 4. **Clone**: `git clone git@github.com:<user>/lms.git /home/ubuntu/lms`
-5. **`.env`**: `cp .env.example .env`, isi: `DATABASE_URL`, `JWT_SECRET_KEY`, `PORT=8200`, `STORAGE_DIR=./storage/uploads`, `ENV=production`
+5. **`.env`**: `cp .env.example .env`, isi: `DATABASE_URL`, `JWT_SECRET_KEY`, `PORT=8200`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET=lms-prod` (atau `lms-dev` untuk workspace), opsional `R2_ENDPOINT` + `R2_PRESIGN_TTL_SECONDS=900`, `ENV=production`
 6. **Build**:
    ```bash
    cd backend && go mod download && go build -o bin/lms-api ./cmd/server
@@ -1272,6 +1282,27 @@ Open dependencies sebelum Fase 1 mulai:
 2. (Wajib sebelum first user) Bedah notifikasi (v0.8) tetap di-tunda sampai mendekati Fase 4.
 
 Mau eksekusi Fase 1 task-by-task lewat `subagent-driven-development`, atau gue handle inline? (Default: inline — task masih kecil, less context overhead.)
+
+### Changelog v0.7.2 → v0.8.0
+- **Storage strategy migrated**: local disk (`./storage/uploads/`) → **Cloudflare R2** (S3-compatible). Berlaku untuk semua kategori file: tugas, soal (gambar), materi, submission, import CSV.
+- **Locked decisions revised**:
+  - #6 Storage materi → Cloudflare R2 (bukan local disk)
+  - #44 Health/readiness split → readyz cek `HeadBucket` ke R2, bukan storage dir writable
+  - #46 File upload hardening → resize + mime sniff dilakukan SEBELUM `s3.PutObject`, R2 bucket non-public, akses lewat presigned GET URL
+  - #54 CSV import preview persistence → CSV disimpan di R2, cancel = `s3.DeleteObject`
+  - #58 Storage path convention → R2 object key `<kategori>/<uuid>.<ext>`, single bucket per env (`lms-prod` / `lms-dev`), kolom DB rename `FilePath` → `ObjectKey`
+- **Locked decisions baru**:
+  - #61 Storage backend — Cloudflare R2: aws-sdk-go-v2 + path-style + endpoint resolver, env vars, wrapper interface `Storage` di `internal/storage`
+  - #62 Upload flow & access control: client → backend multipart → R2 (no direct browser→R2 di MVP), download lewat presigned GET URL TTL 15 menit + audit `file_url_issued`
+- **Section 3 Tech Stack**: tambah `aws-sdk-go-v2` sebagai object storage client; `File upload` line di-update.
+- **Section 4 Storage & Infra**: bullet `./storage/uploads/...` diganti dengan R2 detail (bucket, key format, presigned URL, no direct browser upload).
+- **Section 6 Data Model**: kolom `FilePath`/`AttachmentPath`/`GambarSoal`/`GambarOpsiA..E` ganti jadi `ObjectKey` + `OriginalFilename` + `MimeType` + `SizeBytes` (atau `*ObjectKey` + `*OriginalFilename` untuk gambar soal/opsi). SoalBab + Soal updated.
+- **Section 7 API**: `/readyz` deskripsi cek R2; ImportJob cancel pakai `s3.DeleteObject`.
+- **Section 9 Project Structure**: `storage/uploads/` directory dihapus dari tree; `internal/storage/` di-anotate sebagai R2 wrapper.
+- **Section 10 Phasing**: Fase 2 nambah Task 2.D.0 (R2 wrapper bootstrap) sebelum Task 2.D.1; ImportJob lifecycle di-update untuk R2; Fase 3 materi storage diarahkan ke R2; Fase 8 cleanup tasks pakai `s3.DeleteObject` per orphan dan submission expiry.
+- **Section 11 Risks**: 4 risiko baru — orphan R2 objects, R2 reachability, presigned URL leak, R2 cost. Risiko CSV credentials leak di-update untuk pola R2 + presigned URL.
+- **Section 13 Deploy**: storage path lokal diganti dengan referensi R2 + env vars di `.env.example`.
+- **Section 18 Task-by-Task**: `Task 2.C.4` di-detail (read-only, list-enrollments endpoint baru); `Task 2.D.0` task baru (R2 wrapper) sebelum 2.D.1; `Task 2.D.2-2.D.5` rewrite untuk R2 (PutObject preview CSV, presigned credentials download); Current Next Step section di-tulis ulang dengan pre-requisite eksternal Cloudflare R2 (bucket + token + env vars).
 
 ### Changelog v0.7.1 → v0.7.2
 - **Locked**: 9 keputusan baru (#52-60) — multi-admin promote w/ re-auth, admin lock-out recovery, CSV preview persistence, feed cursor, concurrent edit version, auth boundary explicit, storage path convention, guru audit scope, frontend env strategy.
@@ -1672,10 +1703,24 @@ Setelah tools jadi, runbook deploy jadi:
 - Verified server: typecheck PASS, npm build PASS (20 pages, /siswa 4.36 kB + /siswa/gabung 3.36 kB); E2E smoke 10 scenario hijau (siswa tok ok, baseline GET /siswa/kelas total=2, guru bikin kelas baru, siswa join via kode 201, GET total naik 2→3 dgn kelas baru kelihatan, archive kelas → tetap kelihatan selama enrollment active, soft-remove enrollment → hidden, role-guard guru→403, no-auth→401, FE static /siswa.html + /siswa/gabung.html serve 200).
 
 **Task 2.C.4 — FE guru tab Siswa di kelas detail**
-- List enrollment + remove button (admin scope only? lock decision: guru read-only di MVP)
-- Commit: `feat(fe-guru): tab Siswa di kelas detail`
+- Backend prep (perlu dibuat dulu): `GET /api/v1/kelas/:id/enrollments?page=&page_size=` — list enrollment kelas, hydrate dgn user (nama, email, joined_via, joined_at, status). Service method baru `Service.ListEnrollmentsByKelas`. Filter active-only by default (`?status=all` untuk admin lihat removed). Auth: guru-owner OR admin (lihat #59 + canManage).
+- FE: `frontend/app/(authed)/guru/kelas/detail/page.tsx` swap PlaceholderTab "Siswa" jadi table real. Kolom: Nama, Email, Bergabung via, Tanggal join. Pagination + empty state + role-aware (admin nanti dapet kolom Aksi remove di task terpisah).
+- Locked decision: guru read-only di MVP — tombol remove **tidak ada** (admin scope, dibahas di Fase 2 backlog atau v0.9). Catat di komentar code biar reviewer berikutnya tau.
+- Commit: `feat(kelas+fe-guru): list-enrollments endpoint + tab Siswa di kelas detail (Task 2.C.4)`
 
 #### 2.D Bulk Import CSV
+
+**Task 2.D.0 — R2 storage client wrapper + bucket bootstrap (prerequisite untuk semua upload)**
+- Files: `backend/internal/storage/r2.go` (Storage interface + s3 implementation), `backend/internal/storage/r2_test.go` (mock-based unit tests + integration test gated by `R2_INTEGRATION=1`)
+- Config: tambah `R2Config` struct di `backend/internal/config/config.go` (AccountID, AccessKeyID, SecretAccessKey, Bucket, Endpoint, PresignTTL) + parser dari `.env` + validation (required kalau ENV=production)
+- Interface `Storage`: `PutObject(ctx, key, body io.Reader, contentType string, size int64) error`, `GetObject`, `HeadObject`, `DeleteObject`, `CopyObject`, `PresignGet(ctx, key, ttl, contentDisposition string) (url string, err error)`, `PresignPut`
+- Implementasi pakai `aws-sdk-go-v2` v1.x latest, `endpoint resolver v2` ke `https://<account_id>.r2.cloudflarestorage.com`, `region="auto"`, `UsePathStyle=true`
+- Wire ke `cmd/server/main.go`: init Storage di startup, inject ke domain services lewat constructor (kelas/admin/import nanti)
+- Readyz integration: `/api/v1/readyz` cek `s3.HeadBucket` dgn cache 30 detik (cache TTL fresh = 200; expired = re-check; gagal 2x consecutive = 503)
+- Bootstrap CLI `cmd/r2-init`: optional helper one-shot untuk verify credentials + create bucket kalau belum ada (gunakan `s3.CreateBucket` ignore `BucketAlreadyOwnedByYou`)
+- Bucket strategy: workspace pakai `lms-dev`, prod pakai `lms-prod` — name dari env, jangan hardcode
+- Verifikasi server: `R2_INTEGRATION=1 go test ./internal/storage/...` panggil R2 real (PutObject random key → HeadObject → PresignGet curl → DeleteObject); restart `lms-api` + `curl /readyz` return 200 dengan field `r2_ok=true`
+- Commit: `feat(storage): Cloudflare R2 client wrapper + readyz integration`
 
 **Task 2.D.1 — CSV parser + validator**
 - Files: `backend/internal/import/parser.go`
@@ -1683,26 +1728,26 @@ Setelah tools jadi, runbook deploy jadi:
 - Test dengan fixture CSV valid + invalid
 - Commit: `feat(import): CSV parser + validator`
 
-**Task 2.D.2 — Storage convention + upload CSV**
-- `POST /admin/import-jobs` multipart file → simpan ke `./storage/uploads/import/<uuid>.csv`, parse, generate PreviewRowsJSON, insert ImportJob status=preview ExpiresAt=now+1h
-- Response: `{job_id, valid_count, invalid_count, preview_url}`
-- Commit: `feat(import): upload + preview ImportJob`
+**Task 2.D.2 — R2 upload + preview CSV**
+- `POST /admin/import-jobs` multipart file → validate mime (text/csv only) + size (max 5MB) → `s3.PutObject` ke R2 `import/<uuid>.csv`, parse rows dari memory buffer (jangan re-fetch dari R2), generate PreviewRowsJSON, insert ImportJob status=preview ObjectKey=`import/<uuid>.csv` ExpiresAt=now+1h
+- Response: `{job_id, valid_count, invalid_count, preview_rows}` (preview di-render dari PreviewRowsJSON, tidak butuh download URL)
+- Commit: `feat(import): R2 upload + preview ImportJob`
 
 **Task 2.D.3 — Resume + cancel preview**
 - `GET /admin/import-jobs/:id` (status preview only) → return PreviewRowsJSON
-- `POST /admin/import-jobs/:id/cancel` → status=expired + delete file
+- `POST /admin/import-jobs/:id/cancel` → status=expired + `s3.DeleteObject(ObjectKey)`
 - Commit: `feat(import): resume + cancel preview`
 
 **Task 2.D.4 — Confirm import (preview → processing → completed)**
 - `POST /admin/import-jobs/:id/confirm`
-- Logic: status=processing → loop rows: bcrypt random pass → insert User → save credentials.csv ke `./storage/uploads/import/<uuid>-credentials.csv` → status=completed CompletedAt=now
+- Logic: status=processing → loop rows: bcrypt random pass → insert User → tulis credentials.csv ke buffer → `s3.PutObject` ke R2 `import/<uuid>-credentials.csv` (CredentialsObjectKey di DB) → status=completed CompletedAt=now
 - Audit log per user created
-- Commit: `feat(import): confirm flow with credentials.csv`
+- Commit: `feat(import): confirm flow with credentials in R2`
 
-**Task 2.D.5 — Download credentials.csv (one-shot, signed URL)**
-- `GET /admin/import-jobs/:id/credentials.csv` (cek admin owner + ExpiresAt)
-- Auto-cleanup file 1 jam after CompletedAt
-- Commit: `feat(import): credentials download with TTL`
+**Task 2.D.5 — Download credentials.csv (presigned, TTL-bound)**
+- `GET /admin/import-jobs/:id/credentials.csv` (cek admin owner + status=completed + CompletedAt+1h belum lewat) → respond redirect 302 ke presigned GET URL (TTL = `R2_PRESIGN_TTL_SECONDS`, ResponseContentDisposition `attachment; filename="credentials-<job_id>.csv"`) + audit `file_url_issued`
+- Auto-cleanup: `s3.DeleteObject(CredentialsObjectKey)` 1 jam after CompletedAt (cron, lihat 2.D.6)
+- Commit: `feat(import): credentials presigned download with TTL`
 
 **Task 2.D.6 — Hourly cleanup cron**
 - Files: `backend/internal/import/cleanup.go` (run on app start: ticker 1h)
@@ -1737,7 +1782,20 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.C.4 — FE guru tab Siswa di kelas detail.** Task 2.C.3 SELESAI: backend `GET /api/v1/siswa/kelas` (commit `952fe01`) + FE siswa shell + dashboard + gabung form (commit `2a4b9c9`). Filter active enrollment only (removed disembunyiin), role guard guru→403 di endpoint siswa, FE static /siswa.html + /siswa/gabung.html serve 200, error mapping 6 code di form gabung. Task 2.C.4 spec: `frontend/app/(authed)/guru/kelas/detail/page.tsx` tab "Siswa" — list enrollment kelas via `GET /api/v1/kelas/:id/enrollments` (endpoint perlu dibuat dulu di backend; reuse `kelasRepo.ListEnrollmentsBySiswa`-equivalent untuk per-kelas) + tombol Hapus per-siswa via `POST /api/v1/kelas/:id/enrollments/:siswaId/remove` (soft-remove via `kelasRepo.RemoveEnrollment`). Locked decision: guru bisa hapus siswa di kelas miliknya (admin global). Audit log per-action `siswa_removed_from_kelas`. Commit: `feat(kelas+fe-guru): tab Siswa di kelas detail`. Setelah ini Fase 2.C ditutup → masuk 2.D Bulk Import CSV.
+**Berikut: Task 2.C.4 — FE guru tab Siswa di kelas detail (read-only).** Task 2.C.3 SELESAI: backend `GET /api/v1/siswa/kelas` (commit `952fe01`) + FE siswa shell + dashboard + gabung form (commit `2a4b9c9`). Filter active enrollment only (removed disembunyiin), role guard guru→403 di endpoint siswa, FE static /siswa.html + /siswa/gabung.html serve 200, error mapping 6 code di form gabung.
+
+**Task 2.C.4 spec (final, locked v0.8.0):**
+- Backend: `GET /api/v1/kelas/:id/enrollments` — service method `ListEnrollmentsByKelas` (hydrate user nama+email), auth guru-owner OR admin via `canManage`. Reuse `kelasRepo.ListEnrollmentsByKelas` (sudah ada di repo.go).
+- FE: `frontend/app/(authed)/guru/kelas/detail/page.tsx` tab "Siswa" — table list (Nama, Email, Bergabung via, Tanggal), pagination, empty state. **Read-only**, no remove button (admin scope, di-defer ke Fase 2 backlog).
+- Commit: `feat(kelas+fe-guru): list-enrollments endpoint + tab Siswa di kelas detail (Task 2.C.4)`
+
+**Setelah 2.C.4 → Fase 2.C ditutup → masuk Task 2.D.0 (R2 prerequisite) sebelum 2.D.1.** v0.8.0 menambahkan task baru **2.D.0 — R2 storage client wrapper + bucket bootstrap** sebagai prerequisite semua upload (CSV import, materi, tugas, submission, soal). Spec: `backend/internal/storage/r2.go` Storage interface + aws-sdk-go-v2/s3 impl, R2Config di `internal/config`, readyz `HeadBucket` cache 30s, integration test gated by `R2_INTEGRATION=1`. User butuh siapin: Cloudflare R2 account + bucket `lms-dev` (workspace) + bucket `lms-prod` (live) + API token (S3 creds, scope = bucket-specific) + env vars di `.env` workspace + live.
+
+**Pre-requisite eksternal sebelum 2.D.0 jalan:**
+1. User login Cloudflare → R2 → buat bucket `lms-dev` (workspace) + `lms-prod` (live)
+2. Manage R2 API Tokens → Create Token (scope: object read/write per bucket) → catat Account ID + Access Key + Secret
+3. Tambahkan ke `.env` server di `rdpkhorur:/home/ubuntu/lms/.env` (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET=lms-dev untuk workspace; ganti `lms-prod` saat live deploy) + `R2_PRESIGN_TTL_SECONDS=900`
+4. Confirm balik ke gue, baru gas 2.D.0
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
