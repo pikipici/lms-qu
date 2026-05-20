@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 DONE 2026-05-20 (R2 client + readyz integration + CSV parser + upload/preview endpoint + resume/cancel endpoints). Berikutnya: Task 2.D.4 (confirm import → User.Create + auto-enroll + bcrypt password gen).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 + 2.D.4 DONE 2026-05-20 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2). Berikutnya: Task 2.D.5 (download credentials.csv presigned URL TTL).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.3 done — GET resume + POST cancel shipped, live smoke 7/7 PASS, R2 deletion verified, audit `import_csv_cancelled` recorded, commit `601a4c8`)
+> Last updated: 2026-05-20 (Task 2.D.4 done — POST /admin/import-csv/:job_id/confirm shipped, live smoke 6/6 PASS, 3 users created + auto-enroll verified, R2 credentials.csv 215 bytes verified, login Apis with generated 12-char password 200 must_change_password=true, commit `da0fe4c`)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1788,11 +1788,36 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Operational fix: ExecStartPost retry budget bumped 10→30 detik supaya R2 prewarm 10.5s slot gak failed-to-start (IPv6 happy-eyeballs sudah dimitigate via boot-prewarm tapi prewarm itu sendiri berdurasi >10s)
 - Commit: `601a4c8` feat(importjob): GET resume + POST cancel preview endpoints (Task 2.D.3)
 
-**Task 2.D.4 — Confirm import (preview → processing → completed)**
-- `POST /admin/import-jobs/:id/confirm`
-- Logic: status=processing → loop rows: bcrypt random pass → insert User → tulis credentials.csv ke buffer → `s3.PutObject` ke R2 `import/<uuid>-credentials.csv` (CredentialsObjectKey di DB) → status=completed CompletedAt=now
-- Audit log per user created
-- Commit: `feat(import): confirm flow with credentials in R2`
+**Task 2.D.4 — Confirm import (preview → processing → completed)** ✅ DONE 2026-05-20
+- Route wired: `POST /api/v1/admin/import-csv/:job_id/confirm` (admin-scoped, `FindByIDForAdmin`)
+- Lifecycle: preview → processing (lock at status flip with ConfirmedAt=now) → completed (CompletedAt=now). Always 200 with partial success surfaced via `errors_json` + `failures` array; never all-or-nothing 4xx
+- Service deps wired in main.go via setters: `importSvc.SetUserCreator(authRepo)` + `importSvc.SetKelasRepo(kelasRepo)` (avoids constructor ballooning + circular import)
+- Source-of-truth re-parse: re-fetch raw CSV from R2 ObjectKey + `Parse` again. PreviewRowsJSON is capped 200 rows so cannot drive batch creation
+- Per-row flow: pre-check duplicate via `FindUserByEmail` → `GeneratePassword()` (12 char alfanumerik, `crypto/rand` w/ rejection sampling for uniform distribution, ~71 bits entropy) → `auth.HashPassword` (bcrypt) → `CreateUser` (role=siswa, status=active, must_change_password=true, created_by_id=admin) → optional `FindByKodeInvite` + `Enroll(JoinedViaAdmin)`. Each step's failure recorded in `ConfirmFailure` but never aborts overall call
+- Stable reason codes: `invalid_row`, `duplicate_in_db`, `user_create_error`, `hash_error`, `kelas_not_found`, `enroll_error` — FE maps to UI copy
+- Decision: kelas_not_found does NOT roll back user creation (user dibuat, admin enroll manual nanti). Konsisten dgn partial-success pattern
+- Credentials.csv: `csv` package render `email,password,kode_kelas,nama_kelas` → R2 PutObject `credentials/<job_uuid>.csv` (CategoryCredentials baru di storage whitelist) → SetCredentialsPath
+- Failure modes:
+  - R2 GetObject fail → flip job=failed, return `confirm_failed` 500
+  - Re-parse fail (corruption) → flip job=failed, `confirm_failed`
+  - `pr.Stats.Total < job.TotalRows` → ErrConfirmRowsMismatch → 409 `rows_mismatch` (admin re-upload)
+  - R2 PutObject credentials fail → users sudah created tapi gak bisa rollback → flip failed, errors_json populated, `confirm_failed`
+- New sentinels: `ErrConfirmRowsMismatch` (409 rows_mismatch), `ErrInternalConfirm` (500 confirm_failed)
+- New audit action: `import_csv_confirmed` meta `{filename, object_key, credentials_object_key, success_count, fail_count}`
+- New StatusCompleted/StatusFailed flow distinct dari StatusCancelled (admin cancel) + StatusExpired (cron auto-expire)
+- Tests: 8 service + 3 handler. Total importjob package: 16+8 svc + 19+3 hdl + 18 parser = 64 cases
+- Live smoke 6/6 PASS:
+  - Step 1 upload: 4 rows (3 valid + 1 invalid email) → 201 preview
+  - Step 2 confirm happy: 200 status=completed success_count=3 fail_count=2 (1 invalid_row + 1 kelas_not_found) credentials_object_key populated
+  - Step 3 idempotent: 409 not_in_preview
+  - Step 4 invalid uuid: 400 invalid_job_id
+  - Step 5 random uuid: 404 not_found
+  - Step 6 no auth: 401
+- DB verify: 3 siswa rows created (must_change_password=true), 1 enrollment row to "Matematika 7A Smoke" via JoinedViaAdmin
+- R2 verify: HEAD credentials/...csv 215 bytes text/csv; 3 password rows 12 chars each; nama_kelas filled when match, empty when kelas_not_found
+- E2E proof: login Apis pake password generated → 200 + access_token + must_change_password=true (bcrypt round-trip works)
+- Cleanup: 3 users + 1 enrollment + 2 audit + 1 import_job + 2 R2 objects deleted
+- Commit: `da0fe4c` test(importjob): add Confirm tests; preceded by `d5234b1` wip + `563df99` test stub extension
 
 **Task 2.D.5 — Download credentials.csv (presigned, TTL-bound)**
 - `GET /admin/import-jobs/:id/credentials.csv` (cek admin owner + status=completed + CompletedAt+1h belum lewat) → respond redirect 302 ke presigned GET URL (TTL = `R2_PRESIGN_TTL_SECONDS`, ResponseContentDisposition `attachment; filename="credentials-<job_id>.csv"`) + audit `file_url_issued`
