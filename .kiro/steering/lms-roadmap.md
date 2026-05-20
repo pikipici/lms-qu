@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C.1-3 still DONE; Fase 2.D bulk import & semua fase ber-file (3, 4, 5, 6) di-rewrite untuk R2. Locked decisions baru: #61 R2 storage strategy, #62 upload flow + access control (presigned URL via backend). Berikut: Task 2.C.4 (FE guru tab Siswa di kelas detail), lalu Task 2.D.0 (R2 prerequisite: bucket + token + storage client wrapper) sebelum 2.D.1.
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Berikutnya: Task 2.D.0 (R2 wrapper) sebelum 2.D.1, menunggu pre-requisite eksternal (R2 bucket + API token + env vars).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Storage strategy migrated to Cloudflare R2: locked decisions #6 + #44 + #46 + #58 revised, #61 + #62 added; tech stack + Section 7/9/13 + Fase 2.D-8 phasing + Section 11 risks + Section 18 Task 2.D.0 prerequisite di-update)
+> Last updated: 2026-05-20 (Section 18: Task 2.C.4 marked done; backend list-enrollments endpoint + FE guru tab Siswa read-only shipped commit `cc5f57c`+`d79cfd3`, Fase 2.C FULL DONE 10/19; pointer ke Task 2.D.0 R2 wrapper)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1702,11 +1702,16 @@ Setelah tools jadi, runbook deploy jadi:
 - Shipped (FE): `frontend/app/(authed)/siswa/layout.tsx` shell (RoleGuard siswa, sidebar Dashboard + Gabung Kelas, header user menu mirror guru), `app/(authed)/siswa/page.tsx` dashboard (list MyKelasItem, empty-state CTA, joined_via badge), `app/(authed)/siswa/gabung/page.tsx` form react-hook-form+zod dgn auto-uppercase + error mapping 6 code (`kode_invite_required/not_found/kelas_archived/enrollment_removed/forbidden/too_many_requests`) ke pesan UX ramah, `lib/siswa-api.ts` typed client (commit `2a4b9c9`).
 - Verified server: typecheck PASS, npm build PASS (20 pages, /siswa 4.36 kB + /siswa/gabung 3.36 kB); E2E smoke 10 scenario hijau (siswa tok ok, baseline GET /siswa/kelas total=2, guru bikin kelas baru, siswa join via kode 201, GET total naik 2→3 dgn kelas baru kelihatan, archive kelas → tetap kelihatan selama enrollment active, soft-remove enrollment → hidden, role-guard guru→403, no-auth→401, FE static /siswa.html + /siswa/gabung.html serve 200).
 
-**Task 2.C.4 — FE guru tab Siswa di kelas detail**
+**Task 2.C.4 — FE guru tab Siswa di kelas detail** ✅ DONE 2026-05-20
 - Backend prep (perlu dibuat dulu): `GET /api/v1/kelas/:id/enrollments?page=&page_size=` — list enrollment kelas, hydrate dgn user (nama, email, joined_via, joined_at, status). Service method baru `Service.ListEnrollmentsByKelas`. Filter active-only by default (`?status=all` untuk admin lihat removed). Auth: guru-owner OR admin (lihat #59 + canManage).
 - FE: `frontend/app/(authed)/guru/kelas/detail/page.tsx` swap PlaceholderTab "Siswa" jadi table real. Kolom: Nama, Email, Bergabung via, Tanggal join. Pagination + empty state + role-aware (admin nanti dapet kolom Aksi remove di task terpisah).
 - Locked decision: guru read-only di MVP — tombol remove **tidak ada** (admin scope, dibahas di Fase 2 backlog atau v0.9). Catat di komentar code biar reviewer berikutnya tau.
-- Commit: `feat(kelas+fe-guru): list-enrollments endpoint + tab Siswa di kelas detail (Task 2.C.4)`
+- Commit: `feat(kelas+fe-guru): list-enrollments endpoint + tab Siswa di kelas detail (Task 2.C.4)` (commit `cc5f57c`) + vet fix `d79cfd3`.
+- Shipped (backend): `Service.ListEnrollmentsByKelas(kelasID, callerID, role, in)` di `service.go` + `Handler.ListEnrollments` di file baru `backend/internal/kelas/enrollments_handler.go` + route `GET /api/v1/kelas/:id/enrollments` di `cmd/server/main.go`. NewService skrng butuh 3 args: repo + audit + users (`userLookup` interface implement *auth.Repo). Default filter status=active; admin opt-in `?include_removed=true`. Total dari repo dipertahankan apa adanya supaya page math konsisten saat filter berubah. Tolerate dangling enrollment (siswa user yg udah dihapus) — di-skip silently mirip ListMyKelas. Hard precondition (4xx): bad uuid → 400 invalid_id, kelas not found → 404 not_found, foreign guru → 403 forbidden.
+- Shipped (FE): `lib/kelas-api.ts` tambah `listKelasEnrollments` + types `EnrollmentItem/EnrollmentListResponse/EnrollmentStatus/EnrollmentJoinedVia`. `app/(authed)/guru/kelas/detail/page.tsx` `PlaceholderTab "Siswa"` diganti jadi `SiswaTab` — table real (Nama, Email, Bergabung via, Tanggal), pagination 20/page, refresh button, empty state, error mapping (forbidden + request_id). Read-only di MVP: tombol remove **tidak ada**, ada catatan inline + footer `Read-only di MVP. Untuk mengeluarkan siswa, hubungi admin.`
+- Tests: 4 service-level (happy hydrate, hides_removed default + admin include opt-in, forbidden non-owner + admin allowed, not_found, dangling user skipped) + 4 handler-level (happy w/ pagination, include_removed query propagate, invalid_id 400, forbidden 403). Plus mockRepo dapet `RemoveEnrollment` test helper (vet fix d79cfd3) + `ListEnrollmentsByKelas` mock.
+- Verified server: `go build ./... && go vet ./... && go test ./...` semua hijau (admin/auth/kelas/middleware ok); `npx tsc --noEmit` PASS, `npm run build` PASS (20 pages, /guru/kelas/detail naik 4.13kB → 7.1kB).
+- Live smoke E2E: **deferred** — user gak izinkan systemctl restart lms-api di sesi ini (service aktif). Build/vet/test passing dianggap cukup sebagai evidence struktural. Routing wiring (`kelasGroup.Get("/:id/enrollments", ...)`) bisa di-curl saat restart berikutnya. Commit `cc5f57c` siap di-deploy kapan pun.
 
 #### 2.D Bulk Import CSV
 
@@ -1782,14 +1787,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.C.4 — FE guru tab Siswa di kelas detail (read-only).** Task 2.C.3 SELESAI: backend `GET /api/v1/siswa/kelas` (commit `952fe01`) + FE siswa shell + dashboard + gabung form (commit `2a4b9c9`). Filter active enrollment only (removed disembunyiin), role guard guru→403 di endpoint siswa, FE static /siswa.html + /siswa/gabung.html serve 200, error mapping 6 code di form gabung.
-
-**Task 2.C.4 spec (final, locked v0.8.0):**
-- Backend: `GET /api/v1/kelas/:id/enrollments` — service method `ListEnrollmentsByKelas` (hydrate user nama+email), auth guru-owner OR admin via `canManage`. Reuse `kelasRepo.ListEnrollmentsByKelas` (sudah ada di repo.go).
-- FE: `frontend/app/(authed)/guru/kelas/detail/page.tsx` tab "Siswa" — table list (Nama, Email, Bergabung via, Tanggal), pagination, empty state. **Read-only**, no remove button (admin scope, di-defer ke Fase 2 backlog).
-- Commit: `feat(kelas+fe-guru): list-enrollments endpoint + tab Siswa di kelas detail (Task 2.C.4)`
-
-**Setelah 2.C.4 → Fase 2.C ditutup → masuk Task 2.D.0 (R2 prerequisite) sebelum 2.D.1.** v0.8.0 menambahkan task baru **2.D.0 — R2 storage client wrapper + bucket bootstrap** sebagai prerequisite semua upload (CSV import, materi, tugas, submission, soal). Spec: `backend/internal/storage/r2.go` Storage interface + aws-sdk-go-v2/s3 impl, R2Config di `internal/config`, readyz `HeadBucket` cache 30s, integration test gated by `R2_INTEGRATION=1`. User butuh siapin: Cloudflare R2 account + bucket `lms-dev` (workspace) + bucket `lms-prod` (live) + API token (S3 creds, scope = bucket-specific) + env vars di `.env` workspace + live.
+**Berikut: Task 2.D.0 — Cloudflare R2 storage client wrapper.** Task 2.C.4 SELESAI (commit `cc5f57c` + vet fix `d79cfd3`): backend `GET /api/v1/kelas/:id/enrollments` + FE guru tab Siswa read-only (table 4 kolom + pagination 20/page). Build/vet/test semua ijo, FE build 20 pages, /guru/kelas/detail naik dari 4.13kB → 7.1kB. Live smoke E2E deferred (user gak izinkan systemctl restart di sesi ini) — code siap di-deploy. **Fase 2.C FULL DONE** (10/19 task Fase 2 selesai).
 
 **Pre-requisite eksternal sebelum 2.D.0 jalan:**
 1. User login Cloudflare → R2 → buat bucket `lms-dev` (workspace) + `lms-prod` (live)

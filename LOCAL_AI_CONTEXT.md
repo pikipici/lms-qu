@@ -37,7 +37,7 @@
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
 - [x] Fase 1 — Auth & Admin Panel (DONE: 1.A-1.H + 1.I, backend admin domain CLOSED, FE auth/admin shell/pengguna/audit-log/login-attempts shipped)
-- [ ] Fase 2 — Kelas, Enrollment, Bulk Import (in progress: 9/19 — 2.A.1, 2.A.2, 2.B FULL, 2.C.1, 2.C.2, 2.C.3 done; next 2.C.4 FE guru tab Siswa)
+- [ ] Fase 2 — Kelas, Enrollment, Bulk Import (in progress: 10/19 — 2.A.1, 2.A.2, 2.B FULL, 2.C FULL DONE; next 2.D.0 R2 wrapper, blocked on R2 pre-requisite)
 - [ ] Fase 3 — Bab & Materi + Pengumuman
 - [ ] Fase 4 — Tugas
 - [ ] Fase 5 — Soal Bab
