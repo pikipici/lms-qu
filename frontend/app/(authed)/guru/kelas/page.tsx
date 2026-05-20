@@ -19,6 +19,7 @@
  */
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -224,14 +225,8 @@ function KelasCard({ kelas }: { kelas: Kelas }) {
           </dd>
         </dl>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-auto"
-          disabled
-          title="Halaman detail kelas disiapkan di Task 2.B.4"
-        >
-          Detail (Task 2.B.4)
+        <Button asChild variant="outline" size="sm" className="mt-auto">
+          <Link href={`/guru/kelas/detail?id=${kelas.id}`}>Detail</Link>
         </Button>
       </CardContent>
     </Card>
