@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G.1 DONE. Backend admin domain CLOSED. FE login page wired (shadcn init + react-hook-form + Zod + TanStack Query + Zustand session + role-based redirect). Berikut: Task 1.G.2 (auth refresh interceptor + protected route guard).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G.1 + 1.G.2 DONE. Backend admin domain CLOSED. FE login wired (shadcn init + RHF + Zod + TanStack Query + Zustand). FE auth refresh interceptor + (authed) route group + force-change gate live. Berikut: Task 1.G.3 (/me + /me/security pages full).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.G.1 marked done, FE login live-verified)
+> Last updated: 2026-05-20 (Section 18: Task 1.G.2 marked done, build PASS)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1542,10 +1542,10 @@ Setelah tools jadi, runbook deploy jadi:
 - Implementation: bundled dgn shadcn init manual (no `npx shadcn` — file ditulis langsung dgn new-york style: button/card/input/label/form/toast/toaster + use-toast hook). Providers (TanStack QueryClient + Toaster) di-wire di root layout. lib/api.ts refactored — token sekarang dari Zustand store (`useAuthStore.getState().access`), ganti legacy `localStorage.lms.access` key. Snake_case→camelCase mapping untuk AuthUser di mutation onSuccess. Friendly Indonesian error toasts mapped per backend code (invalid_credentials/user_suspended/user_locked/too_many_requests). request_id surfaced in toast description.
 - Live verified: server typecheck `npx tsc --noEmit` PASS (exit 0), `next build` PASS (8 static pages, /login=32.3 kB, all chunks served via Fiber Static), `curl /login` returns 200 + script tags `_next/static/chunks/*.js`, backend login API still 200 dgn admin role.
 
-**Task 1.G.2 — Protected route HOC + auth refresh interceptor**
-- Files: `frontend/lib/api.ts` interceptor: 401 → refresh → retry. `frontend/lib/auth-guard.tsx` HOC redirect ke /login kalau gak ada token.
-- Verify: token expired → auto-refresh
-- Commit: `feat(fe): auth refresh interceptor + protected route guard`
+**Task 1.G.2 — Protected route HOC + auth refresh interceptor** ✅ DONE (commit `d092438`, 2026-05-20)
+- Files: `frontend/lib/api.ts` (refresh interceptor + module-level mutex), `frontend/lib/auth-guard.tsx` (client guard waiting for zustand persist hydration), `frontend/app/(authed)/layout.tsx` (route group wrapper), `frontend/app/(authed)/me/*` (existing /me + /me/security moved into the group)
+- Done: `lib/api.ts` extended with single-flight `refreshInFlight` promise so parallel 401s share one `/auth/refresh` round-trip; on success retries original request once with new bearer; on failure clears Zustand store + redirects `/login` (skipped if already on /login). Internal `skipRefresh` flag on `apiInner` prevents recursion when `/auth/refresh` itself returns 401. `AuthGuard` renders nothing until persist hydration finishes (avoids flash on hard reload), then enforces auth + force-change gate (whitelist `/me/security`). Route group `(authed)` keeps URL paths clean — no segment added.
+- Live verified: server `npx tsc --noEmit` PASS (exit 0), `next build` PASS (8 static pages — /, /login, /me, /me/security, /lupa-password, /_not-found), all routes still served by Fiber Static (200).
 
 **Task 1.G.3 — /me + /me/security pages full**
 - `/me` show profile (read-only).
@@ -1725,7 +1725,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.G.2 — Protected route HOC + auth refresh interceptor.** Modifikasi `lib/api.ts`: 401 response → POST `/auth/refresh` dengan refresh token dari Zustand → retry original request dengan access token baru → kalau refresh gagal, clear store + redirect `/login`. Bikin `lib/auth-guard.tsx` HOC (atau Layout-level `(authed)` group) yang redirect anonymous user ke `/login`. Mutex/lock supaya gak ada double-refresh kalau parallel requests gagal bareng. Verify: token expired manual → next request auto-refresh + retry seamless.
+**Berikut: Task 1.G.3 — /me + /me/security pages full.** `/me` form profile (read-only): GET `/auth/me` → render nama/email/role/status/last_login, button "Logout" (POST `/auth/logout` → clear store → /login) + link ke `/me/security` + `/me/perangkat`. `/me/security` form change-password (current/new/confirm) → POST `/auth/change-password` → on 204 sukses: toast + clear refresh (semua sesi ke-revoke per #42) → redirect `/login`. Kalau `mustChangePassword=true` (state Zustand), header banner "Wajib ganti password sebelum lanjut" + tombol Logout disabled. Verify: e2e seed admin → login → force-change flow → success.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
