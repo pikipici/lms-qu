@@ -232,6 +232,12 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	kelasRepo := kelas.NewRepo(gdb)
 	kelasSvc := kelas.NewService(kelasRepo, authRepo)
 	kelasHandler := kelas.NewHandler(kelasSvc)
+
+	// Admin bulk-enroll (Phase 2.C.2): assign multiple siswa directly into a
+	// kelas without kode invite. Wired under /admin so it inherits the admin
+	// role guard.
+	adminEnrollHandler := admin.NewKelasEnrollHandler(authRepo, kelasRepo)
+	adminGroup.Post("/kelas/:id/enroll", adminEnrollHandler.BulkEnroll)
 	kelasGroup := api.Group("/kelas",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),
