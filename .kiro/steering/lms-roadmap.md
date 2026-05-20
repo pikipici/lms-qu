@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 DONE 2026-05-20 (R2 client + readyz integration + CSV parser/validator). Berikutnya: Task 2.D.2 (R2 upload + preview ImportJob endpoint).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 DONE 2026-05-20 (R2 client + readyz integration + CSV parser + upload/preview endpoint). Berikutnya: Task 2.D.3 (resume + cancel preview).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.1 done — CSV parser di `internal/importjob/parser.go`: header alias + delimiter auto-detect + RFC email validation + dedup + 5MB/5000-rows limit + 18 unit tests passing; commit `a5adf68` + `1323f47` vet fix)
+> Last updated: 2026-05-20 (Task 2.D.2 done — POST /admin/import-csv/upload shipped, migration 000004 applied, live smoke 5/5 PASS dengan R2 object verified + audit log entry, commit `b01159d` + `aa9d9b8` + `8abd406`)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1746,10 +1746,24 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Live deploy: TIDAK perlu (pure parser, gak wired ke route — wiring di Task 2.D.2)
 - Commit: `a5adf68` feat(importjob): CSV parser + validator; `1323f47` fix: rowsEqual helper for Row{} (vet fix)
 
-**Task 2.D.2 — R2 upload + preview CSV**
-- `POST /admin/import-jobs` multipart file → validate mime (text/csv only) + size (max 5MB) → `s3.PutObject` ke R2 `import/<uuid>.csv`, parse rows dari memory buffer (jangan re-fetch dari R2), generate PreviewRowsJSON, insert ImportJob status=preview ObjectKey=`import/<uuid>.csv` ExpiresAt=now+1h
-- Response: `{job_id, valid_count, invalid_count, preview_rows}` (preview di-render dari PreviewRowsJSON, tidak butuh download URL)
-- Commit: `feat(import): R2 upload + preview ImportJob`
+**Task 2.D.2 — R2 upload + preview CSV ✅ DONE 2026-05-20 (commits `b01159d` + `aa9d9b8` + `8abd406`)**
+- Migration 000004: `ALTER TABLE import_jobs ADD COLUMN object_key TEXT` (applied di workspace DB)
+- Files shipped: `backend/internal/importjob/service.go` (Service.PreviewUpload: mime sniff → Parse → R2 PutObject `import/<job_uuid>.csv` → DB Create dengan compensating R2 delete kalo DB gagal); `backend/internal/importjob/handler.go` (POST /admin/import-csv/upload multipart, sentinel→HTTP code mapping, audit log `import_csv_uploaded`); `backend/internal/importjob/service_test.go` (7 cases); `backend/internal/importjob/handler_test.go` (13 cases dgn 9 sentinel mapping subtests)
+- Model: `ImportJob.ObjectKey *string` (column `object_key`)
+- Wired di `cmd/server/main.go`: `importjob.NewService(repo, objectStore, 0)` → `Handler` di `adminGroup.Post("/import-csv/upload", ...)`
+- Limits: `MaxCSVBytes=5MB` (handler enforced via LimitReader), preview row cap 200 default (parser stats reflect full count)
+- Compensating delete: kalo R2 PutObject sukses tapi DB Create gagal, `DeleteObject(objectKey)` best-effort (warn-log kalau juga gagal)
+- Verified server: `go test ./...` ALL_TEST_OK; live restart applied
+- Live smoke E2E (5/5 PASS):
+  - happy: 201 + ImportJob row + R2 object + audit log entry
+  - missing nama column: 400 `missing_nama_column`
+  - missing file: 400 `missing_file`
+  - binary disguised csv: 415 `unsupported_mime`
+  - no auth: 401 `unauthorized`
+- R2 verify: HeadObject 142 bytes content-type `text/csv; charset=utf-8`, body content match raw upload
+- Audit verify: row dengan action `import_csv_uploaded` target_type `import_job` meta `{filename, object_key, total_rows, valid_count, invalid_count}`
+- Cleanup: smoke test data dihapus dari R2 + DB
+- Commits: `b01159d` feat(importjob): R2 upload + preview ImportJob endpoint; `aa9d9b8` test(importjob): service + handler tests; `8abd406` test fix: BodyLimit di test app
 
 **Task 2.D.3 — Resume + cancel preview**
 - `GET /admin/import-jobs/:id` (status preview only) → return PreviewRowsJSON
