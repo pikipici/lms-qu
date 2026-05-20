@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Berikut: Task 1.I (E2E manual verify) lalu close v0.7.2.
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 DONE (kelas/enrollment/import_jobs schema + GORM repos). Berikut: Task 2.B.1 (kode invite generator).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.H.5 marked done, /admin/audit-log + /admin/login-attempts 200)
+> Last updated: 2026-05-20 (Section 18: Task 2.A.1 + 2.A.2 marked done, kelas/enrollment/import_jobs schema + repos shipped)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1602,16 +1602,18 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 2.A Schema Kelas + Enrollment
 
-**Task 2.A.1 — Migration `000003_kelas_enrollment.up.sql`**
+**Task 2.A.1 — Migration `000003_kelas_enrollment.up.sql`** ✅ DONE (commit `1964b7b`, 2026-05-20)
 - Tables: `kelas`, `enrollment`, `import_jobs`
 - Indexes per Section 6.3
 - Verify: migrate up + `\dt`
 - Commit: `feat(migrations): 000003 kelas + enrollment + import_jobs`
+- Shipped: 3 tabel + `kode_invite` UNIQUE + indexes (`idx_kelas_guru_id`, `idx_enrollment_siswa_id`, `idx_import_jobs_admin_status_expires`) + trigger `kelas_set_updated_at` (reuse `set_updated_at()` dari 000002). FK: kelas.guru_id RESTRICT, enrollment CASCADE, import_jobs.admin_id SET NULL. Verified di server: `migrate up` 54ms, schema_meta=`000003_kelas_enrollment`, 9 tabel total.
 
-**Task 2.A.2 — Models + repo Kelas/Enrollment/ImportJob**
-- Files: `backend/internal/kelas/{model,repo}.go`, `backend/internal/import/{model,repo}.go`
+**Task 2.A.2 — Models + repo Kelas/Enrollment/ImportJob** ✅ DONE (commit `1964b7b`, 2026-05-20)
+- Files: `backend/internal/kelas/{model,repo}.go`, `backend/internal/importjob/{model,repo}.go` (catat: `importjob` bukan `import` — Go reserved keyword)
 - Verify: build
 - Commit: `feat(kelas): GORM models + repo`
+- Shipped: `Kelas` + `Enrollment` + enum `JoinedVia`/`EnrollmentStatus`; `ImportJob` + enum `Status`. `kelas.Repo`: Create, FindByID, FindByKodeInvite, ListByGuru/All (filter archived), UpdateBasic dgn optimistic concurrency (`WHERE id=? AND version=?` + reprobe → `ErrVersionConflict` vs `gorm.ErrRecordNotFound`), Archive/Unarchive (idempotent guard), Enroll dgn ON CONFLICT DO NOTHING returning `(inserted bool, err)`, FindEnrollment, ListEnrollmentsByKelas/Siswa, RemoveEnrollment (soft via status=removed). `importjob.Repo`: Create, FindByID(+ForAdmin scope), ListByAdmin, SetStatus (optional confirmed/completed timestamps), SetCounts/CredentialsPath/ErrorsJSON, ExpirePreviewBefore (transaction + `clause.Locking{Strength:"UPDATE"}` + bulk update). Verified server: `go build ./... && go vet ./... && go test ./...` semua hijau, no new deps.
 
 #### 2.B Kelas CRUD (guru)
 
@@ -1722,7 +1724,9 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.I — E2E Manual Verify.** Section 1.H selesai semua + dummy data tersedia. Test data sudah di-seed di server (commit `4bbbb66` `cmd/seed-dummy`): 5 dummy users (2 guru `guru1/2@sekolah.id` password `guru1/2pass`, 3 siswa `siswa1/2/3@sekolah.id` password `siswa1/2/3pass`, semua `must_change_password=true`), 16 login attempts (mix sukses+gagal+bogus emails), 2 extra audit events (`admin_user_password_reset`, `admin_user_sessions_revoked`). Cara jalanin lagi kalau perlu reset/tambah data: `ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"` (idempotent: existing dummy email skip, hanya nambah audit/login_attempts). Step verifikasi manual (lu QA, gue dukung kalau ada hal yang perlu di-fix): (1) login admin via `/login`, (2) `/admin` dashboard, (3) `/admin/pengguna` — confirm 5 dummies + 1 admin tampil, test filter+pagination, (4) `/admin/pengguna/baru` create user (test kedua strategy: generate + manual, copy password sekali), (5) `/admin/pengguna/detail?id=:id` salah satu dummy: edit nama, ubah peran (verifikasi re-auth current_password), reset password (sukses tampil sekali), suspend/unsuspend, logout-all → cek di tab Sesi Aktif, (6) `/admin/audit-log` — pastikan event tercatat untuk semua aksi di langkah 5, test filter action+actor_id+target_id+date range, (7) `/admin/login-attempts` — test filter email "guru1@" + success=false, (8) login sebagai `guru1@sekolah.id` password `guru1pass` → force-change gate redirect ke `/me/security`, ganti password, lalu test `/me`+`/me/perangkat` self list + logout-all, (9) login ulang dengan password baru. Setelah semua lulus → tag rilis v0.7.2 + open Fase 2 plan section.
+**Berikut: Task 2.B.1 — Generate kode invite unik (6-char alnum).** Fase 2.A SELESAI: schema + GORM repo kelas/enrollment/importjob hidup di server (commit `1964b7b`, 2026-05-20). Migration 000003 verified `\dt` (9 tabel), schema_meta=`000003_kelas_enrollment`, build/vet/test semua hijau. Task 2.B.1 spec: `backend/internal/kelas/code.go` — generator `Generate(ctx, repo) (string, error)` (6-char alnum, charset hindari ambigu O/0/I/1/L untuk UX guru baca-tulis manual), collision retry pakai `repo.FindByKodeInvite` (kalau ketemu→retry, max 10 attempts→error). Test: `code_test.go` stdlib testing only (project gak pakai testify), bisa pakai mock repo dgn map[string]bool atau interface kecil. Commit `feat(kelas): kode invite generator`. Setelah ini berlanjut Task 2.B.2 (Kelas CRUD service + handler) — bisa di-bundle solo dulu (first instance handler kelas, sebaiknya BUKAN bundled supaya pattern bisa direview).
+
+QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
