@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 DONE 2026-05-20 (R2 client + readyz integration + CSV parser + upload/preview endpoint). Berikutnya: Task 2.D.3 (resume + cancel preview).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 DONE 2026-05-20 (R2 client + readyz integration + CSV parser + upload/preview endpoint + resume/cancel endpoints). Berikutnya: Task 2.D.4 (confirm import → User.Create + auto-enroll + bcrypt password gen).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.2 done — POST /admin/import-csv/upload shipped, migration 000004 applied, live smoke 5/5 PASS dengan R2 object verified + audit log entry, commit `b01159d` + `aa9d9b8` + `8abd406`)
+> Last updated: 2026-05-20 (Task 2.D.3 done — GET resume + POST cancel shipped, live smoke 7/7 PASS, R2 deletion verified, audit `import_csv_cancelled` recorded, commit `601a4c8`)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1765,10 +1765,28 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Cleanup: smoke test data dihapus dari R2 + DB
 - Commits: `b01159d` feat(importjob): R2 upload + preview ImportJob endpoint; `aa9d9b8` test(importjob): service + handler tests; `8abd406` test fix: BodyLimit di test app
 
-**Task 2.D.3 — Resume + cancel preview**
-- `GET /admin/import-jobs/:id` (status preview only) → return PreviewRowsJSON
-- `POST /admin/import-jobs/:id/cancel` → status=expired + `s3.DeleteObject(ObjectKey)`
-- Commit: `feat(import): resume + cancel preview`
+**Task 2.D.3 — Resume + cancel preview** ✅ DONE 2026-05-20
+- Routes wired di `cmd/server/main.go`:
+  - `GET /api/v1/admin/import-csv/:job_id` → resume preview (scope: admin owner only). Status: 200 (preview), 404 not_found, 409 not_in_preview, 410 preview_expired
+  - `POST /api/v1/admin/import-csv/:job_id/cancel` → flip preview→cancelled + best-effort R2 DeleteObject. Status: 200, 404, 409 (idempotent guard)
+- Service: `Service.GetPreview` (decode PreviewRowsJSON + scope by adminID + TTL check tanpa mutate state) + `Service.Cancel` (status flip dulu, R2 delete sesudahnya supaya orphan diserap cron, gak preview→hilang-object race)
+- Sentinels baru: `ErrJobNotFound` (404), `ErrJobExpired` (410), `ErrJobNotInPreview` (409)
+- Audit action baru: `import_csv_cancelled` meta `{filename, object_key}`
+- New status enum value: `StatusCancelled` ("cancelled") — distinct dari `StatusExpired` (cron-driven) supaya audit trail bisa beda admin-cancel vs auto-expire
+- Tests: 9 service + 6 handler (total importjob package: 16 service + 19 handler + 18 parser = 53 cases)
+- Live smoke 7/7 PASS:
+  - GET resume happy: 200 dengan preview rows + status=preview + filename
+  - GET invalid uuid: 400 `invalid_job_id`
+  - GET random uuid: 404 `not_found`
+  - GET no auth: 401 `unauthorized`
+  - POST cancel happy: 200 status=cancelled
+  - POST cancel idempotent: 409 `not_in_preview`
+  - GET after cancel: 409 `not_in_preview`
+- R2 verify: HeadObject post-cancel returns 404 NoSuchKey (object dihapus)
+- Audit verify: 2 rows for same job_id — `import_csv_uploaded` + `import_csv_cancelled`
+- Cleanup: smoke data dihapus dari R2 + DB
+- Operational fix: ExecStartPost retry budget bumped 10→30 detik supaya R2 prewarm 10.5s slot gak failed-to-start (IPv6 happy-eyeballs sudah dimitigate via boot-prewarm tapi prewarm itu sendiri berdurasi >10s)
+- Commit: `601a4c8` feat(importjob): GET resume + POST cancel preview endpoints (Task 2.D.3)
 
 **Task 2.D.4 — Confirm import (preview → processing → completed)**
 - `POST /admin/import-jobs/:id/confirm`
