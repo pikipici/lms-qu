@@ -29,12 +29,14 @@ const (
 
 // ImportJob tracks a CSV bulk-import lifecycle (#54).
 //
-// PreviewRowsJSON / ErrorsJSON are JSONB blobs. CredentialsCSV is a path to
-// the on-disk credentials file (TTL'd by the cleanup cron).
+// PreviewRowsJSON / ErrorsJSON are JSONB blobs. CredentialsCSV holds the R2
+// object key for the generated credentials.csv (Task 2.D.5); ObjectKey holds
+// the R2 object key for the uploaded raw CSV (Task 2.D.2).
 type ImportJob struct {
 	ID              uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	AdminID         *uuid.UUID     `gorm:"type:uuid" json:"admin_id,omitempty"`
 	Filename        string         `gorm:"not null" json:"filename"`
+	ObjectKey       *string        `gorm:"column:object_key" json:"object_key,omitempty"`
 	Status          Status         `gorm:"not null" json:"status"`
 	TotalRows       int            `gorm:"not null;default:0" json:"total_rows"`
 	ValidCount      int            `gorm:"not null;default:0" json:"valid_count"`

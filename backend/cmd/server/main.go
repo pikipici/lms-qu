@@ -31,6 +31,7 @@ import (
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"github.com/pikip/lms/backend/internal/health"
+	"github.com/pikip/lms/backend/internal/importjob"
 	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/middleware"
 	"github.com/pikip/lms/backend/internal/storage"
@@ -283,6 +284,12 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB, objectStore s
 	// role guard.
 	adminEnrollHandler := admin.NewKelasEnrollHandler(authRepo, kelasRepo)
 	adminGroup.Post("/kelas/:id/enroll", adminEnrollHandler.BulkEnroll)
+
+	// Bulk-import CSV (Phase 2.D.2): admin uploads CSV → preview ImportJob.
+	importRepo := importjob.NewRepo(gdb)
+	importSvc := importjob.NewService(importRepo, objectStore, 0)
+	importHandler := importjob.NewHandler(importSvc, authRepo)
+	adminGroup.Post("/import-csv/upload", importHandler.PreviewUpload)
 	kelasGroup := api.Group("/kelas",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),
