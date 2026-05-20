@@ -122,7 +122,7 @@ func run() error {
 	defer func() { _ = closeDB() }()
 
 	app := newFiberApp(cfg, logger)
-	mountRoutes(app, cfg, gdb, objectStore)
+	mountRoutes(rootCtx, app, cfg, gdb, objectStore)
 	mountStatic(app, cfg, logger)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
@@ -213,7 +213,7 @@ func newFiberApp(cfg *config.Config, log *slog.Logger) *fiber.App {
 	return app
 }
 
-func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB, objectStore storage.Storage) {
+func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gdb *gorm.DB, objectStore storage.Storage) {
 	api := app.Group("/api/v1")
 
 	hh := &health.Handler{Cfg: cfg, DB: gdb, Storage: objectStore}
