@@ -225,6 +225,19 @@ func (m *mockRepo) ListEnrollmentsByKelas(ctx context.Context, kelasID uuid.UUID
 	return rows[offset:end], total, nil
 }
 
+// RemoveEnrollment is a test-only helper mirroring *Repo.RemoveEnrollment
+// (soft-flip status to removed). Bukan bagian dari kelasRepo interface karena
+// service belum perlu — dipakai di service_test.go untuk siap-siap fixture
+// "removed enrollment hidden by default".
+func (m *mockRepo) RemoveEnrollment(ctx context.Context, kelasID, siswaID uuid.UUID) error {
+	row, ok := m.enrollments[enrollKey(kelasID, siswaID)]
+	if !ok || row.Status != EnrollmentActive {
+		return gorm.ErrRecordNotFound
+	}
+	row.Status = EnrollmentRemoved
+	return nil
+}
+
 func paginate(rows []Kelas, limit, offset int) ([]Kelas, int64, error) {
 	total := int64(len(rows))
 	if offset >= len(rows) {
