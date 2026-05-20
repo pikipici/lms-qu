@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G.1 + 1.G.2 + 1.G.3 + 1.G.4 DONE. Backend admin domain CLOSED. FE auth stack live: login, refresh interceptor, (authed) route group + force-change gate, /me + /me/security + /me/perangkat. Berikut: Task 1.H.1 (admin layout + sidebar).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 DONE. Backend admin domain CLOSED. FE auth stack live + admin shell (sidebar + role guard) ready. Berikut: Task 1.H.2 (/admin/pengguna list + filter).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.G.4 marked done, /me/perangkat 200)
+> Last updated: 2026-05-20 (Section 18: Task 1.H.1 marked done, /admin 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1559,10 +1559,10 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.H Frontend Admin Panel
 
-**Task 1.H.1 — Admin layout + sidebar**
-- Files: `frontend/app/admin/layout.tsx` (sidebar Pengguna/Audit/Login Attempts), guard role=admin
-- Verify: visual
-- Commit: `feat(fe-admin): admin layout + sidebar`
+**Task 1.H.1 — Admin layout + sidebar** ✅ DONE (commit `d80d3a1`, 2026-05-20)
+- Files: `frontend/app/(authed)/admin/layout.tsx` (212 LOC), `frontend/app/(authed)/admin/page.tsx` (97 LOC dashboard placeholder), `frontend/lib/role-guard.tsx` (45 LOC), `frontend/components/ui/dropdown-menu.tsx` (radix shadcn new-york port)
+- Done: `(authed)/admin/layout.tsx` wraps shell — RoleGuard(allow="admin") redirect role mismatch ke landing role-spesifik (`/guru`/`/siswa`). Sidebar persisten md+ (Dashboard, Pengguna, Audit Log, Login Attempts) + active-state highlight via prefix match. Mobile: compact horizontal nav strip di header. Sticky header punya user dropdown (initials avatar dari `user.name`, label nama+email, item Profil → `/me`, Perangkat aktif → `/me/perangkat`, Logout best-effort POST `/auth/logout` → clear store → `/login` + toast). RoleGuard reusable: `allow` accept Role | Role[], render null saat redirect inflight (no flash). Dropdown-menu primitives di-port langsung (no `npx shadcn`) sesuai pola sebelumnya.
+- Live verified: server `npx tsc --noEmit` PASS (TSC_OK), `next build` PASS (10 static pages — /admin=3.34 kB), curl /admin=200 + /admin/pengguna=200 (SPA fallback) + /admin/audit-log=200, lms-api active.
 
 **Task 1.H.2 — /admin/pengguna list + filter**
 - Files: `frontend/app/admin/pengguna/page.tsx` (TanStack Query + Table)
@@ -1724,7 +1724,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.H.1 — Admin layout + sidebar.** Bikin `frontend/app/(authed)/admin/layout.tsx` — guard role=admin (kalau bukan admin, redirect ke landing role-spesifik), pakai shell shadcn (sidebar kiri + content). Sidebar item: Dashboard `/admin`, Pengguna `/admin/pengguna`, Audit Log `/admin/audit-log`, Login Attempts `/admin/login-attempts`. Header strip kanan: nama user + dropdown (Profil → /me, Logout → POST /auth/logout). Halaman `/admin` index taruh dashboard placeholder (cards stat skeleton), aktif data-binding nanti di tasks setelahnya. Verify: login admin → /admin render layout, login guru → /admin redirect ke /guru, anonymous → /login (sudah dihandle AuthGuard parent).
+**Berikut: Task 1.H.2 — /admin/pengguna list + filter.** Halaman daftar pengguna pakai TanStack Query (queryKey `['admin','users', filters]`). Filter: role (admin/guru/siswa/all), status (active/suspended/locked/all), search query (debounced 300ms). Pagination cursor backend pakai limit/offset → tampilkan tombol Prev/Next sederhana. Render tabel: Nama, Email, Role badge, Status badge (aktif/suspended/locked), Last login (Asia/Jakarta), tombol "Detail" (link `/admin/pengguna/[id]`, halaman target nanti di 1.H.4). Tombol "+ Tambah Pengguna" → link `/admin/pengguna/baru` (form di 1.H.3). Toolbar: select role + select status + input search + button reset. Empty state + skeleton loader (5 row pulse). Place at `frontend/app/(authed)/admin/pengguna/page.tsx`.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
