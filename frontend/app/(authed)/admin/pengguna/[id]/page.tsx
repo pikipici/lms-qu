@@ -424,8 +424,9 @@ function SessionsTab({ userId }: { userId: string }) {
       <CardHeader>
         <CardTitle className="text-base">Sesi aktif</CardTitle>
         <CardDescription>
-          Refresh token yang masih hidup. Cabut semua via tombol "Logout dari
-          semua perangkat" di header.
+          Refresh token yang masih hidup. Cabut semua via tombol{' '}
+          <span className="font-medium">Logout dari semua perangkat</span> di
+          header.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
