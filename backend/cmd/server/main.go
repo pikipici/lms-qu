@@ -31,6 +31,7 @@ import (
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"github.com/pikip/lms/backend/internal/health"
+	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/middleware"
 	"github.com/pikip/lms/backend/internal/storage"
 	"gorm.io/gorm"
@@ -226,6 +227,22 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 
 	adminGroup.Get("/audit-log", adminHandler.ListAuditLog)
 	adminGroup.Get("/login-attempts", adminHandler.ListLoginAttempts)
+
+	// Kelas (Phase 2): guru manages own kelas, admin sees all.
+	kelasRepo := kelas.NewRepo(gdb)
+	kelasSvc := kelas.NewService(kelasRepo, authRepo)
+	kelasHandler := kelas.NewHandler(kelasSvc)
+	kelasGroup := api.Group("/kelas",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	kelasGroup.Get("/", kelasHandler.List)
+	kelasGroup.Post("/", kelasHandler.Create)
+	kelasGroup.Get("/:id", kelasHandler.Get)
+	kelasGroup.Patch("/:id", kelasHandler.Update)
+	kelasGroup.Post("/:id/archive", kelasHandler.Archive)
+	kelasGroup.Post("/:id/duplicate", kelasHandler.Duplicate)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
