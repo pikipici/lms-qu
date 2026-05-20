@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL DONE. Backend admin domain CLOSED (auth + bootstrap + recovery + user CRUD + lifecycle + role change + sessions/audit/login-attempts read endpoints). Berikut: Fase 1.G (frontend auth flow integration).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G.1 DONE. Backend admin domain CLOSED. FE login page wired (shadcn init + react-hook-form + Zod + TanStack Query + Zustand session + role-based redirect). Berikut: Task 1.G.2 (auth refresh interceptor + protected route guard).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-19 (Section 18: Section 1.F closed, FE inventory verified, 1.G strategy noted)
+> Last updated: 2026-05-20 (Section 18: Task 1.G.1 marked done, FE login live-verified)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1535,12 +1535,12 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 1.G Frontend Auth + Self
 
-**Task 1.G.1 — Login page wiring**
+**Task 1.G.1 — Login page wiring** ✅ DONE (commit `7b9cbb8`)
 - Files: `frontend/app/(auth)/login/page.tsx`
 - React Hook Form + Zod schema (email + password) + submit POST `/auth/login` via `lib/api.ts`
 - On success: simpan access+refresh di Zustand + redirect: kalau `MustChangePassword` → `/me/security`, kalau admin → `/admin`, kalau guru → `/guru`, siswa → `/siswa`
-- Verify: visual + manual login pake admin yang di-seed
-- Commit: `feat(fe): login form wired to backend`
+- Implementation: bundled dgn shadcn init manual (no `npx shadcn` — file ditulis langsung dgn new-york style: button/card/input/label/form/toast/toaster + use-toast hook). Providers (TanStack QueryClient + Toaster) di-wire di root layout. lib/api.ts refactored — token sekarang dari Zustand store (`useAuthStore.getState().access`), ganti legacy `localStorage.lms.access` key. Snake_case→camelCase mapping untuk AuthUser di mutation onSuccess. Friendly Indonesian error toasts mapped per backend code (invalid_credentials/user_suspended/user_locked/too_many_requests). request_id surfaced in toast description.
+- Live verified: server typecheck `npx tsc --noEmit` PASS (exit 0), `next build` PASS (8 static pages, /login=32.3 kB, all chunks served via Fiber Static), `curl /login` returns 200 + script tags `_next/static/chunks/*.js`, backend login API still 200 dgn admin role.
 
 **Task 1.G.2 — Protected route HOC + auth refresh interceptor**
 - Files: `frontend/lib/api.ts` interceptor: 401 → refresh → retry. `frontend/lib/auth-guard.tsx` HOC redirect ke /login kalau gak ada token.
@@ -1725,17 +1725,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Section 1.G — Frontend Auth + Self.** Tasks 1.G.1 (login wiring) → 1.G.2 (refresh interceptor + auth-guard) → 1.G.3 (/me + /me/security) → 1.G.4 (/me/perangkat).
-
-**FE Inventory verified (2026-05-19):**
-- ✅ Stack: Next.js 14.2.15 (App Router, `output:export`), TanStack Query 5, Zustand 4 + persist, Zod, react-hook-form, Tailwind, Radix primitives (dialog/dropdown/label/slot/toast)
-- ✅ `lib/api.ts` — fetch wrapper + ApiError class. Reads `localStorage.lms.access` (legacy key, perlu di-rewire ke Zustand store)
-- ✅ `lib/auth.ts` — Zustand AuthStore w/ AuthUser type + persist key `lms.auth` (state.access ada disitu)
-- ✅ Routes scaffold: `/`, `/login`, `/lupa-password`, `/me`, `/me/security` — semua disabled stub
-- ❌ No `components/` dir — perlu shadcn init untuk Button/Input/Label/Form/Card/Toast/Dialog (ada Radix deps tapi belum ada wrapper component)
-- ❌ No `(dashboard)/`, `/admin/` routes — Fase 1.H
-
-**Strategy untuk 1.G.1:** bundle dgn shadcn init (init shadcn, add Button/Input/Label/Form/Card/Toast components) + wire login form. ~1 codex run. Build verify di server (no local Node). Subsequent tasks (1.G.2 interceptor, 1.G.3 self pages) per task.
+**Berikut: Task 1.G.2 — Protected route HOC + auth refresh interceptor.** Modifikasi `lib/api.ts`: 401 response → POST `/auth/refresh` dengan refresh token dari Zustand → retry original request dengan access token baru → kalau refresh gagal, clear store + redirect `/login`. Bikin `lib/auth-guard.tsx` HOC (atau Layout-level `(authed)` group) yang redirect anonymous user ke `/login`. Mutex/lock supaya gak ada double-refresh kalau parallel requests gagal bareng. Verify: token expired manual → next request auto-refresh + retry seamless.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
