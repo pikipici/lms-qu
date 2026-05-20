@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 + 1.H.2 + 1.H.3 + 1.H.4 DONE. Backend admin domain CLOSED. FE: auth stack + admin shell + /admin/pengguna list & create-user form & detail page (tabs + lifecycle actions, password reveal once, re-auth on promote/demote). Berikut: Task 1.H.5 (/admin/audit-log + /admin/login-attempts list pages).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Berikut: Task 1.I (E2E manual verify) lalu close v0.7.2.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.H.4 marked done, /admin/pengguna/detail?id=:id 200)
+> Last updated: 2026-05-20 (Section 18: Task 1.H.5 marked done, /admin/audit-log + /admin/login-attempts 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1579,9 +1579,10 @@ Setelah tools jadi, runbook deploy jadi:
 - Verify: tsc PASS, next build PASS (13 static pages, /admin/pengguna/detail = 11.6 kB), curl /admin/pengguna/detail=200, /api/v1/admin/users/<uuid>=401 (no auth, expected), lms-api active.
 - Commit: `feat(fe-admin): user detail page with tabs + action dialogs` (e0c55a7) + lint/static-export hotfixes.
 
-**Task 1.H.5 — /admin/audit-log + /admin/login-attempts list pages**
-- Verify: visual + filter
-- Commit: `feat(fe-admin): audit log + login attempts pages`
+**Task 1.H.5 — /admin/audit-log + /admin/login-attempts list pages** ✅ DONE (commit `a45683e`, 2026-05-20)
+- Done: Dua halaman list level-atas dengan filter form lengkap. `/admin/audit-log` — filter action (debounced 300ms), actor_id+target_id (UUID validated client-side dengan regex, invalid = skip param), since/until (HTML date inputs → RFC3339 UTC start/end-of-day). Tabel: Waktu Asia/Jakarta, action code (mono), actor_id (mono), target_id (mono), Meta (ExpandableMeta — JSON ≤80 chars rendered langsung, lebih panjang pakai toggle "Lihat detail meta"). `/admin/login-attempts` — filter email (debounced 300ms, server lowercases), success (semua/sukses/gagal native select), since/until. Tabel: Waktu, Email, Hasil badge (emerald sukses / rose gagal), IP, Perangkat (UA summarizer reuse pattern dari `/me/perangkat`), Alasan gagal. Kedua halaman pakai TanStack Query + `keepPreviousData`, page reset ke 1 setiap filter berubah, Prev/Next pagination berbasis `total_pages`. Empty state membedakan "tidak ada match filter" vs "belum ada data". 5-row skeleton saat loading.
+- Verify: tsc PASS, next build PASS (13 static pages — /admin/audit-log=5.33 kB, /admin/login-attempts=5.3 kB), curl /admin/audit-log=200 + /admin/login-attempts=200, lms-api active.
+- Commit: `feat(fe-admin): audit-log + login-attempts list pages` (a45683e).
 
 #### 1.I E2E Manual Verify
 
@@ -1721,7 +1722,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.H.5 — /admin/audit-log + /admin/login-attempts list pages.** Dua halaman list level-atas (bukan filtered per-user seperti yang sudah dipakai di tab detail). `/admin/audit-log` pakai `GET /admin/audit-log` dengan filter form: action (text), actor_id, target_id, since/until (date range), pagination. Tampilan tabel: timestamp Asia/Jakarta, action code, actor (resolve nama dari list-users cache atau show id), target, meta (JSON expandable). `/admin/login-attempts` pakai `GET /admin/login-attempts` dengan filter: email (text), success (true/false/all), since/until, pagination. Tampilan tabel: timestamp, email, success badge, IP, UA, failure_reason. Reuse pola debounced search dari `/admin/pengguna` list. Place at `frontend/app/(authed)/admin/audit-log/page.tsx` dan `frontend/app/(authed)/admin/login-attempts/page.tsx`. Sidebar di admin layout sudah ada link kedua route ini.
+**Berikut: Task 1.I — E2E Manual Verify.** Section 1.H selesai semua, Fase 1 admin domain end-to-end ready. Step verifikasi manual (lu QA, gue dukung kalau ada hal yang perlu di-fix): (1) login admin via `/login`, (2) ganti password awal via `/me/security` (gate force-change otomatis redirect), (3) buka `/admin` dashboard, (4) `/admin/pengguna` list + filter + pagination, (5) `/admin/pengguna/baru` create user (test kedua strategy: generate + manual, copy password sekali), (6) `/admin/pengguna/detail?id=:id` untuk akun yang baru dibuat: edit nama, ubah peran (verifikasi re-auth current_password), reset password (sukses tampil sekali), suspend/unsuspend, logout-all → cek di `/me/perangkat`, (7) `/admin/audit-log` filter by action + tanggal — pastikan event tercatat untuk semua aksi di langkah 6, (8) `/admin/login-attempts` filter by email gagal/sukses, (9) `/me/perangkat` self list + logout-all sebagai siswa/guru. Setelah semua lulus → tag rilis v0.7.2 + open Fase 2 plan section.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
