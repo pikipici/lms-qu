@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 DONE. Backend admin domain CLOSED. FE auth stack live + admin shell (sidebar + role guard) ready. Berikut: Task 1.H.2 (/admin/pengguna list + filter).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 + 1.H.2 DONE. Backend admin domain CLOSED. FE auth stack live + admin shell + /admin/pengguna list dengan filter & pagination. Berikut: Task 1.H.3 (/admin/pengguna create form + re-auth admin role).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.H.1 marked done, /admin 200)
+> Last updated: 2026-05-20 (Section 18: Task 1.H.2 marked done, /admin/pengguna 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1564,11 +1564,10 @@ Setelah tools jadi, runbook deploy jadi:
 - Done: `(authed)/admin/layout.tsx` wraps shell — RoleGuard(allow="admin") redirect role mismatch ke landing role-spesifik (`/guru`/`/siswa`). Sidebar persisten md+ (Dashboard, Pengguna, Audit Log, Login Attempts) + active-state highlight via prefix match. Mobile: compact horizontal nav strip di header. Sticky header punya user dropdown (initials avatar dari `user.name`, label nama+email, item Profil → `/me`, Perangkat aktif → `/me/perangkat`, Logout best-effort POST `/auth/logout` → clear store → `/login` + toast). RoleGuard reusable: `allow` accept Role | Role[], render null saat redirect inflight (no flash). Dropdown-menu primitives di-port langsung (no `npx shadcn`) sesuai pola sebelumnya.
 - Live verified: server `npx tsc --noEmit` PASS (TSC_OK), `next build` PASS (10 static pages — /admin=3.34 kB), curl /admin=200 + /admin/pengguna=200 (SPA fallback) + /admin/audit-log=200, lms-api active.
 
-**Task 1.H.2 — /admin/pengguna list + filter**
-- Files: `frontend/app/admin/pengguna/page.tsx` (TanStack Query + Table)
-- Filter: role, status, search email/name. Paginated.
-- Verify: visual + data
-- Commit: `feat(fe-admin): pengguna list with filter`
+**Task 1.H.2 — /admin/pengguna list + filter** ✅ DONE (commit `1b34c97`, 2026-05-20)
+- Files: `frontend/app/(authed)/admin/pengguna/page.tsx` (379 LOC)
+- Done: TanStack Query (queryKey `['admin','users', { role, status, q, page }]`) hits `GET /api/v1/admin/users?role&status&q&page&page_size` dgn `keepPreviousData` (table tetap stabil saat page swap). Toolbar: search input debounced 300ms via `useDebounced` hook lokal, role select (admin/guru/siswa/all), status select (active/suspended/locked/all), Reset button (disabled saat no filter active). Table: Nama, Email, Role badge (violet/sky/slate tone), Status badge (emerald/amber/rose tone), Login terakhir Asia/Jakarta, Detail link → `/admin/pengguna/[id]`. 5-row skeleton saat loading; empty state membedakan "tidak ada match filter" vs "belum ada pengguna". Prev/Next pagination pakai `data.total_pages`. Page reset ke 1 setiap filter berubah. Tombol "Tambah pengguna" → `/admin/pengguna/baru` (form di 1.H.3).
+- Live verified: `npx tsc --noEmit` PASS, `next build` PASS (11 static pages — /admin/pengguna=6.79 kB), curl /admin/pengguna=200, /api/v1/admin/users tanpa bearer=401 (expected).
 
 **Task 1.H.3 — /admin/pengguna create form**
 - Modal/page bikin user. Toggle manual/generate password. Kalau role=admin → modal re-auth.
@@ -1724,7 +1723,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.H.2 — /admin/pengguna list + filter.** Halaman daftar pengguna pakai TanStack Query (queryKey `['admin','users', filters]`). Filter: role (admin/guru/siswa/all), status (active/suspended/locked/all), search query (debounced 300ms). Pagination cursor backend pakai limit/offset → tampilkan tombol Prev/Next sederhana. Render tabel: Nama, Email, Role badge, Status badge (aktif/suspended/locked), Last login (Asia/Jakarta), tombol "Detail" (link `/admin/pengguna/[id]`, halaman target nanti di 1.H.4). Tombol "+ Tambah Pengguna" → link `/admin/pengguna/baru` (form di 1.H.3). Toolbar: select role + select status + input search + button reset. Empty state + skeleton loader (5 row pulse). Place at `frontend/app/(authed)/admin/pengguna/page.tsx`.
+**Berikut: Task 1.H.3 — /admin/pengguna create form + re-auth admin role.** Halaman `/admin/pengguna/baru`: form RHF + Zod (nama, email, role, password_strategy: manual|generate, password optional kalau strategy=manual + min 8 char). POST `/api/v1/admin/users` body `{name, email, role, password_strategy, password?, current_password?}`. Kalau role=admin → munculkan modal re-auth (Dialog shadcn) yang minta password admin sekarang sebelum submit; kirim `current_password` di body. Modal sukses tampil sekali: nama+email+password (manual atau generated_password) + tombol "Salin password" (Clipboard API) + warning "Tutup modal = password gak bisa dilihat lagi, harus reset". Setelah tutup → router push ke `/admin/pengguna/[id]`. Friendly errors: email_already_exists, weak_password, last_admin_protected (gak relevan create), invalid_current_password (re-auth salah). Butuh shadcn `dialog` primitive (port manual sesuai pola).
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
