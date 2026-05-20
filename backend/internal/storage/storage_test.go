@@ -273,11 +273,17 @@ func TestNewStorage_FailWithoutFallback(t *testing.T) {
 	}
 }
 
-func TestNewStorage_R2NotImplemented(t *testing.T) {
+func TestNewStorage_WithCredsTriesR2(t *testing.T) {
+	// With non-empty creds, NewStorage attempts to construct an R2Client.
+	// We don't hit the network here (no actual API call until first method),
+	// so this should succeed even with bogus creds.
 	cfg := R2Config{AccountID: "acc", AccessKeyID: "k", SecretAccessKey: "s", Bucket: "b"}
-	_, err := NewStorage(cfg, FactoryOptions{AllowMockFallback: true})
-	if !errors.Is(err, ErrR2NotImplemented) {
-		t.Fatalf("err = %v, want wraps ErrR2NotImplemented", err)
+	got, err := NewStorage(cfg, FactoryOptions{AllowMockFallback: true})
+	if err != nil {
+		t.Fatalf("NewStorage err: %v", err)
+	}
+	if _, ok := got.(*R2Client); !ok {
+		t.Fatalf("expected *R2Client, got %T", got)
 	}
 }
 

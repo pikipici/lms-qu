@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"log"
 	"strings"
@@ -46,17 +47,13 @@ type FactoryOptions struct {
 //
 // Behavior matrix:
 //
-//	cfg.IsConfigured() == true   -> R2Client (Task 2.D.0.b — see r2.go).
-//	                                Currently returns ErrR2NotImplemented
-//	                                until Task 2.D.0.b lands.
+//	cfg.IsConfigured() == true   -> R2Client (real Cloudflare R2 via aws-sdk-go-v2).
 //	cfg.IsConfigured() == false:
 //	    AllowMockFallback = true  -> MockStorage + warning.
 //	    AllowMockFallback = false -> error.
 func NewStorage(cfg R2Config, opts FactoryOptions) (Storage, error) {
 	if cfg.IsConfigured() {
-		// Real R2 client lands in Task 2.D.0.b. For now, surface a clear
-		// error so callers can detect the half-wired state.
-		return nil, ErrR2NotImplemented
+		return NewR2Client(context.Background(), cfg)
 	}
 
 	if !opts.AllowMockFallback {
@@ -71,7 +68,10 @@ func NewStorage(cfg R2Config, opts FactoryOptions) (Storage, error) {
 	return NewMockStorage(), nil
 }
 
-// ErrR2NotImplemented is returned by NewStorage while R2 credentials exist
-// but the real R2 client (aws-sdk-go-v2) has not been wired yet (Task
-// 2.D.0.b). This is a transitional error that disappears once 2.D.0.b lands.
-var ErrR2NotImplemented = errors.New("storage: R2 client not yet implemented (Task 2.D.0.b pending)")
+// ErrR2NotImplemented is retained for API compat with callers that detected
+// the transitional skeleton state in v0.8.0. With Task 2.D.0.b shipped this
+// error should never be returned by NewStorage.
+//
+// Deprecated: 2.D.0.b shipped the real R2 client; this sentinel will be
+// removed in a future release.
+var ErrR2NotImplemented = errors.New("storage: R2 client not yet implemented (deprecated, see Task 2.D.0.b)")

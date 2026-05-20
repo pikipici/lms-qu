@@ -65,11 +65,10 @@ func run() error {
 		return err
 	}
 
-	// Object storage (Cloudflare R2, locked decision #61). In dev/CI the
-	// credentials may be empty — we fall back to in-memory MockStorage so
-	// the server still boots. In production we currently allow the same
-	// fallback to keep deploys non-breaking until Task 2.D.0.b lands the
-	// real R2 client; once that ships, prod will fail-fast on missing creds.
+	// Object storage (Cloudflare R2, locked decision #61). When R2 creds are
+	// missing in dev/CI we fall back to in-memory MockStorage so the server
+	// still boots. Production deploys MUST set the R2_* env vars; we surface
+	// the choice in startup logs and in /readyz.
 	objectStore, err := storage.NewStorage(
 		storage.R2Config{
 			AccountID:       cfg.Storage.R2.AccountID,
@@ -78,22 +77,15 @@ func run() error {
 			Bucket:          cfg.Storage.R2.Bucket,
 			PresignTTL:      cfg.Storage.R2.PresignTTLSec,
 		},
-		storage.FactoryOptions{AllowMockFallback: true},
+		storage.FactoryOptions{AllowMockFallback: !cfg.IsProduction()},
 	)
 	if err != nil {
-		// Currently the only "configured but not implemented" path returns
-		// ErrR2NotImplemented (Task 2.D.0.b pending). Log and fall back to
-		// mock so the server still boots. Once 2.D.0.b lands this branch
-		// becomes a hard error.
-		logger.Warn("storage: R2 client unavailable; using in-memory fallback",
-			slog.String("err", err.Error()))
-		objectStore = storage.NewMockStorage()
+		return fmt.Errorf("storage: init: %w", err)
 	}
 	logger.Info("storage ready",
 		slog.Bool("r2_configured", cfg.Storage.R2.Bucket != ""),
 		slog.String("backend", fmt.Sprintf("%T", objectStore)),
 	)
-	_ = objectStore // wired into handlers in Task 2.D.1+
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
@@ -106,7 +98,7 @@ func run() error {
 	defer func() { _ = closeDB() }()
 
 	app := newFiberApp(cfg, logger)
-	mountRoutes(app, cfg, gdb)
+	mountRoutes(app, cfg, gdb, objectStore)
 	mountStatic(app, cfg, logger)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
@@ -197,10 +189,10 @@ func newFiberApp(cfg *config.Config, log *slog.Logger) *fiber.App {
 	return app
 }
 
-func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
+func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB, objectStore storage.Storage) {
 	api := app.Group("/api/v1")
 
-	hh := &health.Handler{Cfg: cfg, DB: gdb}
+	hh := &health.Handler{Cfg: cfg, DB: gdb, Storage: objectStore}
 	api.Get("/healthz", hh.Liveness)
 	api.Get("/readyz", hh.Readiness)
 
