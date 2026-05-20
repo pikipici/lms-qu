@@ -1,0 +1,211 @@
+'use client';
+
+/**
+ * Admin shell — sidebar + header.
+ *
+ * Wraps every /admin/* page. Parent (authed) layout already enforces
+ * login + force-change. This file only adds:
+ *   - Role guard (admin only).
+ *   - Persistent sidebar nav.
+ *   - Header strip with user dropdown (Profil + Logout).
+ */
+
+import * as React from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  LayoutDashboard,
+  Users,
+  ShieldAlert,
+  ScrollText,
+  LogOut,
+  UserCog,
+} from 'lucide-react';
+
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth';
+import { RoleGuard } from '@/lib/role-guard';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+interface NavItem {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+}
+
+const NAV: NavItem[] = [
+  { href: '/admin', label: 'Dashboard', Icon: LayoutDashboard },
+  { href: '/admin/pengguna', label: 'Pengguna', Icon: Users },
+  { href: '/admin/audit-log', label: 'Audit Log', Icon: ScrollText },
+  { href: '/admin/login-attempts', label: 'Login Attempts', Icon: ShieldAlert },
+];
+
+function isActive(pathname: string, href: string): boolean {
+  if (href === '/admin') return pathname === '/admin';
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function AdminShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { toast } = useToast();
+  const user = useAuthStore((s) => s.user);
+  const refresh = useAuthStore((s) => s.refresh);
+  const clear = useAuthStore((s) => s.clear);
+
+  const onLogout = async () => {
+    try {
+      if (refresh) {
+        await api('/auth/logout', {
+          method: 'POST',
+          body: { refresh_token: refresh },
+          anon: true,
+        }).catch(() => undefined);
+      }
+    } finally {
+      clear();
+      toast({ title: 'Berhasil logout' });
+      router.replace('/login');
+    }
+  };
+
+  const initials = (user?.name ?? '??')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() ?? '')
+    .join('') || '??';
+
+  return (
+    <div className="min-h-screen bg-muted/30">
+      <div className="mx-auto flex min-h-screen max-w-[1400px]">
+        {/* Sidebar */}
+        <aside className="hidden w-60 shrink-0 border-r bg-background md:flex md:flex-col">
+          <div className="flex h-14 items-center border-b px-4">
+            <Link href="/admin" className="text-sm font-semibold tracking-tight">
+              LMS Admin
+            </Link>
+          </div>
+          <nav className="flex-1 space-y-1 p-2">
+            {NAV.map(({ href, label, Icon }) => {
+              const active = isActive(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+                    active
+                      ? 'bg-accent text-accent-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  )}
+                >
+                  <Icon className="size-4" />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t p-2 text-xs text-muted-foreground">
+            <div className="px-2 py-1">v0.7.2 · Fase 1</div>
+          </div>
+        </aside>
+
+        {/* Main column */}
+        <div className="flex min-h-screen flex-1 flex-col">
+          <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
+            {/* Mobile nav (compact) */}
+            <nav className="flex gap-1 overflow-x-auto md:hidden">
+              {NAV.map(({ href, label, Icon }) => {
+                const active = isActive(pathname, href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-1 rounded-md px-2 py-1 text-xs',
+                      active
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground',
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="hidden text-sm text-muted-foreground md:block">
+              Admin Panel
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {initials}
+                  </span>
+                  <span className="hidden text-sm sm:inline">
+                    {user?.name ?? 'Admin'}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-sm font-medium">{user?.name}</span>
+                    <span className="text-xs text-muted-foreground break-all">
+                      {user?.email}
+                    </span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/me">
+                    <UserCog className="mr-2 size-4" />
+                    Profil
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/me/perangkat">
+                    <ShieldAlert className="mr-2 size-4" />
+                    Perangkat aktif
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onLogout} className="text-destructive">
+                  <LogOut className="mr-2 size-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </header>
+
+          <main className="flex-1 p-4 md:p-8">{children}</main>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <RoleGuard allow="admin">
+      <AdminShell>{children}</AdminShell>
+    </RoleGuard>
+  );
+}
