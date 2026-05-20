@@ -8,9 +8,11 @@
  *   - #49 Request ID: server returns it; we surface in error messages so
  *         users can quote it to admin.
  *
- * Fase 0 status: scaffolding only. The interceptor for auto-refresh and
- * Zustand auth store integration land in Fase 1.
+ * Fase 1.G.1 status: token now sourced from Zustand auth store. Refresh
+ * interceptor lands in 1.G.2.
  */
+
+import { useAuthStore } from '@/lib/auth';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '/api/v1';
 
@@ -43,9 +45,8 @@ interface ApiInit extends Omit<RequestInit, 'body'> {
 }
 
 function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  // Fase 1 will swap this for the Zustand auth store (lib/auth.ts).
-  return window.localStorage.getItem('lms.access');
+  // Reads outside of React tree; Zustand exposes getState() for that.
+  return useAuthStore.getState().access;
 }
 
 /**
