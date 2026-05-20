@@ -164,6 +164,9 @@ export default function MePage() {
           <Button asChild variant="outline" size="sm">
             <Link href="/me/security">Ganti password</Link>
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/me/perangkat">Perangkat aktif</Link>
+          </Button>
           <Button
             variant="ghost"
             size="sm"
