@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 + 2.D.4 DONE 2026-05-20 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2). Berikutnya: Task 2.D.5 (download credentials.csv presigned URL TTL).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 + 2.D.4 + 2.D.5 DONE 2026-05-20 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2 + presigned download w/ TTL). Berikutnya: Task 2.D.6 (hourly cleanup cron — preview expiry + credentials.csv eviction).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.4 done — POST /admin/import-csv/:job_id/confirm shipped, live smoke 6/6 PASS, 3 users created + auto-enroll verified, R2 credentials.csv 215 bytes verified, login Apis with generated 12-char password 200 must_change_password=true, commit `da0fe4c`)
+> Last updated: 2026-05-20 (Task 2.D.5 done — GET /admin/import-csv/:job_id/credentials.csv shipped, 302 redirect ke R2 presigned URL TTL 15m + Content-Disposition attachment, live smoke 6/6 PASS, body verified 4 lines header+3 creds, audit `file_url_issued` recorded 2x, commits `1b46030` + `0bcc092`)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1819,10 +1819,23 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Cleanup: 3 users + 1 enrollment + 2 audit + 1 import_job + 2 R2 objects deleted
 - Commit: `da0fe4c` test(importjob): add Confirm tests; preceded by `d5234b1` wip + `563df99` test stub extension
 
-**Task 2.D.5 — Download credentials.csv (presigned, TTL-bound)**
-- `GET /admin/import-jobs/:id/credentials.csv` (cek admin owner + status=completed + CompletedAt+1h belum lewat) → respond redirect 302 ke presigned GET URL (TTL = `R2_PRESIGN_TTL_SECONDS`, ResponseContentDisposition `attachment; filename="credentials-<job_id>.csv"`) + audit `file_url_issued`
-- Auto-cleanup: `s3.DeleteObject(CredentialsObjectKey)` 1 jam after CompletedAt (cron, lihat 2.D.6)
-- Commit: `feat(import): credentials presigned download with TTL`
+**Task 2.D.5 — Download credentials.csv (presigned, TTL-bound)** ✅ DONE 2026-05-20
+- Route wired: `GET /api/v1/admin/import-csv/:job_id/credentials.csv` (admin-scoped, FindByIDForAdmin)
+- Lifecycle guards (in order): not_found(404) → not_completed(409) → credentials_expired(410, CompletedAt+1h) → credentials_missing(404, when CredentialsCSV NULL or R2 lost object). Single 500 path = download_failed (R2 presign failure)
+- Storage interface extended: `PresignGetDownload(ctx, key, ttl, filename)` — sets `ResponseContentDisposition: attachment; filename="…"; filename*=UTF-8''…` (RFC 5987 + ASCII fallback) so browser saves file with stable name instead of UUID-based key
+- Handler: 302 redirect to presigned URL + audit `file_url_issued` meta `{object_key, filename, ttl_sec}`
+- New sentinels: `ErrJobNotCompleted` (409 not_completed), `ErrCredentialsExpired` (410 credentials_expired), `ErrCredentialsMissing` (404 credentials_missing), `ErrInternalDownload` (500 download_failed)
+- New const: `CredentialsTTL = 1 * time.Hour` (matches roadmap spec; cleanup cron at 2.D.6 deletes after this window)
+- Service.SetPresignTTL injects `cfg.Storage.R2.PresignTTLSec` (default 900s = 15m, clamped [60s, 24h] in R2 client)
+- MockStorage + stubStore mirror new method (filename echoed via query param so tests can assert without parsing real Content-Disposition)
+- Tests: 6 service + 3 handler. Total importjob package: 22+6 svc + 22+3 hdl + 18 parser = 71 cases
+- Live smoke 6/6 PASS:
+  - 302 + Location ke `https://<acct>.r2.cloudflarestorage.com/lms-dev/credentials/<uuid>.csv?X-Amz-Algorithm=...&X-Amz-Expires=900&response-content-disposition=attachment%3B...&X-Amz-Signature=...`
+  - Presigned URL → 200 OK, `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="credentials-<uuid>.csv"; filename*=UTF-8''…`, body 4 lines (header + 3 creds, password 12 char alfanumerik)
+  - Invalid uuid → 400 invalid_job_id; random uuid → 404 not_found; no auth → 401
+- Audit verify: 2x `file_url_issued` rows w/ object_key=credentials/<uuid>.csv, filename=credentials-<uuid>.csv, ttl_sec=900
+- Cleanup: 3 users + 1 enrollment + 4 audit + 1 import_job + 2 R2 objects deleted
+- Commits: `1b46030` feat(import): credentials presigned download with TTL (Task 2.D.5); `0bcc092` test(importjob): register credentials.csv route in test app
 
 **Task 2.D.6 — Hourly cleanup cron**
 - Files: `backend/internal/import/cleanup.go` (run on app start: ticker 1h)
@@ -1857,13 +1870,25 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.D.0 — Cloudflare R2 storage client wrapper.** Task 2.C.4 SELESAI (commit `cc5f57c` + vet fix `d79cfd3`): backend `GET /api/v1/kelas/:id/enrollments` + FE guru tab Siswa read-only (table 4 kolom + pagination 20/page). Build/vet/test semua ijo, FE build 20 pages, /guru/kelas/detail naik dari 4.13kB → 7.1kB. Live smoke E2E deferred (user gak izinkan systemctl restart di sesi ini) — code siap di-deploy. **Fase 2.C FULL DONE** (10/19 task Fase 2 selesai).
+**Berikut: Task 2.D.6 — Hourly cleanup cron.** Task 2.D.5 SELESAI (commits `1b46030` + `0bcc092`): backend `GET /admin/import-csv/:job_id/credentials.csv` shipped, 302 redirect ke R2 presigned URL TTL 15m + Content-Disposition attachment dengan filename stabil `credentials-<uuid>.csv`. Build/vet/test ALL ijo (71 cases importjob + storage). Live smoke 6/6 PASS: presigned URL valid, R2 echo C-D header, body 4 lines verified, error mapping (400/404/409/410/500/401) semua match, audit `file_url_issued` 2x recorded. Cleanup smoke artifacts done (3 users + 1 enroll + 4 audit + 1 import_job + 2 R2 objects). **Fase 2.D = 5/6 DONE; Fase 2 progress = 17/20.**
 
-**Pre-requisite eksternal sebelum 2.D.0 jalan:**
-1. User login Cloudflare → R2 → buat bucket `lms-dev` (workspace) + `lms-prod` (live)
-2. Manage R2 API Tokens → Create Token (scope: object read/write per bucket) → catat Account ID + Access Key + Secret
-3. Tambahkan ke `.env` server di `rdpkhorur:/home/ubuntu/lms/.env` (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET=lms-dev untuk workspace; ganti `lms-prod` saat live deploy) + `R2_PRESIGN_TTL_SECONDS=900`
-4. Confirm balik ke gue, baru gas 2.D.0
+**Task 2.D.6 spec (the only Fase 2 backend task tersisa):**
+- Files: `backend/internal/importjob/cleanup.go` + wire ticker di `cmd/server/main.go` (1h cadence; first run on app start with small jitter)
+- Logic — single ticker loop, two sweeps per tick:
+  1. Preview expiry: `repo.ExpirePreviewBefore(now)` flips status preview→expired untuk row dgn ExpiresAt < now; loop hasilnya, untuk tiap row best-effort `s3.DeleteObject(ObjectKey)` (raw CSV import). Repo method udah ada (`Repo.ExpirePreviewBefore` di repo.go:113), tinggal panggil dari ticker.
+  2. Credentials eviction: query `import_jobs WHERE status='completed' AND completed_at < now - 1h AND credentials_csv IS NOT NULL` → loop, `s3.DeleteObject(credentials_csv)` + `SetCredentialsPath('')` agar future Download return ErrCredentialsMissing. Butuh repo method baru: `ExpireCredentialsBefore(ctx, cutoff) ([]ImportJob, error)`.
+- Concurrency: ticker pakai `select` antara `<-time.After(1*time.Hour)` dan `<-ctx.Done()` (graceful shutdown). Jangan blocking on the loop — DeleteObject errors logged via slog.Warn tapi ticker lanjut.
+- Tests: 4 cases (preview expiry happy + no-rows, credentials eviction happy + DeleteObject error best-effort).
+- Smoke verify (server): manipulate `expires_at` / `completed_at` lewat psql → trigger ticker via short test cron interval atau direct call → confirm rows flipped + R2 objects gone.
+
+Mau gas:
+1. **Lanjut Task 2.D.6 sekarang** — kelar 1 sesi medium (~150-200 LOC)
+2. **Pause dulu** — udah produktif hari ini (8 task selesai: 2.C.4, 2.D.0.a/b, 2.D.1-2.D.5)
+3. **Skip ke Fase 2.E (FE Admin Import)** — note: out-of-scope BE roadmap, tapi useful kalau lu mau test integrasi end-to-end di browser
+
+Default rekomen gue: **opsi 1** (gas 2.D.6) — sisa 1 task untuk close Fase 2.D backend. Setelah itu Fase 2 = 18/20 (sisa 2 task = Fase 2.E FE), backend Fase 2 100% done dan siap pivot ke Fase 3 (Bab & Materi).
+
+> Catatan: admin password sementara `Smoke-2D5-Tmp!` (gua reset untuk smoke). Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
