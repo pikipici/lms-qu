@@ -29,7 +29,7 @@ Citra Lestari,citra@contoh.id,KLS-002
 		t.Fatalf("unexpected invalid/dup: %+v", got.Stats)
 	}
 	want0 := Row{LineNo: 2, Nama: "Andi Pratama", Email: "andi@contoh.id", KodeKelas: "KLS-001", Status: RowValid}
-	if got.Rows[0] != want0 {
+	if !rowsEqual(got.Rows[0], want0) {
 		t.Fatalf("row[0] = %+v, want %+v", got.Rows[0], want0)
 	}
 	// Empty kode normalized to "".
@@ -351,3 +351,19 @@ Andi,andi@a.id
 
 // Sanity: confirm the package keeps compiling with the io.Reader contract.
 var _ io.Reader = (*bytes.Reader)(nil)
+
+// rowsEqual compares two Row values for test assertions. Row contains a
+// []string so it can't use plain ==.
+func rowsEqual(a, b Row) bool {
+	if a.LineNo != b.LineNo || a.Nama != b.Nama || a.Email != b.Email ||
+		a.KodeKelas != b.KodeKelas || a.Status != b.Status ||
+		len(a.Errors) != len(b.Errors) {
+		return false
+	}
+	for i := range a.Errors {
+		if a.Errors[i] != b.Errors[i] {
+			return false
+		}
+	}
+	return true
+}
