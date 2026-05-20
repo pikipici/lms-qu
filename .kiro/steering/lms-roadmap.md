@@ -1,6 +1,6 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.3 — **Task 3.A.2 ✅ DONE** 2026-05-21 (commit `377eed8`; live E2E smoke 11/11 PASS). Bab CRUD service + handler shipped: 5 endpoints (POST `/kelas/:id/bab`, GET `/kelas/:id/bab` w/ status+include_archived filters, GET/PATCH/Archive `/bab/:id`), kelas ownership guard via `findKelasOrForbidden`, partial PATCH dgn pointer fields + multi-phase tx (basic→urutan→status, version bumped per phase), audit log split `bab_created/bab_updated/bab_status_changed/bab_archived` w/ target_kelas_id (5 rows verified live). 16 handler tests PASS. Wired ke main.go: `kelasGroup` (POST/GET list) + `babGroup` (GET/PATCH/Archive). Berikutnya: Task 3.A.3 (Bab reorder bulk endpoint).
+> Status: v0.8.4 — **Task 3.A.3 ✅ DONE** 2026-05-21 (commit `6b0f041`; live E2E smoke 6/6 PASS). Bab reorder bulk endpoint shipped: POST `/kelas/:id/bab/reorder` body `{order, versions}`, two-phase tx (temp negative urutan → final position+1) untuk future-proof UNIQUE(kelas_id, urutan) constraint, per-row version guard with ReorderConflictErr returning `{conflicts:[{bab_id,current_version}]}` di 409 body. Validation: empty/duplicate/foreign/missing → 400 dgn distinct codes. 7 reorder handler tests + 16 existing bab tests PASS. Audit: 1 row `bab_reordered` per call w/ meta.order + count + kelas_id verified live. Berikutnya: Task 3.A.4 (Bab duplicate dgn copy materi+pengumuman + R2 CopyObject).
 > Owner: User (guru) + Apis (assistant)
 > Last updated: 2026-05-21 (Fase 3 planning — 7 locked decisions appended Section 0 #63-#69; Section 4/6/7/10 propagated; Section 18 Fase 3 task-by-task expanded 17 tasks split 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman; estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding 3.A.1+3.A.2+3.C.1+3.C.2+3.F.1)
 
@@ -1941,7 +1941,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: build/vet/test + handler tests (happy path + version conflict 409 + ownership 403 + archived bab patch reject).
 - Commit: `feat(bab): CRUD service + handler + audit log`
 
-**Task 3.A.3 — Bab reorder bulk endpoint**
+**Task 3.A.3 — Bab reorder bulk endpoint** ✅ DONE 2026-05-21 (commit `6b0f041`; live E2E smoke 6/6 PASS)
 - Files: `backend/internal/bab/reorder.go` (+ handler test)
 - Endpoint: `POST /kelas/:id/bab/reorder` body `{order: [bab_id1, bab_id2, ...], versions: {bab_id: version, ...}}`
 - Service: transaction loop `UpdateColumn("urutan", index)` per bab_id + cek `kelas_id=<:id>` ownership + cek `version=versions[bab_id]` per row + auto bump version. Kalau ANY row mismatch version → tx rollback + 409 `version_conflict` body `{conflicts: [{bab_id, current_version}, ...]}`.
@@ -2100,7 +2100,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **FASE 3 PLANNING DONE — siap eksekusi 2026-05-21.** Section 0 lock 7 decisions baru (#63-#69), Section 4/6/10 propagated, Section 18 expanded 17 task (3.A.1 .. 3.F.3) split sub-fase 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman. Estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
 
-**Eksekusi berikutnya: Task 3.A.3 — Bab reorder bulk endpoint.**
+**Eksekusi berikutnya: Task 3.A.4 — Bab duplicate endpoint.**
 
 Approach options:
 1. **Inline** — gua kerjain di chat: tulis migration SQL + Go model/repo + tests, push ke workspace, verify migrate up + go test, lalu commit. Best untuk task pertama ini biar pattern-nya bersih dan konsisten.
