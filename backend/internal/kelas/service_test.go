@@ -189,6 +189,24 @@ func (m *mockRepo) FindEnrollment(ctx context.Context, kelasID, siswaID uuid.UUI
 	return &cp, nil
 }
 
+func (m *mockRepo) ListEnrollmentsBySiswa(ctx context.Context, siswaID uuid.UUID, limit, offset int) ([]Enrollment, int64, error) {
+	rows := make([]Enrollment, 0)
+	for _, e := range m.enrollments {
+		if e.SiswaID == siswaID {
+			rows = append(rows, *e)
+		}
+	}
+	total := int64(len(rows))
+	if offset >= len(rows) {
+		return []Enrollment{}, total, nil
+	}
+	end := offset + limit
+	if end > len(rows) {
+		end = len(rows)
+	}
+	return rows[offset:end], total, nil
+}
+
 func paginate(rows []Kelas, limit, offset int) ([]Kelas, int64, error) {
 	total := int64(len(rows))
 	if offset >= len(rows) {

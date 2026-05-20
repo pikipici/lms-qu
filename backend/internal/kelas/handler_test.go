@@ -20,14 +20,15 @@ import (
 )
 
 type stubSvc struct {
-	createFn    func(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error)
-	listFn      func(ctx context.Context, guruID uuid.UUID, in ListInput) (*ListResult, error)
-	listAllFn   func(ctx context.Context, in ListInput) (*ListResult, error)
-	getFn       func(ctx context.Context, id, viewerID uuid.UUID, role string) (*Kelas, error)
-	updateFn    func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Kelas, error)
-	archiveFn   func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Kelas, error)
-	duplicateFn func(ctx context.Context, id, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Kelas, error)
-	joinFn      func(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, ua string) (*JoinByKodeResult, error)
+	createFn      func(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error)
+	listFn        func(ctx context.Context, guruID uuid.UUID, in ListInput) (*ListResult, error)
+	listAllFn     func(ctx context.Context, in ListInput) (*ListResult, error)
+	getFn         func(ctx context.Context, id, viewerID uuid.UUID, role string) (*Kelas, error)
+	updateFn      func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Kelas, error)
+	archiveFn     func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Kelas, error)
+	duplicateFn   func(ctx context.Context, id, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Kelas, error)
+	joinFn        func(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, ua string) (*JoinByKodeResult, error)
+	listMyKelasFn func(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error) {
@@ -62,6 +63,13 @@ func (s *stubSvc) JoinByKode(ctx context.Context, siswaID uuid.UUID, in JoinByKo
 	return s.joinFn(ctx, siswaID, in, ip, ua)
 }
 
+func (s *stubSvc) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error) {
+	if s.listMyKelasFn == nil {
+		return &MyKelasResult{Items: []MyKelasItem{}, Total: 0}, nil
+	}
+	return s.listMyKelasFn(ctx, siswaID, in)
+}
+
 // newApp builds a Fiber app with locals injected (mimicking BearerAuth output).
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
 	t.Helper()
@@ -78,6 +86,7 @@ func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App 
 	app.Post("/kelas/:id/archive", h.Archive)
 	app.Post("/kelas/:id/duplicate", h.Duplicate)
 	app.Post("/siswa/kelas/join", h.JoinByKode)
+	app.Get("/siswa/kelas", h.ListMyKelas)
 	return app
 }
 

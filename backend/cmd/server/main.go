@@ -262,6 +262,7 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 		kelas.JoinKodeRateLimit(10),
 		kelasHandler.JoinByKode,
 	)
+	siswaGroup.Get("/kelas", kelasHandler.ListMyKelas)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

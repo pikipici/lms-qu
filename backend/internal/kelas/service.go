@@ -43,6 +43,7 @@ type kelasRepo interface {
 	Unarchive(ctx context.Context, id uuid.UUID) error
 	Enroll(ctx context.Context, kelasID, siswaID uuid.UUID, via JoinedVia) (bool, error)
 	FindEnrollment(ctx context.Context, kelasID, siswaID uuid.UUID) (*Enrollment, error)
+	ListEnrollmentsBySiswa(ctx context.Context, siswaID uuid.UUID, limit, offset int) ([]Enrollment, int64, error)
 }
 
 // auditLogger lets the service write audit rows without importing the full
@@ -116,6 +117,61 @@ func (s *Service) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, 
 	})
 
 	return k, nil
+}
+
+// ListMyKelas returns the kelas a siswa is currently enrolled in (status=active
+// only). Each enrollment is hydrated with the kelas detail so the FE can render
+// a dashboard list without an extra round-trip per row. Removed enrollments are
+// hidden — siswa can't see kelas they were kicked out of.
+func (s *Service) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error) {
+	limit, offset := normalizePagination(in.Limit, in.Offset)
+	rows, total, err := s.repo.ListEnrollmentsBySiswa(ctx, siswaID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("kelas list my: %w", err)
+	}
+
+	items := make([]MyKelasItem, 0, len(rows))
+	activeCount := int64(0)
+	for _, e := range rows {
+		if e.Status != EnrollmentActive {
+			continue
+		}
+		k, ferr := s.repo.FindByID(ctx, e.KelasID)
+		if errors.Is(ferr, gorm.ErrRecordNotFound) {
+			// Tolerate dangling enrollment: skip silently. Should never happen
+			// because kelas archive is soft (ArchivedAt) — hard delete would
+			// leave orphans which we'd want to know about, but we still don't
+			// want to break the whole list for one bad row.
+			continue
+		}
+		if ferr != nil {
+			return nil, fmt.Errorf("kelas list my hydrate: %w", ferr)
+		}
+		items = append(items, MyKelasItem{
+			Kelas:     *k,
+			JoinedAt:  e.JoinedAt,
+			JoinedVia: e.JoinedVia,
+		})
+		activeCount++
+	}
+	// Total dari repo ngitung semua enrollment (incl. removed). FE biasanya
+	// pengen jumlah aktif aja; tapi expose `total` apa adanya supaya pagination
+	// konsisten kalau sewaktu-waktu kita expose status filter.
+	_ = activeCount
+	return &MyKelasResult{Items: items, Total: total}, nil
+}
+
+// MyKelasItem is one row in the siswa dashboard list.
+type MyKelasItem struct {
+	Kelas     Kelas     `json:"kelas"`
+	JoinedAt  time.Time `json:"joined_at"`
+	JoinedVia JoinedVia `json:"joined_via"`
+}
+
+// MyKelasResult bundles the list + total for the siswa dashboard endpoint.
+type MyKelasResult struct {
+	Items []MyKelasItem `json:"items"`
+	Total int64         `json:"total"`
 }
 
 // ListInput holds list filters/pagination.
