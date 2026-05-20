@@ -16,23 +16,33 @@ import (
 // mockRepo implements kelasRepo backed by in-memory maps. ListAll, ListByGuru,
 // FindByID share the same store. FindByKodeInvite walks the store on demand.
 type mockRepo struct {
-	rows map[uuid.UUID]*Kelas
+	rows        map[uuid.UUID]*Kelas
+	enrollments map[string]*Enrollment // key = kelasID|siswaID
 
 	createErr      error
 	updateBasicErr error
 	archiveErr     error
+	enrollErr      error
 
 	createdRows []*Kelas
 	updateCalls int
 	archiveIDs  []uuid.UUID
+	enrollCalls []enrollCall
 
 	now func() time.Time
 }
 
+type enrollCall struct {
+	KelasID uuid.UUID
+	SiswaID uuid.UUID
+	Via     JoinedVia
+}
+
 func newMockRepo() *mockRepo {
 	return &mockRepo{
-		rows: map[uuid.UUID]*Kelas{},
-		now:  time.Now,
+		rows:        map[uuid.UUID]*Kelas{},
+		enrollments: map[string]*Enrollment{},
+		now:         time.Now,
 	}
 }
 
@@ -146,6 +156,37 @@ func (m *mockRepo) Unarchive(ctx context.Context, id uuid.UUID) error {
 	}
 	row.ArchivedAt = nil
 	return nil
+}
+
+func enrollKey(kelasID, siswaID uuid.UUID) string {
+	return kelasID.String() + "|" + siswaID.String()
+}
+
+func (m *mockRepo) Enroll(ctx context.Context, kelasID, siswaID uuid.UUID, via JoinedVia) (bool, error) {
+	if m.enrollErr != nil {
+		return false, m.enrollErr
+	}
+	m.enrollCalls = append(m.enrollCalls, enrollCall{KelasID: kelasID, SiswaID: siswaID, Via: via})
+	key := enrollKey(kelasID, siswaID)
+	if _, exists := m.enrollments[key]; exists {
+		return false, nil
+	}
+	m.enrollments[key] = &Enrollment{
+		KelasID:   kelasID,
+		SiswaID:   siswaID,
+		Status:    EnrollmentActive,
+		JoinedVia: via,
+	}
+	return true, nil
+}
+
+func (m *mockRepo) FindEnrollment(ctx context.Context, kelasID, siswaID uuid.UUID) (*Enrollment, error) {
+	row, ok := m.enrollments[enrollKey(kelasID, siswaID)]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	cp := *row
+	return &cp, nil
 }
 
 func paginate(rows []Kelas, limit, offset int) ([]Kelas, int64, error) {

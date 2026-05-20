@@ -27,6 +27,7 @@ type stubSvc struct {
 	updateFn    func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Kelas, error)
 	archiveFn   func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Kelas, error)
 	duplicateFn func(ctx context.Context, id, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Kelas, error)
+	joinFn      func(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, ua string) (*JoinByKodeResult, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, ip, ua string) (*Kelas, error) {
@@ -57,6 +58,10 @@ func (s *stubSvc) Duplicate(ctx context.Context, id, callerID uuid.UUID, role st
 	return s.duplicateFn(ctx, id, callerID, role, in, ip, ua)
 }
 
+func (s *stubSvc) JoinByKode(ctx context.Context, siswaID uuid.UUID, in JoinByKodeInput, ip, ua string) (*JoinByKodeResult, error) {
+	return s.joinFn(ctx, siswaID, in, ip, ua)
+}
+
 // newApp builds a Fiber app with locals injected (mimicking BearerAuth output).
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
 	t.Helper()
@@ -72,6 +77,7 @@ func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App 
 	app.Patch("/kelas/:id", h.Update)
 	app.Post("/kelas/:id/archive", h.Archive)
 	app.Post("/kelas/:id/duplicate", h.Duplicate)
+	app.Post("/siswa/kelas/join", h.JoinByKode)
 	return app
 }
 

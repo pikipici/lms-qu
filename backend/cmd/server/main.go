@@ -243,6 +243,19 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	kelasGroup.Patch("/:id", kelasHandler.Update)
 	kelasGroup.Post("/:id/archive", kelasHandler.Archive)
 	kelasGroup.Post("/:id/duplicate", kelasHandler.Duplicate)
+
+	// Siswa-side enrollment (Phase 2.C): siswa joins a kelas via kode invite.
+	// Rate-limited per IP+siswa to deter scraping. Mounted under /siswa group
+	// so role-guard locks it to siswa-only.
+	siswaGroup := api.Group("/siswa",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Siswa)),
+	)
+	siswaGroup.Post("/kelas/join",
+		kelas.JoinKodeRateLimit(10),
+		kelasHandler.JoinByKode,
+	)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

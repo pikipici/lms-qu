@@ -41,6 +41,8 @@ type kelasRepo interface {
 	UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, nama, deskripsi string, bobotSoalUlangan, bobotTugas int) error
 	Archive(ctx context.Context, id uuid.UUID) error
 	Unarchive(ctx context.Context, id uuid.UUID) error
+	Enroll(ctx context.Context, kelasID, siswaID uuid.UUID, via JoinedVia) (bool, error)
+	FindEnrollment(ctx context.Context, kelasID, siswaID uuid.UUID) (*Enrollment, error)
 }
 
 // auditLogger lets the service write audit rows without importing the full
@@ -380,12 +382,18 @@ func normalizePagination(limit, offset int) (int, int) {
 // logAudit is best-effort: a logging failure must not poison the user-facing
 // success response, so we swallow the error here (admin handler does the same).
 func (s *Service) logAudit(ctx context.Context, action string, actorID, targetID, targetKelasID *uuid.UUID, ip, userAgent string, meta map[string]any) {
-	if s.audit == nil {
-		return
-	}
 	role := string(auth.Guru)
 	if actorID == nil {
 		role = ""
+	}
+	s.logAuditWithRole(ctx, action, role, actorID, targetID, targetKelasID, ip, userAgent, meta)
+}
+
+// logAuditWithRole writes an audit row with an explicit actor role. Use this
+// when the actor is not a guru (e.g. siswa joining a kelas, admin assigning).
+func (s *Service) logAuditWithRole(ctx context.Context, action, role string, actorID, targetID, targetKelasID *uuid.UUID, ip, userAgent string, meta map[string]any) {
+	if s.audit == nil {
+		return
 	}
 	targetType := "kelas"
 	entry := &auth.AuditLog{
