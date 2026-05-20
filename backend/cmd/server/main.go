@@ -87,6 +87,29 @@ func run() error {
 		slog.String("backend", fmt.Sprintf("%T", objectStore)),
 	)
 
+	// Pre-warm R2 connection: first HeadBucket can take 5-15s on hosts where
+	// IPv6 is broken (happy-eyeballs fallback) or DNS resolvers are slow.
+	// Doing it here, BEFORE app.Listen, ensures readyz returns cached-OK on
+	// the systemd ExecStartPost probe instead of timing out.
+	if probe, ok := objectStore.(interface {
+		HeadBucket(context.Context) error
+		Bucket() string
+	}); ok {
+		warmCtx, warmCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t0 := time.Now()
+		if err := probe.HeadBucket(warmCtx); err != nil {
+			logger.Warn("storage: r2 prewarm failed (non-fatal)",
+				slog.String("bucket", probe.Bucket()),
+				slog.Duration("elapsed", time.Since(t0)),
+				slog.String("err", err.Error()))
+		} else {
+			logger.Info("storage: r2 prewarm ok",
+				slog.String("bucket", probe.Bucket()),
+				slog.Duration("elapsed", time.Since(t0)))
+		}
+		warmCancel()
+	}
+
 	rootCtx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
 	defer cancel()
