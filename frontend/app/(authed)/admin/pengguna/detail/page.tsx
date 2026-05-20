@@ -1,7 +1,11 @@
 'use client';
 
 /**
- * /admin/pengguna/[id] — admin user detail page (Fase 1.H.4).
+ * /admin/pengguna/detail?id=:id — admin user detail page (Fase 1.H.4).
+ *
+ * Static export (Next 14, output: 'export') tidak mengizinkan dynamic
+ * route segments tanpa generateStaticParams(). Karena ID pengguna
+ * runtime-only, kita pakai query string sebagai pengganti `[id]`.
  *
  * Backend contracts:
  *   - GET    /admin/users/:id                 -> { user }
@@ -26,7 +30,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -1262,8 +1266,8 @@ function ConfirmActionDialog({
 // ---------- Page ----------
 
 export default function AdminPenggunaDetailPage() {
-  const params = useParams<{ id: string }>();
-  const userId = params?.id ?? '';
+  const search = useSearchParams();
+  const userId = search?.get('id') ?? '';
   const qc = useQueryClient();
   const { toast } = useToast();
 

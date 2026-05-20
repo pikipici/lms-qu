@@ -315,7 +315,7 @@ export default function AdminCreateUserPage() {
           </CardContent>
           <CardFooter className="flex flex-wrap gap-2">
             <Button
-              onClick={() => router.push(`/admin/pengguna/${success.user.id}`)}
+              onClick={() => router.push(`/admin/pengguna/detail?id=${success.user.id}`)}
             >
               Buka detail
             </Button>

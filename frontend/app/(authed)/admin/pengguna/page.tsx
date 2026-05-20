@@ -330,7 +330,7 @@ export default function AdminPenggunaListPage() {
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Button asChild variant="ghost" size="sm">
-                          <Link href={`/admin/pengguna/${u.id}`}>Detail</Link>
+                          <Link href={`/admin/pengguna/detail?id=${u.id}`}>Detail</Link>
                         </Button>
                       </td>
                     </tr>
