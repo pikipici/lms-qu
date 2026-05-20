@@ -24,6 +24,7 @@ type stubSvc struct {
 	getFn     func(ctx context.Context, id, callerID uuid.UUID, role string) (*Bab, error)
 	updateFn  func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Bab, error)
 	archiveFn func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Bab, error)
+	reorderFn func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Bab, error) {
@@ -46,6 +47,10 @@ func (s *stubSvc) Archive(ctx context.Context, id, callerID uuid.UUID, role, ip,
 	return s.archiveFn(ctx, id, callerID, role, ip, ua)
 }
 
+func (s *stubSvc) Reorder(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error) {
+	return s.reorderFn(ctx, kelasID, callerID, role, in, ip, ua)
+}
+
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
 	t.Helper()
 	app := fiber.New()
@@ -56,6 +61,7 @@ func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App 
 	})
 	app.Get("/kelas/:id/bab", h.ListByKelas)
 	app.Post("/kelas/:id/bab", h.Create)
+	app.Post("/kelas/:id/bab/reorder", h.Reorder)
 	app.Get("/bab/:id", h.Get)
 	app.Patch("/bab/:id", h.Update)
 	app.Post("/bab/:id/archive", h.Archive)
@@ -350,5 +356,158 @@ func TestHandler_Update_GenericInternalErr(t *testing.T) {
 	resp, _ := doReq(t, app, "PATCH", "/bab/"+uuid.NewString(), map[string]any{"version": 1, "judul": "X"})
 	if resp.StatusCode != fiber.StatusInternalServerError {
 		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestHandler_Reorder_HappyPath(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	babA := uuid.New()
+	babB := uuid.New()
+	svc := &stubSvc{
+		reorderFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error) {
+			if len(in.Order) != 2 {
+				t.Fatalf("expected 2 ids, got %d", len(in.Order))
+			}
+			if in.Order[0] != babB || in.Order[1] != babA {
+				t.Fatalf("order not propagated correctly")
+			}
+			if in.Versions[babA] != 1 || in.Versions[babB] != 1 {
+				t.Fatalf("versions map not propagated")
+			}
+			return []Bab{
+				{ID: babB, KelasID: kID, Urutan: 1, Version: 3},
+				{ID: babA, KelasID: kID, Urutan: 2, Version: 3},
+			}, nil
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{
+		"order":    []string{babB.String(), babA.String()},
+		"versions": map[string]int{babA.String(): 1, babB.String(): 1},
+	})
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"total":2`) {
+		t.Fatalf("missing total=2: %s", body)
+	}
+}
+
+func TestHandler_Reorder_VersionConflict(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	babA := uuid.New()
+	svc := &stubSvc{
+		reorderFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error) {
+			return nil, &ReorderConflictErr{Conflicts: []ReorderConflict{{BabID: babA, CurrentVersion: 5}}}
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{
+		"order":    []string{babA.String()},
+		"versions": map[string]int{babA.String(): 1},
+	})
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "version_conflict") {
+		t.Fatalf("missing version_conflict code: %s", body)
+	}
+	if !strings.Contains(string(body), `"current_version":5`) {
+		t.Fatalf("missing current_version in body: %s", body)
+	}
+}
+
+func TestHandler_Reorder_DuplicateID(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	svc := &stubSvc{
+		reorderFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error) {
+			return nil, ErrReorderDuplicate
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	babA := uuid.NewString()
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{
+		"order":    []string{babA, babA},
+		"versions": map[string]int{},
+	})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "duplicate_in_order") {
+		t.Fatalf("missing duplicate_in_order code: %s", body)
+	}
+}
+
+func TestHandler_Reorder_ForeignBab(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	svc := &stubSvc{
+		reorderFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error) {
+			return nil, ErrReorderForeignBab
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{
+		"order":    []string{uuid.NewString()},
+		"versions": map[string]int{},
+	})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "bab_not_in_kelas") {
+		t.Fatalf("missing bab_not_in_kelas code: %s", body)
+	}
+}
+
+func TestHandler_Reorder_MissingBab(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	svc := &stubSvc{
+		reorderFn: func(ctx context.Context, kID, cID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error) {
+			return nil, ErrReorderMissing
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{
+		"order":    []string{uuid.NewString()},
+		"versions": map[string]int{},
+	})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "reorder_missing_bab") {
+		t.Fatalf("missing reorder_missing_bab code: %s", body)
+	}
+}
+
+func TestHandler_Reorder_EmptyOrder(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	app := newApp(t, &Handler{svc: &stubSvc{}}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{"order": []string{}})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "invalid_body") {
+		t.Fatalf("missing invalid_body code: %s", body)
+	}
+}
+
+func TestHandler_Reorder_InvalidUUID(t *testing.T) {
+	guruID := uuid.New()
+	kelasID := uuid.New()
+	app := newApp(t, &Handler{svc: &stubSvc{}}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/kelas/"+kelasID.String()+"/bab/reorder", map[string]any{
+		"order":    []string{"not-a-uuid"},
+		"versions": map[string]int{},
+	})
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "invalid_id") {
+		t.Fatalf("missing invalid_id code: %s", body)
 	}
 }

@@ -40,6 +40,7 @@ type babRepo interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, expectedVersion int, status Status) error
 	UpdateUrutan(ctx context.Context, tx *gorm.DB, id uuid.UUID, expectedVersion, urutan int) error
 	Archive(ctx context.Context, id uuid.UUID) error
+	DB() *gorm.DB
 }
 
 // kelasLookup hydrates kelas ownership/lifecycle for the bab service. We

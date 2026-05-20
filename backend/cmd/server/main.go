@@ -325,6 +325,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	babHandler := bab.NewHandler(babSvc)
 	kelasGroup.Get("/:id/bab", babHandler.ListByKelas)
 	kelasGroup.Post("/:id/bab", babHandler.Create)
+	kelasGroup.Post("/:id/bab/reorder", babHandler.Reorder)
 	babGroup := api.Group("/bab",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),

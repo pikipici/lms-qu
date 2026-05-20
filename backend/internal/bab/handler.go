@@ -22,6 +22,7 @@ type babService interface {
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*Bab, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Bab, error)
 	Archive(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Bab, error)
+	Reorder(ctx context.Context, kelasID, callerID uuid.UUID, callerRole string, in ReorderInput, ip, userAgent string) ([]Bab, error)
 }
 
 // Handler wires HTTP routes to bab Service.
@@ -187,6 +188,85 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 		return mapServiceErr(c, err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"bab": b})
+}
+
+type reorderRequest struct {
+	Order    []string       `json:"order"`
+	Versions map[string]int `json:"versions"`
+}
+
+// Reorder handles POST /api/v1/kelas/:id/bab/reorder.
+//
+// Body: { order: [bab_id, ...], versions: { bab_id: version, ... } }
+// Response on conflict: 409 + { error, code: "version_conflict",
+// conflicts: [{bab_id, current_version}], request_id }
+func (h *Handler) Reorder(c *fiber.Ctx) error {
+	kelasID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return babError(c, fiber.StatusBadRequest, "invalid kelas id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return babError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+
+	var req reorderRequest
+	if err := c.BodyParser(&req); err != nil {
+		return babError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+	if len(req.Order) == 0 {
+		return babError(c, fiber.StatusBadRequest, "order list is required", "invalid_body")
+	}
+
+	order := make([]uuid.UUID, len(req.Order))
+	for i, raw := range req.Order {
+		babID, perr := uuid.Parse(raw)
+		if perr != nil {
+			return babError(c, fiber.StatusBadRequest, "invalid bab id in order", "invalid_id")
+		}
+		order[i] = babID
+	}
+
+	versions := make(map[uuid.UUID]int, len(req.Versions))
+	for k, v := range req.Versions {
+		babID, perr := uuid.Parse(k)
+		if perr != nil {
+			return babError(c, fiber.StatusBadRequest, "invalid bab id in versions", "invalid_id")
+		}
+		versions[babID] = v
+	}
+
+	rows, err := h.svc.Reorder(c.UserContext(), kelasID, callerID, role, ReorderInput{Order: order, Versions: versions}, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapReorderErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"items": rows, "total": len(rows)})
+}
+
+// mapReorderErr handles the bulk-reorder-specific 409 body shape. Other
+// errors fall through to the regular mapServiceErr.
+func mapReorderErr(c *fiber.Ctx, err error) error {
+	var conflictErr *ReorderConflictErr
+	if errors.As(err, &conflictErr) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error":      "bab has been modified by another request; please refresh",
+			"code":       "version_conflict",
+			"conflicts":  conflictErr.Conflicts,
+			"request_id": middleware.RequestIDFromFiber(c),
+		})
+	}
+	switch {
+	case errors.Is(err, ErrReorderEmpty):
+		return babError(c, fiber.StatusBadRequest, "order list is empty", "invalid_body")
+	case errors.Is(err, ErrReorderDuplicate):
+		return babError(c, fiber.StatusBadRequest, "duplicate bab id in order", "duplicate_in_order")
+	case errors.Is(err, ErrReorderForeignBab):
+		return babError(c, fiber.StatusBadRequest, "bab does not belong to this kelas", "bab_not_in_kelas")
+	case errors.Is(err, ErrReorderMissing):
+		return babError(c, fiber.StatusBadRequest, "order must include every bab in the kelas", "reorder_missing_bab")
+	}
+	return mapServiceErr(c, err)
 }
 
 func mapServiceErr(c *fiber.Ctx, err error) error {
