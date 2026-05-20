@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0.a + 2.D.0.b DONE 2026-05-20 (Storage interface + MockStorage + real R2Client + readyz integration + boot prewarm). Berikutnya: Task 2.D.1 (CSV parser + validator).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 DONE 2026-05-20 (R2 client + readyz integration + CSV parser/validator). Berikutnya: Task 2.D.2 (R2 upload + preview ImportJob endpoint).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.0.b done — real R2Client via aws-sdk-go-v2 + readyz cache 30s + boot prewarm 30s budget; integration test PASS against bucket lms-dev real; live restart applied; readyz returns "ok (r2:lms-dev, cached)" 45-60ms; commit `ecd26a9` + `0b36e9f` build deps + `2b8ab41` prewarm.)
+> Last updated: 2026-05-20 (Task 2.D.1 done — CSV parser di `internal/importjob/parser.go`: header alias + delimiter auto-detect + RFC email validation + dedup + 5MB/5000-rows limit + 18 unit tests passing; commit `a5adf68` + `1323f47` vet fix)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1733,11 +1733,18 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Live notes: server pertama hit IPv6 ke Cloudflare R2 broken (`2606:4700:2ff9::1` no route), happy-eyeballs fallback IPv4 ~5-13s. Boot prewarm sebelum app.Listen primes cache → ExecStartPost curl /readyz langsung dapet cached-OK, gak timeout.
 - Commit: `ecd26a9` feat(storage): real Cloudflare R2 client + readyz integration; `0b36e9f` build(go): add aws-sdk-go-v2 deps; `2b8ab41` perf(server): pre-warm R2 HeadBucket at boot
 
-**Task 2.D.1 — CSV parser + validator**
-- Files: `backend/internal/import/parser.go`
-- Parse rows, validate (email format, name not empty, nama_lengkap, dst), dedupe by email
-- Test dengan fixture CSV valid + invalid
-- Commit: `feat(import): CSV parser + validator`
+**Task 2.D.1 — CSV parser + validator ✅ DONE 2026-05-20 (commits `a5adf68` + `1323f47`)**
+- Files shipped: `backend/internal/importjob/parser.go` (Parse + ParseResult + Row + sentinel errors), `backend/internal/importjob/parser_test.go` (18 cases)
+- Header alias detection (`nama|name|nama_lengkap|full_name|fullname`, `email|e-mail|alamat_email`, `kode_kelas|kode|kode_invite|invite_code`)
+- Delimiter auto-detect (`,` atau `;` — common Excel locale Indonesia), UTF-8 BOM tolerated, fail-fast pada non-UTF-8 (Excel users: re-save as "CSV UTF-8")
+- Per-row validate: nama 1-100 chars, email RFC `net/mail.ParseAddress` (max 254 RFC 5321), kode max 32. Email lowercased + trimmed, kode uppercased + trimmed (DB pakai citext)
+- Dedup by lowercased email — first occurrence wins (Valid), berikutnya `RowDuplicate` dengan reference ke baris pertama. Invalid rows TIDAK claim email
+- Hard limits: `MaxCSVBytes=5MB`, `MaxCSVRows=5000` (sentinel `ErrCSVTooLarge`/`ErrTooManyRows`)
+- LineNo termasuk header (data row pertama LineNo=2) untuk UI error message
+- Output: `ParseResult{Rows, Stats{Total/Valid/Invalid/Duplicates}}` — Rows serialize 1:1 ke `PreviewRowsJSON` di Task 2.D.2
+- Verified server: `go test ./internal/importjob/... -count=1 -v` PASS (18 tests), full `go test ./...` ALL_TEST_OK
+- Live deploy: TIDAK perlu (pure parser, gak wired ke route — wiring di Task 2.D.2)
+- Commit: `a5adf68` feat(importjob): CSV parser + validator; `1323f47` fix: rowsEqual helper for Row{} (vet fix)
 
 **Task 2.D.2 — R2 upload + preview CSV**
 - `POST /admin/import-jobs` multipart file → validate mime (text/csv only) + size (max 5MB) → `s3.PutObject` ke R2 `import/<uuid>.csv`, parse rows dari memory buffer (jangan re-fetch dari R2), generate PreviewRowsJSON, insert ImportJob status=preview ObjectKey=`import/<uuid>.csv` ExpiresAt=now+1h
