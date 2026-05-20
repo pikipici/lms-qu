@@ -8,6 +8,7 @@ package importjob
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pikip/lms/backend/internal/auth"
+	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/storage"
+	"gorm.io/gorm"
 )
 
 // PreviewTTL is the lifetime of a preview ImportJob before it auto-expires
@@ -40,6 +44,13 @@ var (
 	// ErrJobExpired — job is preview but ExpiresAt < now. Resume should
 	// surface as 410 so FE knows to drop the cached tab.
 	ErrJobExpired = errors.New("import: preview window expired")
+	// ErrConfirmRowsMismatch — re-parsing the R2 raw CSV produced a different
+	// (smaller) total than what was recorded at upload time. Surface as 409
+	// so the admin re-uploads instead of silently committing a smaller batch.
+	ErrConfirmRowsMismatch = errors.New("import: re-parsed CSV diverges from preview")
+	// ErrInternalConfirm — generic Confirm-time failure (R2 fetch, marshal,
+	// etc) that isn't covered by a more-specific sentinel.
+	ErrInternalConfirm = errors.New("import: confirm failed")
 )
 
 // jobRepo is the subset of *Repo used by Service. Defined as an interface
@@ -48,25 +59,63 @@ type jobRepo interface {
 	Create(ctx context.Context, j *ImportJob) error
 	FindByIDForAdmin(ctx context.Context, id, adminID uuid.UUID) (*ImportJob, error)
 	SetStatus(ctx context.Context, id uuid.UUID, status Status, confirmedAt, completedAt *time.Time) error
+	SetCounts(ctx context.Context, id uuid.UUID, success, fail int) error
+	SetErrorsJSON(ctx context.Context, id uuid.UUID, errorsJSON []byte) error
+	SetCredentialsPath(ctx context.Context, id uuid.UUID, path string) error
+}
+
+// userCreator is the slim auth.Repo subset Service.Confirm needs to provision
+// imported siswa accounts. Kept narrow so tests can stub without standing up
+// the full *auth.Repo.
+type userCreator interface {
+	FindUserByEmail(ctx context.Context, email string) (*auth.User, error)
+	CreateUser(ctx context.Context, u *auth.User) error
+}
+
+// kelasFinderEnroller is the slim kelas.Repo subset Service.Confirm needs.
+// `Enroll` returns (inserted bool, err); inserted=false means a prior active
+// enrollment exists which we treat as success (already_enrolled).
+type kelasFinderEnroller interface {
+	FindByKodeInvite(ctx context.Context, kode string) (*kelas.Kelas, error)
+	Enroll(ctx context.Context, kelasID, siswaID uuid.UUID, via kelas.JoinedVia) (bool, error)
 }
 
 // Service orchestrates ImportJob upload + lifecycle.
 type Service struct {
-	repo    jobRepo
-	store   storage.Storage
-	now     func() time.Time
+	repo         jobRepo
+	store        storage.Storage
+	users        userCreator
+	kelasRepo    kelasFinderEnroller
+	now          func() time.Time
 	previewLimit int // soft cap on rows persisted into PreviewRowsJSON
+	bcryptCost   int // 0 = use bcrypt.DefaultCost via auth.HashPassword
 }
 
 // NewService constructs a Service. previewLimit caps how many rows are
 // embedded in PreviewRowsJSON for the UI; the full row list is still
 // available via re-parse during confirm (Task 2.D.4). 0 = use default.
+//
+// users + kelasRepo are nil-safe: PreviewUpload / GetPreview / Cancel work
+// without them; only Confirm requires both. Tests covering only the upload
+// flow can pass nil, nil to keep wiring minimal.
 func NewService(repo jobRepo, store storage.Storage, previewLimit int) *Service {
 	if previewLimit <= 0 {
 		previewLimit = 200
 	}
 	return &Service{repo: repo, store: store, now: time.Now, previewLimit: previewLimit}
 }
+
+// SetUserCreator injects the auth-side surface needed by Confirm. Wire from
+// main.go after constructing both services to avoid circular imports.
+func (s *Service) SetUserCreator(u userCreator) { s.users = u }
+
+// SetKelasRepo injects the kelas-side surface needed by Confirm.
+func (s *Service) SetKelasRepo(k kelasFinderEnroller) { s.kelasRepo = k }
+
+// SetBcryptCost overrides the bcrypt cost used when hashing generated
+// passwords. 0 means use auth.HashPassword's default (bcrypt.DefaultCost).
+// Tests pass bcrypt.MinCost to keep them fast.
+func (s *Service) SetBcryptCost(c int) { s.bcryptCost = c }
 
 // SetClock overrides the time source (test hook).
 func (s *Service) SetClock(now func() time.Time) {
@@ -261,6 +310,363 @@ func (s *Service) Cancel(ctx context.Context, id, adminID uuid.UUID) (*CancelRes
 		}
 	}
 	return &CancelResult{Job: job, ObjectKey: objKey}, nil
+}
+
+// credentialRow is a package-private staging type for credentials.csv build.
+type credentialRow struct {
+	Email     string
+	Plain     string
+	KodeKelas string
+	KelasNama string
+}
+
+// ConfirmResult is the public response from Confirm.
+type ConfirmResult struct {
+	Job                  *ImportJob
+	SuccessCount         int
+	FailCount            int
+	CredentialsObjectKey string // R2 key for credentials/<job_uuid>.csv (empty if 0 success rows)
+	Failures             []ConfirmFailure
+}
+
+// ConfirmFailure is one row that did not produce a user (or did but failed
+// to enroll). Persisted into ImportJob.ErrorsJSON for forensic queryability.
+type ConfirmFailure struct {
+	LineNo int    `json:"line_no"`
+	Email  string `json:"email"`
+	Reason string `json:"reason"` // stable enum, see Reason* constants
+	Detail string `json:"detail,omitempty"`
+}
+
+// Reason codes used in ImportJob.ErrorsJSON. Stable so FE can map to UI
+// copy without parsing free-form strings.
+const (
+	ConfirmReasonInvalidRow      = "invalid_row"       // parser flagged row as invalid
+	ConfirmReasonDuplicateInDB   = "duplicate_in_db"   // email already exists in users table
+	ConfirmReasonUserCreate      = "user_create_error" // unexpected DB failure on User insert
+	ConfirmReasonHashError       = "hash_error"        // bcrypt or RNG failure
+	ConfirmReasonKelasNotFound   = "kelas_not_found"   // kode_kelas given but no matching kelas
+	ConfirmReasonEnrollError     = "enroll_error"      // user inserted but enroll DB call failed
+)
+
+// Confirm finalizes a preview ImportJob by creating users and (optionally)
+// enrolling them into matching kelas. Locked decision #54 lifecycle:
+//   preview → processing (lock at flip) → completed (always; partial failures
+//   captured in ErrorsJSON, not by failing the whole call).
+//
+// Idempotency: a second confirm call on the same job returns 409 because
+// status moved off preview at the lock-flip; admins should retry uploads
+// instead. Hard preconditions (job not found / wrong owner / not preview /
+// expired) match GetPreview's semantics.
+//
+// Order of operations:
+//  1. FindByIDForAdmin + status/expiry guards
+//  2. SetStatus preview → processing (CONFIRMED_AT=now). Acts as a lock so
+//     a parallel confirm on the same job hits StatusNotInPreview and bails.
+//  3. Re-fetch raw CSV from R2 ObjectKey + re-parse via Parse. Source-of-
+//     truth: PreviewRowsJSON is capped (200 rows) so we cannot use it to
+//     create the full batch.
+//  4. Loop valid rows: bcrypt random pw → User.Create → if kode_kelas given,
+//     resolve via FindByKodeInvite → Enroll. Each failure recorded in a
+//     ConfirmFailure but never aborts the overall call.
+//  5. Build credentials.csv from successful rows, PutObject to R2 at
+//     credentials/<job_uuid>.csv, persist key via SetCredentialsPath.
+//  6. SetCounts + SetErrorsJSON + SetStatus processing → completed
+//     (COMPLETED_AT=now).
+func (s *Service) Confirm(ctx context.Context, id, adminID uuid.UUID) (*ConfirmResult, error) {
+	if s.users == nil || s.kelasRepo == nil {
+		return nil, fmt.Errorf("%w: confirm dependencies not wired", ErrInternalConfirm)
+	}
+
+	// 1. Guard.
+	job, err := s.repo.FindByIDForAdmin(ctx, id, adminID)
+	if err != nil {
+		return nil, ErrJobNotFound
+	}
+	if job.Status != StatusPreview {
+		return nil, ErrJobNotInPreview
+	}
+	if !job.ExpiresAt.IsZero() && s.now().After(job.ExpiresAt) {
+		return nil, ErrJobExpired
+	}
+	if job.ObjectKey == nil || *job.ObjectKey == "" {
+		return nil, fmt.Errorf("%w: job has no R2 object key", ErrInternalConfirm)
+	}
+
+	// 2. Lock: flip preview → processing. If this fails, leave job in preview
+	//    (next admin attempt can retry). If it succeeds and a step below
+	//    fails, we still flip to completed at the end with errors_json
+	//    populated — never leave a job stuck in processing.
+	confirmedAt := s.now()
+	if err := s.repo.SetStatus(ctx, job.ID, StatusProcessing, &confirmedAt, nil); err != nil {
+		return nil, fmt.Errorf("%w: lock to processing: %v", ErrPersistFailed, err)
+	}
+	job.Status = StatusProcessing
+	job.ConfirmedAt = &confirmedAt
+
+	// 3. Re-fetch + re-parse from R2.
+	obj, err := s.store.GetObject(ctx, *job.ObjectKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: r2 get %s: %v", ErrInternalConfirm, *job.ObjectKey, err)
+	}
+	body, readErr := readAllAndClose(obj)
+	if readErr != nil {
+		return nil, fmt.Errorf("%w: r2 read body: %v", ErrInternalConfirm, readErr)
+	}
+	pr, parseErr := Parse(bytes.NewReader(body))
+	if parseErr != nil {
+		// CSV that previously parsed clean now fails — corruption or admin
+		// edited the bucket directly. Surface ErrInternalConfirm with the
+		// underlying sentinel for log forensics; keep job in processing
+		// only briefly — flip to failed via SetStatus on exit.
+		_ = s.repo.SetStatus(ctx, job.ID, StatusFailed, nil, ptrTime(s.now()))
+		return nil, fmt.Errorf("%w: reparse: %v", ErrInternalConfirm, parseErr)
+	}
+	if pr.Stats.Total < job.TotalRows {
+		_ = s.repo.SetStatus(ctx, job.ID, StatusFailed, nil, ptrTime(s.now()))
+		return nil, ErrConfirmRowsMismatch
+	}
+
+	// 4. Loop. Each per-row failure is captured, never aborts.
+	creds := make([]credentialRow, 0, pr.Stats.Valid)
+	failures := make([]ConfirmFailure, 0)
+
+	for _, row := range pr.Rows {
+		if row.Status != RowValid {
+			failures = append(failures, ConfirmFailure{
+				LineNo: row.LineNo,
+				Email:  row.Email,
+				Reason: ConfirmReasonInvalidRow,
+				Detail: strings.Join(row.Errors, "; "),
+			})
+			continue
+		}
+
+		// Pre-check duplicate by email so we don't burn bcrypt cycles on a
+		// user that's going to fail at insert anyway. Race window remains
+		// (handled at the unique-violation path below) but most cases are
+		// caught here cheaply.
+		existing, fErr := s.users.FindUserByEmail(ctx, row.Email)
+		if fErr != nil && !errors.Is(fErr, gorm.ErrRecordNotFound) {
+			failures = append(failures, ConfirmFailure{
+				LineNo: row.LineNo, Email: row.Email,
+				Reason: ConfirmReasonUserCreate, Detail: fErr.Error(),
+			})
+			continue
+		}
+		if existing != nil {
+			failures = append(failures, ConfirmFailure{
+				LineNo: row.LineNo, Email: row.Email,
+				Reason: ConfirmReasonDuplicateInDB,
+			})
+			continue
+		}
+
+		plain, gErr := GeneratePassword()
+		if gErr != nil {
+			failures = append(failures, ConfirmFailure{
+				LineNo: row.LineNo, Email: row.Email,
+				Reason: ConfirmReasonHashError, Detail: gErr.Error(),
+			})
+			continue
+		}
+		hash, hErr := auth.HashPassword(plain, s.bcryptCost)
+		if hErr != nil {
+			failures = append(failures, ConfirmFailure{
+				LineNo: row.LineNo, Email: row.Email,
+				Reason: ConfirmReasonHashError, Detail: hErr.Error(),
+			})
+			continue
+		}
+
+		actor := adminID
+		newUser := &auth.User{
+			Name:               row.Nama,
+			Email:              row.Email,
+			PasswordHash:       hash,
+			Role:               auth.Siswa,
+			Status:             auth.Active,
+			MustChangePassword: true,
+			CreatedByID:        &actor,
+		}
+		if cErr := s.users.CreateUser(ctx, newUser); cErr != nil {
+			reason := ConfirmReasonUserCreate
+			if isDuplicateEmail(cErr) {
+				reason = ConfirmReasonDuplicateInDB
+			}
+			failures = append(failures, ConfirmFailure{
+				LineNo: row.LineNo, Email: row.Email,
+				Reason: reason, Detail: cErr.Error(),
+			})
+			continue
+		}
+
+		// Attempt enroll if kode_kelas provided. User is already created;
+		// failures here go into errors_json but credentials.csv still
+		// includes the email/password (admin can enroll manually).
+		kelasNama := ""
+		if kode := strings.TrimSpace(row.KodeKelas); kode != "" {
+			k, kErr := s.kelasRepo.FindByKodeInvite(ctx, kode)
+			if errors.Is(kErr, gorm.ErrRecordNotFound) {
+				failures = append(failures, ConfirmFailure{
+					LineNo: row.LineNo, Email: row.Email,
+					Reason: ConfirmReasonKelasNotFound, Detail: kode,
+				})
+			} else if kErr != nil {
+				failures = append(failures, ConfirmFailure{
+					LineNo: row.LineNo, Email: row.Email,
+					Reason: ConfirmReasonEnrollError, Detail: kErr.Error(),
+				})
+			} else {
+				if _, eErr := s.kelasRepo.Enroll(ctx, k.ID, newUser.ID, kelas.JoinedViaAdmin); eErr != nil {
+					failures = append(failures, ConfirmFailure{
+						LineNo: row.LineNo, Email: row.Email,
+						Reason: ConfirmReasonEnrollError, Detail: eErr.Error(),
+					})
+				} else {
+					kelasNama = k.Nama
+				}
+			}
+		}
+
+		creds = append(creds, credentialRow{
+			Email:     row.Email,
+			Plain:     plain,
+			KodeKelas: row.KodeKelas,
+			KelasNama: kelasNama,
+		})
+	}
+
+	// 5. Build + upload credentials.csv. Always emit — even an empty
+	//    success-set still gets a header-only CSV so the FE can show
+	//    "0 berhasil, N gagal" and provide a download for the failure log
+	//    (errors_json is the canonical source for failures, but having the
+	//    object exist keeps the UI uniform).
+	credKey, putErr := s.uploadCredentials(ctx, job.ID, creds)
+	if putErr != nil {
+		// User rows are already in DB; we cannot roll back. Leave job in
+		// failed state with no credentials.csv key but DO populate errors
+		// so admin sees what got created. Operator can re-run a credential
+		// regeneration job later.
+		_ = s.persistFailures(ctx, job.ID, len(creds), len(failures), failures, "")
+		_ = s.repo.SetStatus(ctx, job.ID, StatusFailed, nil, ptrTime(s.now()))
+		return nil, fmt.Errorf("%w: r2 put credentials: %v", ErrInternalConfirm, putErr)
+	}
+
+	// 6. Persist counters + errors + flip to completed.
+	if err := s.persistFailures(ctx, job.ID, len(creds), len(failures), failures, credKey); err != nil {
+		// Don't unwind: job is functionally complete. Log + best-effort
+		// flip status.
+		slog.Warn("import: persist failures partial",
+			slog.String("job_id", job.ID.String()),
+			slog.String("err", err.Error()))
+	}
+	completedAt := s.now()
+	if err := s.repo.SetStatus(ctx, job.ID, StatusCompleted, nil, &completedAt); err != nil {
+		slog.Warn("import: flip to completed failed",
+			slog.String("job_id", job.ID.String()),
+			slog.String("err", err.Error()))
+	}
+	job.Status = StatusCompleted
+	job.CompletedAt = &completedAt
+	job.SuccessCount = len(creds)
+	job.FailCount = len(failures)
+	job.CredentialsCSV = &credKey
+
+	return &ConfirmResult{
+		Job:                  job,
+		SuccessCount:         len(creds),
+		FailCount:            len(failures),
+		CredentialsObjectKey: credKey,
+		Failures:             failures,
+	}, nil
+}
+
+// uploadCredentials renders the credentials CSV and PutObjects it into R2.
+// Returns the object key on success.
+func (s *Service) uploadCredentials(ctx context.Context, jobID uuid.UUID, creds []credentialRow) (string, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write([]string{"email", "password", "kode_kelas", "nama_kelas"}); err != nil {
+		return "", err
+	}
+	for _, c := range creds {
+		if err := w.Write([]string{c.Email, c.Plain, c.KodeKelas, c.KelasNama}); err != nil {
+			return "", err
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return "", err
+	}
+
+	key, err := storage.BuildKey(storage.CategoryCredentials, jobID.String()+".csv")
+	if err != nil {
+		return "", fmt.Errorf("build credentials key: %w", err)
+	}
+	body := buf.Bytes()
+	if err := s.store.PutObject(ctx, storage.PutObjectInput{
+		Key:         key,
+		Body:        bytes.NewReader(body),
+		Size:        int64(len(body)),
+		ContentType: "text/csv; charset=utf-8",
+	}); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+// persistFailures writes counts + errors_json + credentials_csv path. Each
+// step is best-effort: if one fails the others still try.
+func (s *Service) persistFailures(ctx context.Context, jobID uuid.UUID, success, fail int, failures []ConfirmFailure, credKey string) error {
+	var firstErr error
+	if err := s.repo.SetCounts(ctx, jobID, success, fail); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	if len(failures) > 0 {
+		blob, mErr := json.Marshal(failures)
+		if mErr != nil && firstErr == nil {
+			firstErr = mErr
+		} else if mErr == nil {
+			if err := s.repo.SetErrorsJSON(ctx, jobID, blob); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	if credKey != "" {
+		if err := s.repo.SetCredentialsPath(ctx, jobID, credKey); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// ptrTime returns a pointer to t. Tiny helper to avoid `tt := s.now(); &tt`
+// boilerplate at the SetStatus call sites.
+func ptrTime(t time.Time) *time.Time { return &t }
+
+// readAllAndClose drains the body of a storage.Object, then closes it.
+func readAllAndClose(obj *storage.Object) ([]byte, error) {
+	if obj == nil || obj.Body == nil {
+		return nil, errors.New("nil body")
+	}
+	defer obj.Body.Close()
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(obj.Body); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// isDuplicateEmail tries to detect Postgres unique-violation on users.email
+// without coupling the importjob package to the pg driver. The error string
+// from pgx / lib/pq contains "duplicate key value" + "users_email_key".
+func isDuplicateEmail(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") && strings.Contains(msg, "email")
 }
 
 // looksLikeText sniffs the body for plausible CSV. We accept anything that

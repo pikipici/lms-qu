@@ -28,6 +28,7 @@ type uploadService interface {
 	PreviewUpload(ctx context.Context, in PreviewUploadInput) (*PreviewUploadResult, error)
 	GetPreview(ctx context.Context, id, adminID uuid.UUID) (*GetPreviewResult, error)
 	Cancel(ctx context.Context, id, adminID uuid.UUID) (*CancelResult, error)
+	Confirm(ctx context.Context, id, adminID uuid.UUID) (*ConfirmResult, error)
 }
 
 // auditLogger captures the LogAudit slice of auth.Repo. Inlined so we don't
@@ -197,6 +198,53 @@ func (h *Handler) Cancel(c *fiber.Ctx) error {
 	})
 }
 
+// Confirm handles POST /api/v1/admin/import-csv/:job_id/confirm.
+//
+// Finalizes a preview ImportJob by creating users + auto-enrolling them and
+// generating a credentials.csv stored at credentials/<job_uuid>.csv in R2.
+// Always returns 200 on partial success — failures are surfaced via
+// `errors_json` and the per-row failure list in the response body. Status:
+//   - 200 ok                  → completed (may include partial failures)
+//   - 404 not_found           → job missing or wrong owner
+//   - 409 not_in_preview      → already confirmed/cancelled/expired/etc
+//   - 410 preview_expired     → preview TTL elapsed
+//   - 409 rows_mismatch       → R2 CSV diverges from preview state
+//   - 500 confirm_failed      → R2 fetch / put / persist failure
+func (h *Handler) Confirm(c *fiber.Ctx) error {
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return importError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	jobID, err := uuid.Parse(c.Params("job_id"))
+	if err != nil {
+		return importError(c, fiber.StatusBadRequest, "job_id bukan UUID valid", "invalid_job_id")
+	}
+
+	res, err := h.svc.Confirm(c.UserContext(), jobID, adminID)
+	if err != nil {
+		status, code, msg := mapServiceError(err)
+		return importError(c, status, msg, code)
+	}
+
+	h.logAudit(c, adminID, res.Job.ID, "import_csv_confirmed", auditMeta(map[string]any{
+		"filename":               res.Job.Filename,
+		"object_key":             ptrToString(res.Job.ObjectKey),
+		"credentials_object_key": res.CredentialsObjectKey,
+		"success_count":          res.SuccessCount,
+		"fail_count":             res.FailCount,
+	}))
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"job_id":                 res.Job.ID,
+		"status":                 res.Job.Status,
+		"filename":               res.Job.Filename,
+		"success_count":          res.SuccessCount,
+		"fail_count":             res.FailCount,
+		"credentials_object_key": res.CredentialsObjectKey,
+		"failures":               res.Failures,
+	})
+}
+
 // mapServiceError translates parser/service sentinel errors into stable HTTP
 // status + code pairs the FE can branch on.
 func mapServiceError(err error) (status int, code string, msg string) {
@@ -223,6 +271,10 @@ func mapServiceError(err error) (status int, code string, msg string) {
 		return fiber.StatusGone, "preview_expired", "preview kadaluarsa, upload ulang"
 	case errors.Is(err, ErrJobNotInPreview):
 		return fiber.StatusConflict, "not_in_preview", "import job sudah tidak dalam status preview"
+	case errors.Is(err, ErrConfirmRowsMismatch):
+		return fiber.StatusConflict, "rows_mismatch", "csv di r2 berbeda dari preview, upload ulang"
+	case errors.Is(err, ErrInternalConfirm):
+		return fiber.StatusInternalServerError, "confirm_failed", "gagal memproses konfirmasi import"
 	case errors.Is(err, ErrPersistFailed):
 		return fiber.StatusInternalServerError, "persist_failed", "gagal menyimpan import job"
 	default:
@@ -273,6 +325,14 @@ func strPtrOrNil(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// ptrToString returns *p if non-nil, "" otherwise.
+func ptrToString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func importError(c *fiber.Ctx, status int, message, code string) error {

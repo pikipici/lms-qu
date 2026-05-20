@@ -31,14 +31,19 @@ const (
 	CategoryMateri     = "materi"
 	CategorySubmission = "submission"
 	CategoryImport     = "import"
+	// CategoryCredentials holds generated post-import credentials.csv blobs
+	// (Task 2.D.4). Same admin-only scope as CategoryImport but separated so
+	// cleanup/eviction policies and presigned-URL TTLs can diverge later.
+	CategoryCredentials = "credentials"
 )
 
 var validCategories = map[string]struct{}{
-	CategoryTugas:      {},
-	CategorySoal:       {},
-	CategoryMateri:     {},
-	CategorySubmission: {},
-	CategoryImport:     {},
+	CategoryTugas:       {},
+	CategorySoal:        {},
+	CategoryMateri:      {},
+	CategorySubmission:  {},
+	CategoryImport:      {},
+	CategoryCredentials: {},
 }
 
 // IsValidCategory reports whether name is one of the known kategori prefixes.
