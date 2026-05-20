@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 DONE (kelas/enrollment/import_jobs schema + GORM repos). Berikut: Task 2.B.1 (kode invite generator).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 + 2.B.1 + 2.B.2 DONE (kelas/enrollment/import_jobs schema + GORM repos + kode invite generator + CRUD endpoints). Berikut: Task 2.B.3 (FE guru list + create kelas).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 2.A.1 + 2.A.2 marked done, kelas/enrollment/import_jobs schema + repos shipped)
+> Last updated: 2026-05-20 (Section 18: Task 2.B.1 + 2.B.2 marked done; kode invite generator + kelas CRUD service/handler shipped, E2E smoke test live di server)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1617,17 +1617,23 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 2.B Kelas CRUD (guru)
 
-**Task 2.B.1 — Generate kode invite unik (6-char alnum)**
-- Files: `backend/internal/kelas/code.go` (generate + collision retry)
-- Test
-- Commit: `feat(kelas): kode invite generator`
+**Task 2.B.1 — Generate kode invite unik (6-char alnum)** ✅ DONE 2026-05-20
+- Files: `backend/internal/kelas/code.go` + `code_test.go`
+- Commit: `c14640d` (charset fix `9edba39` — drop `8`+`9` ambig sama `B`+`g`)
+- Shipped: `GenerateKodeInvite(ctx, repo)`, charset `ACDEFGHJKMNPQRTUVWXYZ234567` (27 chars, 6 length = 387M kombinasi), `crypto/rand` source, max 10 retry via `repo.FindByKodeInvite`, `ErrKodeInviteCollision` saat exhausted. Test pakai `fakeFinder` mock + ambiguous-chars guard.
 
-**Task 2.B.2 — Kelas CRUD service + handler**
-- `GET /kelas` (guru's kelas), `POST /kelas`, `PATCH /kelas/:id` (with version), `POST /kelas/:id/archive`, `POST /kelas/:id/duplicate`
-- Optimistic concurrency: 409 kalau version mismatch
-- Audit log
-- Verify: integration
-- Commit: `feat(kelas): CRUD endpoints with optimistic concurrency`
+**Task 2.B.2 — Kelas CRUD service + handler** ✅ DONE 2026-05-20
+- `GET /kelas` (guru → milik sendiri, admin → semua, query `include_archived=true|false`, pagination `page`+`page_size`)
+- `POST /kelas` (guru-only: nama wajib, deskripsi opsional, default bobot 50/50)
+- `GET /kelas/:id` (ownership guard: guru hanya kelasnya, admin semua)
+- `PATCH /kelas/:id` (PARTIAL — body wajib `nama`+`version`; `deskripsi`/`bobot_*` opsional via pointer; mismatch → 409 `version_conflict`; bobot total ≠ 100 → 400 `invalid_bobot`)
+- `POST /kelas/:id/archive` (idempotent: 409 `already_archived` kalau udah)
+- `POST /kelas/:id/duplicate` (reduced scope: copy basic fields + regenerate kode invite, version=1, no archive carry; child catalog Bab/Materi dst masuk Fase 3)
+- Optimistic concurrency via `WHERE id=? AND version=?` + auto bump version
+- Audit log: `kelas_created`/`kelas_updated`/`kelas_archived`/`kelas_duplicated` dgn `target_kelas_id` terisi (siap untuk locked decision #59 guru audit scope)
+- Middleware order: `BearerAuth → ForceChangePassword → RoleGuard(admin,guru)`
+- Commit: `c14640d` (CRUD), `9edba39` (charset fix), `620594f` (PATCH partial fix — pointer fields)
+- Verified server: build/vet/test PASS; E2E smoke 13 test scenario semua hijau (create/list/get/PATCH partial nama-only/PATCH bobot-only/version conflict/invalid bobot/duplicate/archive/cross-guru forbidden)
 
 **Task 2.B.3 — FE guru: list kelas + create form**
 - `frontend/app/guru/page.tsx`, `frontend/app/guru/kelas/page.tsx`
@@ -1724,7 +1730,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.B.1 — Generate kode invite unik (6-char alnum).** Fase 2.A SELESAI: schema + GORM repo kelas/enrollment/importjob hidup di server (commit `1964b7b`, 2026-05-20). Migration 000003 verified `\dt` (9 tabel), schema_meta=`000003_kelas_enrollment`, build/vet/test semua hijau. Task 2.B.1 spec: `backend/internal/kelas/code.go` — generator `Generate(ctx, repo) (string, error)` (6-char alnum, charset hindari ambigu O/0/I/1/L untuk UX guru baca-tulis manual), collision retry pakai `repo.FindByKodeInvite` (kalau ketemu→retry, max 10 attempts→error). Test: `code_test.go` stdlib testing only (project gak pakai testify), bisa pakai mock repo dgn map[string]bool atau interface kecil. Commit `feat(kelas): kode invite generator`. Setelah ini berlanjut Task 2.B.2 (Kelas CRUD service + handler) — bisa di-bundle solo dulu (first instance handler kelas, sebaiknya BUKAN bundled supaya pattern bisa direview).
+**Berikut: Task 2.B.3 — FE guru list kelas + create form.** Fase 2.B backend SELESAI: kode invite generator + CRUD service/handler hidup di server (commits `c14640d` + `9edba39` charset fix + `620594f` PATCH partial fix), kelas-routes registered di lms-api port 8200, E2E smoke test 13 scenario semua hijau (create/list/get/PATCH partial/version conflict/invalid bobot/duplicate/archive/cross-guru forbidden), audit log entries verified `target_kelas_id` terisi. Task 2.B.3 spec: build FE guru shell — `frontend/app/(authed)/guru/page.tsx` (landing pasca-login guru — daftar kelas miliknya pakai `GET /api/v1/kelas?page=...`), `frontend/app/(authed)/guru/kelas/page.tsx` (list view dgn filter `include_archived`), tombol "+ Buat Kelas Baru" buka modal/form (`POST /api/v1/kelas`). Pattern guard: pakai layout `(authed)` yang udah ada (force-change-password + role-guard guru), card grid responsive, tampilkan `kode_invite` (copy-to-clipboard), bobot, status archived. Static export friendly (no server-side data — fetch di client `useEffect` + `apiClient`). Commit: `feat(fe-guru): list kelas + create form`. Setelah ini berlanjut Task 2.B.4 (kelas detail page + edit version + duplicate button) — bisa di-bundle setelah 2.B.3 ke-review.
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
