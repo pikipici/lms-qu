@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 + 2.D.4 + 2.D.5 DONE 2026-05-20 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2 + presigned download w/ TTL). Berikutnya: Task 2.D.6 (hourly cleanup cron — preview expiry + credentials.csv eviction).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 + 2.D.4 + 2.D.5 + 2.D.6 DONE 2026-05-20 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2 + presigned download w/ TTL + hourly cleanup cron). **Fase 2.D BE 100% DONE; Fase 2 = 18/20** (sisa 2 task = Fase 2.E FE Admin Import, out-of-scope BE roadmap). Berikutnya: Fase 2.E (FE) atau pivot ke Fase 3 (Bab & Materi).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.5 done — GET /admin/import-csv/:job_id/credentials.csv shipped, 302 redirect ke R2 presigned URL TTL 15m + Content-Disposition attachment, live smoke 6/6 PASS, body verified 4 lines header+3 creds, audit `file_url_issued` recorded 2x, commits `1b46030` + `0bcc092`)
+> Last updated: 2026-05-20 (Task 2.D.6 done — hourly cleanup cron live; preview expiry + credentials TTL eviction sweeps bound ke rootCtx; tests 5 cases ALL_TEST_OK; live smoke PASS preview/credentials swept dengan R2 + DB state verified; commits `a9dbbc3` + `2dd9edb`. Fase 2.D BE 100%; Fase 2 = 18/20)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1837,10 +1837,25 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Cleanup: 3 users + 1 enrollment + 4 audit + 1 import_job + 2 R2 objects deleted
 - Commits: `1b46030` feat(import): credentials presigned download with TTL (Task 2.D.5); `0bcc092` test(importjob): register credentials.csv route in test app
 
-**Task 2.D.6 — Hourly cleanup cron**
-- Files: `backend/internal/import/cleanup.go` (run on app start: ticker 1h)
-- Logic: find ImportJob status=preview AND ExpiresAt < now → set expired + delete file
-- Commit: `feat(import): hourly expired cleanup`
+**Task 2.D.6 — Hourly cleanup cron** ✅ DONE 2026-05-20 (commits `a9dbbc3` + `2dd9edb`)
+- Files: `backend/internal/importjob/cleanup.go` (196 LOC) + `cleanup_test.go` (293 LOC) + extend `repo.go` (+45 LOC `ExpireCredentialsBefore`) + `cmd/server/main.go` (wire `Cleaner.Run` goroutine bound ke `rootCtx`)
+- Two sweeps per tick (cadence `CleanupInterval = 1h`, initial sweep on boot):
+  1. Preview expiry: `Repo.ExpirePreviewBefore(now)` (existing) — flips preview→expired tx-locked + best-effort `s3.DeleteObject(ObjectKey)` per row
+  2. Credentials eviction: new `Repo.ExpireCredentialsBefore(now - CredentialsTTL)` — query completed+credentials_csv IS NOT NULL+completed_at < cutoff, tx-locked null-out credentials_csv (status stays `completed`), best-effort delete `credentials/<uuid>.csv` from R2
+- Per-row R2 errors → `slog.Warn` + counted (`PreviewObjectsErr`, `CredentialsObjectsErr`); never abort the loop. Repo errors from one sweep do NOT block the other (errors.Join).
+- Concurrency: `select { ctx.Done() | t.C }`; DeleteObject uses `context.Background()` so ctx cancel mid-tick doesn't half-orphan.
+- Tests (5 new): `RunOnce_PreviewHappy`, `RunOnce_PreviewNoRows`, `RunOnce_CredentialsHappy`, `RunOnce_CredentialsDeleteError`, `RunOnce_RepoError`, `Run_ContextCancel`. All ALL_TEST_OK (`go test ./internal/importjob/...` 0.409s).
+- Live smoke PASS:
+  - Created 1 preview job + 1 completed job via real /admin/import-csv flow
+  - `UPDATE expires_at = NOW() - 2h` + `UPDATE completed_at = NOW() - 2h`
+  - `systemctl restart lms-api` → initial sweep fired:
+    - log: `importjob cleanup: preview swept expired=1 r2_deleted=1 r2_errors=0`
+    - log: `importjob cleanup: credentials swept evicted=1 r2_deleted=1 r2_errors=0`
+  - DB verify: preview row → status=`expired`; completed row → `credentials_csv = NULL` (status stays `completed`)
+  - R2 verify (boto3 head_object): `import/<preview>.csv` GONE ✓; `credentials/<completed>.csv` GONE ✓; `import/<completed>.csv` EXISTS (preserved as forensic — only credentials evicted per spec)
+  - Endpoint sanity: `GET /admin/import-csv/<completed>/credentials.csv` → 410 `credentials_expired` (TTL guard fires before missing-pointer guard since cutoff matches)
+- Cleanup: 1 user + 0 enroll + 3 audit + 2 import_jobs + 1 R2 object deleted; users_left=0, jobs_left=0
+- **Fase 2.D = 6/6 DONE; Fase 2 progress = 18/20** (sisa 2 task = Fase 2.E FE Admin Import, out-of-scope BE roadmap)
 
 #### 2.E FE Admin Import
 
@@ -1870,25 +1885,16 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.D.6 — Hourly cleanup cron.** Task 2.D.5 SELESAI (commits `1b46030` + `0bcc092`): backend `GET /admin/import-csv/:job_id/credentials.csv` shipped, 302 redirect ke R2 presigned URL TTL 15m + Content-Disposition attachment dengan filename stabil `credentials-<uuid>.csv`. Build/vet/test ALL ijo (71 cases importjob + storage). Live smoke 6/6 PASS: presigned URL valid, R2 echo C-D header, body 4 lines verified, error mapping (400/404/409/410/500/401) semua match, audit `file_url_issued` 2x recorded. Cleanup smoke artifacts done (3 users + 1 enroll + 4 audit + 1 import_job + 2 R2 objects). **Fase 2.D = 5/6 DONE; Fase 2 progress = 17/20.**
+**Fase 2 BE = 100% DONE.** Task 2.D.6 SELESAI 2026-05-20 (commits `a9dbbc3` feat + `2dd9edb` fix). Hourly cleanup cron live: 2 sweeps (preview expiry + credentials eviction) bound ke `rootCtx` graceful shutdown. Initial sweep on boot + 1h ticker. Tests 5 cases ALL_TEST_OK. Live smoke PASS: aged 1 preview + 1 completed row → restart → both sweeps fired (preview r2_deleted=1, credentials r2_deleted=1) → DB + R2 state matched spec exactly. **Fase 2.D = 6/6 DONE; Fase 2 progress = 18/20** (sisa 2 task FE out-of-scope BE).
 
-**Task 2.D.6 spec (the only Fase 2 backend task tersisa):**
-- Files: `backend/internal/importjob/cleanup.go` + wire ticker di `cmd/server/main.go` (1h cadence; first run on app start with small jitter)
-- Logic — single ticker loop, two sweeps per tick:
-  1. Preview expiry: `repo.ExpirePreviewBefore(now)` flips status preview→expired untuk row dgn ExpiresAt < now; loop hasilnya, untuk tiap row best-effort `s3.DeleteObject(ObjectKey)` (raw CSV import). Repo method udah ada (`Repo.ExpirePreviewBefore` di repo.go:113), tinggal panggil dari ticker.
-  2. Credentials eviction: query `import_jobs WHERE status='completed' AND completed_at < now - 1h AND credentials_csv IS NOT NULL` → loop, `s3.DeleteObject(credentials_csv)` + `SetCredentialsPath('')` agar future Download return ErrCredentialsMissing. Butuh repo method baru: `ExpireCredentialsBefore(ctx, cutoff) ([]ImportJob, error)`.
-- Concurrency: ticker pakai `select` antara `<-time.After(1*time.Hour)` dan `<-ctx.Done()` (graceful shutdown). Jangan blocking on the loop — DeleteObject errors logged via slog.Warn tapi ticker lanjut.
-- Tests: 4 cases (preview expiry happy + no-rows, credentials eviction happy + DeleteObject error best-effort).
-- Smoke verify (server): manipulate `expires_at` / `completed_at` lewat psql → trigger ticker via short test cron interval atau direct call → confirm rows flipped + R2 objects gone.
+**Pilihan next:**
+1. **Pivot ke Fase 3 — Bab & Materi + Pengumuman** (rekomen gue) — backend Fase 2 udah closed, lanjut ke domain berikutnya yang full-stack lagi (CRUD bab, upload materi PDF/video ke R2, pengumuman per kelas).
+2. **Build Fase 2.E FE Admin Import** — close lingkaran Fase 2 dengan UI admin import-csv (3 task: upload page, preview persistent, confirm + download). Out-of-scope BE roadmap tapi unblock E2E browser test.
+3. **Pause + ringkas hari ini** — produktif: 9 task closed (2.C.4, 2.D.0.a/b, 2.D.1-2.D.6).
 
-Mau gas:
-1. **Lanjut Task 2.D.6 sekarang** — kelar 1 sesi medium (~150-200 LOC)
-2. **Pause dulu** — udah produktif hari ini (8 task selesai: 2.C.4, 2.D.0.a/b, 2.D.1-2.D.5)
-3. **Skip ke Fase 2.E (FE Admin Import)** — note: out-of-scope BE roadmap, tapi useful kalau lu mau test integrasi end-to-end di browser
+Default rekomen gue: **opsi 1** (pivot Fase 3) — Fase 2 BE complete, momentum bagus pivot ke domain baru. Fase 2.E FE bisa dijadwalin bareng Fase 3.
 
-Default rekomen gue: **opsi 1** (gas 2.D.6) — sisa 1 task untuk close Fase 2.D backend. Setelah itu Fase 2 = 18/20 (sisa 2 task = Fase 2.E FE), backend Fase 2 100% done dan siap pivot ke Fase 3 (Bab & Materi).
-
-> Catatan: admin password sementara `Smoke-2D5-Tmp!` (gua reset untuk smoke). Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
+> Catatan: admin password sementara `Smoke-2D5-Tmp!` (gua reset untuk smoke 2.D.5). Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
