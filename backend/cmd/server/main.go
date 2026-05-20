@@ -65,6 +65,36 @@ func run() error {
 		return err
 	}
 
+	// Object storage (Cloudflare R2, locked decision #61). In dev/CI the
+	// credentials may be empty — we fall back to in-memory MockStorage so
+	// the server still boots. In production we currently allow the same
+	// fallback to keep deploys non-breaking until Task 2.D.0.b lands the
+	// real R2 client; once that ships, prod will fail-fast on missing creds.
+	objectStore, err := storage.NewStorage(
+		storage.R2Config{
+			AccountID:       cfg.Storage.R2.AccountID,
+			AccessKeyID:     cfg.Storage.R2.AccessKeyID,
+			SecretAccessKey: cfg.Storage.R2.SecretAccessKey,
+			Bucket:          cfg.Storage.R2.Bucket,
+			PresignTTL:      cfg.Storage.R2.PresignTTLSec,
+		},
+		storage.FactoryOptions{AllowMockFallback: true},
+	)
+	if err != nil {
+		// Currently the only "configured but not implemented" path returns
+		// ErrR2NotImplemented (Task 2.D.0.b pending). Log and fall back to
+		// mock so the server still boots. Once 2.D.0.b lands this branch
+		// becomes a hard error.
+		logger.Warn("storage: R2 client unavailable; using in-memory fallback",
+			slog.String("err", err.Error()))
+		objectStore = storage.NewMockStorage()
+	}
+	logger.Info("storage ready",
+		slog.Bool("r2_configured", cfg.Storage.R2.Bucket != ""),
+		slog.String("backend", fmt.Sprintf("%T", objectStore)),
+	)
+	_ = objectStore // wired into handlers in Task 2.D.1+
+
 	rootCtx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
 	defer cancel()

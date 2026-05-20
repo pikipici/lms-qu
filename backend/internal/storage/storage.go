@@ -1,20 +1,30 @@
-// Package storage provides a small filesystem helper used by upload handlers
-// (Fase 4+) and readyz probe. Path convention is locked decision #58:
+// Package storage abstracts the object storage backend used by the LMS.
 //
-//	./storage/uploads/<kategori>/<uuid>.<ext>
+// As of v0.8.0 the production backend is **Cloudflare R2** (S3-compatible,
+// locked decision #61). Tests use an in-memory MockStorage. Local-disk
+// helpers (Init, Path) are retained as deprecated for backward compat with
+// startup wiring; new code MUST use the Storage interface.
 //
-// Original filename is stored in DB; on disk we only persist the UUID-named
-// file so we can stat / cleanup orphans cheaply.
+// Locked decisions referenced:
+//   - #58 Path/key convention: <kategori>/<uuid>.<ext>
+//   - #61 R2 single bucket per env, prefix per kategori
+//   - #62 Upload via backend (multipart -> validate -> PutObject); download
+//     via presigned GET URL (TTL 15m, bucket non-public)
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
-// Category names — keep in sync with locked decision #58.
+// Category names — keep in sync with locked decisions #58/#61.
 const (
 	CategoryTugas      = "tugas"
 	CategorySoal       = "soal"
@@ -31,8 +41,100 @@ var validCategories = map[string]struct{}{
 	CategoryImport:     {},
 }
 
-// Init ensures the upload root and per-category subdirectories exist.
-// Called once on server startup.
+// IsValidCategory reports whether name is one of the known kategori prefixes.
+func IsValidCategory(name string) bool {
+	_, ok := validCategories[name]
+	return ok
+}
+
+// ErrObjectNotFound is returned by Get/Delete/Exists/PresignGet when the
+// requested key does not exist in the backing store.
+var ErrObjectNotFound = errors.New("storage: object not found")
+
+// PutObjectInput describes a single upload call.
+//
+// Body is read fully by the implementation. If Size is >= 0, implementations
+// MAY use it to optimize transfer (e.g. set Content-Length); a value of -1
+// means "unknown, stream until EOF".
+type PutObjectInput struct {
+	Key         string
+	Body        io.Reader
+	Size        int64
+	ContentType string
+}
+
+// Object is a fetched object plus metadata. The caller MUST Close Body.
+type Object struct {
+	Key         string
+	Size        int64
+	ContentType string
+	Body        io.ReadCloser
+}
+
+// Storage abstracts the underlying object store. Implementations:
+//   - R2Client    (production, Cloudflare R2 via aws-sdk-go-v2; Task 2.D.0.b)
+//   - MockStorage (tests + dev fallback when R2 is not configured)
+//
+// All methods take a context for cancellation/timeout. Errors should wrap
+// ErrObjectNotFound when the requested key is missing.
+type Storage interface {
+	// PutObject uploads (or overwrites) an object at the given key.
+	PutObject(ctx context.Context, in PutObjectInput) error
+
+	// GetObject fetches the object body + metadata. Caller MUST Close Body.
+	// Returns ErrObjectNotFound if the key does not exist.
+	GetObject(ctx context.Context, key string) (*Object, error)
+
+	// DeleteObject removes the object at the given key. Idempotent: a
+	// missing key is NOT an error.
+	DeleteObject(ctx context.Context, key string) error
+
+	// ObjectExists reports whether the key currently exists.
+	ObjectExists(ctx context.Context, key string) (bool, error)
+
+	// PresignGet returns a time-bounded URL the browser can use to GET the
+	// object directly. ttl is clamped to a sane minimum/maximum by the
+	// implementation. Returns ErrObjectNotFound if the key does not exist.
+	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
+}
+
+// BuildKey constructs an object key with the canonical "<kategori>/<...>"
+// layout (locked decision #61). Validates kategori and rejects empty or
+// traversal-shaped parts.
+//
+// Example:
+//
+//	BuildKey(CategoryImport, jobID, "preview.csv")
+//	  -> "import/<uuid>/preview.csv"
+func BuildKey(category string, parts ...string) (string, error) {
+	if !IsValidCategory(category) {
+		return "", fmt.Errorf("storage: unknown category %q", category)
+	}
+	if len(parts) == 0 {
+		return "", errors.New("storage: BuildKey requires at least one part")
+	}
+	cleaned := make([]string, 0, len(parts)+1)
+	cleaned = append(cleaned, category)
+	for _, p := range parts {
+		trimmed := strings.Trim(strings.TrimSpace(p), "/")
+		if trimmed == "" {
+			return "", errors.New("storage: empty key part")
+		}
+		if strings.Contains(trimmed, "..") || strings.ContainsAny(trimmed, "\\\x00") {
+			return "", fmt.Errorf("storage: invalid key part %q", p)
+		}
+		cleaned = append(cleaned, trimmed)
+	}
+	return path.Join(cleaned...), nil
+}
+
+// --- legacy local-disk helpers (deprecated; kept for backward compat) ---
+
+// Init ensures a per-category subdirectory layout exists under root.
+//
+// Deprecated: as of v0.8.0 LMS uses Cloudflare R2 for all uploads (locked
+// #61). This helper is retained only so existing callers (cmd/server) keep
+// compiling during the migration window. New code MUST use Storage.PutObject.
 func Init(root string) error {
 	if root == "" {
 		return errors.New("storage: root is empty")
@@ -45,11 +147,11 @@ func Init(root string) error {
 	return nil
 }
 
-// Path returns the absolute (or root-relative) destination for a given
-// category + relative filename. Use this so all upload paths share the same
-// convention. The caller must validate `category` is known.
+// Path returns the legacy on-disk path for category/name.
+//
+// Deprecated: see Init. Use BuildKey + Storage.PutObject for new code.
 func Path(root, category, name string) (string, error) {
-	if _, ok := validCategories[category]; !ok {
+	if !IsValidCategory(category) {
 		return "", fmt.Errorf("storage: unknown category %q", category)
 	}
 	if name == "" {

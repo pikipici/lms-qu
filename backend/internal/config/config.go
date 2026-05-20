@@ -62,9 +62,27 @@ type JWTConfig struct {
 }
 
 type StorageConfig struct {
-	Dir              string
-	MaxTugasFileMB   int
-	MaxGambarSoalMB  int
+	// Dir is the legacy local-disk root. Retained for backward compat with
+	// pre-v0.8.0 wiring; new code uses R2 (locked decision #61).
+	Dir             string
+	MaxTugasFileMB  int
+	MaxGambarSoalMB int
+
+	// R2 holds Cloudflare R2 connection settings. May be empty in dev/CI;
+	// callers fall back to MockStorage when R2.IsConfigured() is false
+	// and AllowMockFallback is enabled.
+	R2 R2Config
+}
+
+// R2Config mirrors storage.R2Config (kept as a value here so the config
+// package doesn't import internal/storage and create a cycle). The wiring
+// layer (cmd/server/main.go) translates between the two.
+type R2Config struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket          string
+	PresignTTLSec   int
 }
 
 type RateLimitConfig struct {
@@ -123,6 +141,13 @@ func Load() (*Config, error) {
 		Dir:             getEnv("STORAGE_DIR", "./storage/uploads"),
 		MaxTugasFileMB:  getInt("MAX_TUGAS_FILE_MB", 20),
 		MaxGambarSoalMB: getInt("MAX_GAMBAR_SOAL_MB", 5),
+		R2: R2Config{
+			AccountID:       getEnv("R2_ACCOUNT_ID", ""),
+			AccessKeyID:     getEnv("R2_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
+			Bucket:          getEnv("R2_BUCKET", ""),
+			PresignTTLSec:   getInt("R2_PRESIGN_TTL_SECONDS", 900),
+		},
 	}
 
 	cfg.RateLimit = RateLimitConfig{
