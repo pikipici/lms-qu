@@ -435,7 +435,7 @@ function ArchiveDialog({
             <span className="font-medium">{kelas.nama}</span> akan
             dinonaktifkan: tidak muncul di list aktif, edit dimatikan, dan
             kode invite tetap ada untuk referensi. Lu tetap bisa lihat dengan
-            filter "Tampilkan diarsipkan".
+            filter &quot;Tampilkan diarsipkan&quot;.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -537,7 +537,7 @@ function DuplicateDialog({
                     />
                   </FormControl>
                   <FormDescription className="text-xs">
-                    Kosongkan untuk pakai default "Nama (Salinan)".
+                    Kosongkan untuk pakai default &quot;Nama (Salinan)&quot;.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
