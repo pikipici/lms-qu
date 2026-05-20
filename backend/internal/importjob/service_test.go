@@ -127,6 +127,47 @@ func (r *stubRepo) SetStatus(ctx context.Context, id uuid.UUID, status Status, c
 	for _, j := range r.created {
 		if j.ID == id {
 			j.Status = status
+			if confirmedAt != nil {
+				j.ConfirmedAt = confirmedAt
+			}
+			if completedAt != nil {
+				j.CompletedAt = completedAt
+			}
+		}
+	}
+	return nil
+}
+
+func (r *stubRepo) SetCounts(ctx context.Context, id uuid.UUID, success, fail int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, j := range r.created {
+		if j.ID == id {
+			j.SuccessCount = success
+			j.FailCount = fail
+		}
+	}
+	return nil
+}
+
+func (r *stubRepo) SetErrorsJSON(ctx context.Context, id uuid.UUID, errorsJSON []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, j := range r.created {
+		if j.ID == id {
+			j.ErrorsJSON = errorsJSON
+		}
+	}
+	return nil
+}
+
+func (r *stubRepo) SetCredentialsPath(ctx context.Context, id uuid.UUID, path string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, j := range r.created {
+		if j.ID == id {
+			p := path
+			j.CredentialsCSV = &p
 		}
 	}
 	return nil

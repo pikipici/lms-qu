@@ -36,6 +36,12 @@ type stubUploadService struct {
 	cancelErr    error
 	gotCancelID  uuid.UUID
 	gotCancelAdm uuid.UUID
+
+	// Confirm hooks (Task 2.D.4).
+	confirmRes    *ConfirmResult
+	confirmErr    error
+	gotConfirmID  uuid.UUID
+	gotConfirmAdm uuid.UUID
 }
 
 func (s *stubUploadService) PreviewUpload(ctx context.Context, in PreviewUploadInput) (*PreviewUploadResult, error) {
@@ -63,6 +69,15 @@ func (s *stubUploadService) Cancel(ctx context.Context, id, adminID uuid.UUID) (
 		return nil, s.cancelErr
 	}
 	return s.cancelRes, nil
+}
+
+func (s *stubUploadService) Confirm(ctx context.Context, id, adminID uuid.UUID) (*ConfirmResult, error) {
+	s.gotConfirmID = id
+	s.gotConfirmAdm = adminID
+	if s.confirmErr != nil {
+		return nil, s.confirmErr
+	}
+	return s.confirmRes, nil
 }
 
 // stubAudit captures LogAudit calls.
@@ -100,6 +115,7 @@ func testApp(t *testing.T, svc uploadService, audit auditLogger, adminID uuid.UU
 	app.Post("/api/v1/admin/import-csv/upload", h.PreviewUpload)
 	app.Get("/api/v1/admin/import-csv/:job_id", h.GetPreview)
 	app.Post("/api/v1/admin/import-csv/:job_id/cancel", h.Cancel)
+	app.Post("/api/v1/admin/import-csv/:job_id/confirm", h.Confirm)
 	return app
 }
 
