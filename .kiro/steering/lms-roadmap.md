@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 + 1.H.2 DONE. Backend admin domain CLOSED. FE auth stack live + admin shell + /admin/pengguna list dengan filter & pagination. Berikut: Task 1.H.3 (/admin/pengguna create form + re-auth admin role).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 + 1.H.2 + 1.H.3 DONE. Backend admin domain CLOSED. FE: auth stack + admin shell + /admin/pengguna list & create-user form (password reveal once). Berikut: Task 1.H.4 (/admin/pengguna/[id] detail page).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.H.2 marked done, /admin/pengguna 200)
+> Last updated: 2026-05-20 (Section 18: Task 1.H.3 marked done, /admin/pengguna/baru 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1569,11 +1569,10 @@ Setelah tools jadi, runbook deploy jadi:
 - Done: TanStack Query (queryKey `['admin','users', { role, status, q, page }]`) hits `GET /api/v1/admin/users?role&status&q&page&page_size` dgn `keepPreviousData` (table tetap stabil saat page swap). Toolbar: search input debounced 300ms via `useDebounced` hook lokal, role select (admin/guru/siswa/all), status select (active/suspended/locked/all), Reset button (disabled saat no filter active). Table: Nama, Email, Role badge (violet/sky/slate tone), Status badge (emerald/amber/rose tone), Login terakhir Asia/Jakarta, Detail link → `/admin/pengguna/[id]`. 5-row skeleton saat loading; empty state membedakan "tidak ada match filter" vs "belum ada pengguna". Prev/Next pagination pakai `data.total_pages`. Page reset ke 1 setiap filter berubah. Tombol "Tambah pengguna" → `/admin/pengguna/baru` (form di 1.H.3).
 - Live verified: `npx tsc --noEmit` PASS, `next build` PASS (11 static pages — /admin/pengguna=6.79 kB), curl /admin/pengguna=200, /api/v1/admin/users tanpa bearer=401 (expected).
 
-**Task 1.H.3 — /admin/pengguna create form**
-- Modal/page bikin user. Toggle manual/generate password. Kalau role=admin → modal re-auth.
-- Modal sukses dengan tombol copy password (kalau generate).
-- Verify: e2e bikin guru + siswa
-- Commit: `feat(fe-admin): create user form + re-auth on admin role`
+**Task 1.H.3 — /admin/pengguna create form** ✅ DONE (commit `047790d`, 2026-05-20)
+- Files: `frontend/app/(authed)/admin/pengguna/baru/page.tsx` (510 LOC)
+- Done: RHF + Zod (name, email, role enum, password_strategy `manual|generate`, password conditional min 8 saat manual via superRefine). POST `/admin/users` body strict sesuai backend (`password` field di-omit saat strategy=generate). Two-card flow: form → success card setelah 201. Success card menampilkan password SEKALI per #31: copy button untuk password sendiri + combo "email / password", clipboard.writeText dengan fallback `execCommand` untuk non-secure context. Strategy chooser pakai radio cards (Generate otomatis / Ketik manual) dengan border highlight. Tombol pasca-sukses: Buka detail → `/admin/pengguna/[id]`, Tambah lagi (reset form), Selesai → list. Friendly errors: email_already_exists, weak_password, invalid_role, invalid_strategy, conflicting_password. **Tidak ada modal re-auth** — locked decision #52 cuma minta re-auth pada promote/demote (`/admin/users/:id/role`), backend create endpoint memang gak menerima `current_password`.
+- Live verified: `npx tsc --noEmit` PASS, `next build` PASS (12 static pages — /admin/pengguna/baru=4.24 kB), curl /admin/pengguna/baru=200, lms-api active.
 
 **Task 1.H.4 — /admin/pengguna detail**
 - Tabs: Detail, Sesi Aktif, Riwayat Audit, Login Attempts
@@ -1723,7 +1722,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.H.3 — /admin/pengguna create form + re-auth admin role.** Halaman `/admin/pengguna/baru`: form RHF + Zod (nama, email, role, password_strategy: manual|generate, password optional kalau strategy=manual + min 8 char). POST `/api/v1/admin/users` body `{name, email, role, password_strategy, password?, current_password?}`. Kalau role=admin → munculkan modal re-auth (Dialog shadcn) yang minta password admin sekarang sebelum submit; kirim `current_password` di body. Modal sukses tampil sekali: nama+email+password (manual atau generated_password) + tombol "Salin password" (Clipboard API) + warning "Tutup modal = password gak bisa dilihat lagi, harus reset". Setelah tutup → router push ke `/admin/pengguna/[id]`. Friendly errors: email_already_exists, weak_password, last_admin_protected (gak relevan create), invalid_current_password (re-auth salah). Butuh shadcn `dialog` primitive (port manual sesuai pola).
+**Berikut: Task 1.H.4 — /admin/pengguna/[id] detail page.** Halaman detail user dengan client-side dynamic route (static export → pakai `useParams`, gak perlu `generateStaticParams`). Tabs: Detail (data lengkap + form edit nama PATCH `/admin/users/:id` + ubah role POST `/admin/users/:id/role` dengan modal re-auth current_password), Sesi Aktif (GET `/admin/users/:id/sessions` + tombol Revoke-all POST `/admin/users/:id/revoke-sessions`), Riwayat Audit (GET `/admin/audit-log?actor_id=:id` & `?target_id=:id` joined), Login Attempts (GET `/admin/login-attempts?email=:email`). Action buttons: Reset password (modal manual/generate, sukses tampilkan password sekali), Suspend/Unsuspend (POST `:id/suspend|unsuspend`), Unlock (POST `:id/unlock`, hanya muncul saat status=locked). Need shadcn `dialog` primitive (port manual). Place at `frontend/app/(authed)/admin/pengguna/[id]/page.tsx`.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
