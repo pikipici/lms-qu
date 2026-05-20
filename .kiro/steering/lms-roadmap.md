@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Berikutnya: Task 2.D.0 (R2 wrapper) sebelum 2.D.1, menunggu pre-requisite eksternal (R2 bucket + API token + env vars).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0.a (Storage interface + MockStorage skeleton) DONE 2026-05-20. Berikutnya: Task 2.D.0.b (real R2 client via aws-sdk-go-v2), BLOCKED menunggu pre-requisite eksternal user (R2 bucket + API token + env vars).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 2.C.4 marked done; backend list-enrollments endpoint + FE guru tab Siswa read-only shipped commit `cc5f57c`+`d79cfd3`, Fase 2.C FULL DONE 10/19; pointer ke Task 2.D.0 R2 wrapper)
+> Last updated: 2026-05-20 (Task 2.D.0.a done — Storage interface + MockStorage + R2Config skeleton shipped commit `1887aef`; build/vet/all-tests passing on server. Fase 2.D progress 1/7 sub-task. 2.D.0.b BLOCKED on user R2 credentials.)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1716,16 +1716,35 @@ Setelah tools jadi, runbook deploy jadi:
 #### 2.D Bulk Import CSV
 
 **Task 2.D.0 — R2 storage client wrapper + bucket bootstrap (prerequisite untuk semua upload)**
-- Files: `backend/internal/storage/r2.go` (Storage interface + s3 implementation), `backend/internal/storage/r2_test.go` (mock-based unit tests + integration test gated by `R2_INTEGRATION=1`)
-- Config: tambah `R2Config` struct di `backend/internal/config/config.go` (AccountID, AccessKeyID, SecretAccessKey, Bucket, Endpoint, PresignTTL) + parser dari `.env` + validation (required kalau ENV=production)
-- Interface `Storage`: `PutObject(ctx, key, body io.Reader, contentType string, size int64) error`, `GetObject`, `HeadObject`, `DeleteObject`, `CopyObject`, `PresignGet(ctx, key, ttl, contentDisposition string) (url string, err error)`, `PresignPut`
-- Implementasi pakai `aws-sdk-go-v2` v1.x latest, `endpoint resolver v2` ke `https://<account_id>.r2.cloudflarestorage.com`, `region="auto"`, `UsePathStyle=true`
-- Wire ke `cmd/server/main.go`: init Storage di startup, inject ke domain services lewat constructor (kelas/admin/import nanti)
-- Readyz integration: `/api/v1/readyz` cek `s3.HeadBucket` dgn cache 30 detik (cache TTL fresh = 200; expired = re-check; gagal 2x consecutive = 503)
-- Bootstrap CLI `cmd/r2-init`: optional helper one-shot untuk verify credentials + create bucket kalau belum ada (gunakan `s3.CreateBucket` ignore `BucketAlreadyOwnedByYou`)
-- Bucket strategy: workspace pakai `lms-dev`, prod pakai `lms-prod` — name dari env, jangan hardcode
-- Verifikasi server: `R2_INTEGRATION=1 go test ./internal/storage/...` panggil R2 real (PutObject random key → HeadObject → PresignGet curl → DeleteObject); restart `lms-api` + `curl /readyz` return 200 dengan field `r2_ok=true`
-- Commit: `feat(storage): Cloudflare R2 client wrapper + readyz integration`
+
+Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
+
+**2.D.0.a — Storage interface + MockStorage skeleton ✅ DONE 2026-05-20 (commit `1887aef`)**
+- Files shipped: `backend/internal/storage/storage.go` (interface + BuildKey + legacy compat), `backend/internal/storage/mock.go` (in-memory MockStorage, thread-safe), `backend/internal/storage/factory.go` (R2Config + NewStorage factory + ErrR2NotImplemented), `backend/internal/storage/storage_test.go` (BuildKey happy/error, IsValidCategory, MockStorage round-trip + missing + idempotent delete + PresignGet + invalid put + concurrent + R2Config IsConfigured + factory fallback/fail/not-implemented)
+- Config: `config.StorageConfig.R2` extended (AccountID/AccessKeyID/SecretAccessKey/Bucket/PresignTTLSec) + loaded dari `R2_*` env vars dengan default PresignTTL 900s
+- `cmd/server/main.go` boot wire: `storage.NewStorage(cfg.R2, FactoryOptions{AllowMockFallback: true})` → log `r2_configured` + backend type. Saat 2.D.0.b belum landing, fallback ke MockStorage (warn-level log).
+- Verified server: build OK, vet OK, `go test ./...` ALL_TEST_OK (admin/auth/kelas/middleware/storage)
+- Live smoke deferred — gak butuh restart, behavior pre-eksisting tetap
+
+**2.D.0.b — Real R2 client (aws-sdk-go-v2) — BLOCKED menunggu user setup Cloudflare R2**
+- Files yang akan ditambahkan: `backend/internal/storage/r2.go` (R2Client struct implement Storage), `backend/internal/storage/r2_test.go` (mock unit + integration gated `R2_INTEGRATION=1`), `cmd/r2-init/main.go` (optional helper)
+- Implementasi pakai `aws-sdk-go-v2` v1.x latest, endpoint resolver v2 ke `https://<account_id>.r2.cloudflarestorage.com`, `region="auto"`, `UsePathStyle=true`
+- Storage interface SUDAH FINAL (PutObject/GetObject/DeleteObject/ObjectExists/PresignGet); `r2.go` tinggal implement
+- Readyz integration: `/api/v1/readyz` cek `s3.HeadBucket` dgn cache 30 detik (TTL fresh = 200; expired = re-check; gagal 2x consecutive = 503)
+- Bucket strategy: workspace `lms-dev`, prod `lms-prod` — name dari env, jangan hardcode
+- Verifikasi server: `R2_INTEGRATION=1 go test ./internal/storage/...` panggil R2 real (PutObject random key → ObjectExists → PresignGet curl → DeleteObject); restart `lms-api` + `curl /readyz` return 200 dengan field `r2_ok=true`
+- Pre-requisite eksternal user (BLOCKER):
+  1. Login Cloudflare → R2 → buat bucket `lms-dev` (workspace) + `lms-prod` (live)
+  2. Manage R2 API Tokens → Create Token (scope: object read/write per bucket)
+  3. Catat Account ID + Access Key + Secret + bucket names
+  4. Tambahkan ke `rdpkhorur:/home/ubuntu/lms/.env`:
+     - `R2_ACCOUNT_ID=...`
+     - `R2_ACCESS_KEY_ID=[REDACTED]`
+     - `R2_SECRET_ACCESS_KEY=[REDACTED]`
+     - `R2_BUCKET=lms-dev` (atau lms-prod live)
+     - `R2_PRESIGN_TTL_SECONDS=900`
+  5. Confirm balik ke assistant, baru gas 2.D.0.b
+- Commit (2.D.0.b): `feat(storage): real Cloudflare R2 client + readyz integration`
 
 **Task 2.D.1 — CSV parser + validator**
 - Files: `backend/internal/import/parser.go`
