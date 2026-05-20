@@ -25,6 +25,7 @@
   - `git push origin main` — push ke GitHub (truth)
   - `git push server main` — trigger deploy mirror ke bare repo
   - di server: `cd /home/ubuntu/lms && git pull origin main && cd backend && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api`
+  - **Penting**: `lms-api` systemd ngeload bin dari `/home/ubuntu/lms/backend/bin/lms-api`. Build ke path lain (`/tmp/...`) gak diambil; restart cuma re-launch bin lama.
 
 ## Working agreements
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
@@ -35,8 +36,8 @@
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
-- [ ] Fase 1 — Auth & Admin Panel
-- [ ] Fase 2 — Kelas, Enrollment, Bulk Import
+- [x] Fase 1 — Auth & Admin Panel (DONE: 1.A-1.H + 1.I, backend admin domain CLOSED, FE auth/admin shell/pengguna/audit-log/login-attempts shipped)
+- [ ] Fase 2 — Kelas, Enrollment, Bulk Import (in progress: 8/19 — 2.A.1, 2.A.2, 2.B FULL, 2.C.1, 2.C.2 done; next 2.C.3 FE siswa dashboard + join form)
 - [ ] Fase 3 — Bab & Materi + Pengumuman
 - [ ] Fase 4 — Tugas
 - [ ] Fase 5 — Soal Bab
