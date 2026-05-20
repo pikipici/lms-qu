@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 + 1.H.2 + 1.H.3 DONE. Backend admin domain CLOSED. FE: auth stack + admin shell + /admin/pengguna list & create-user form (password reveal once). Berikut: Task 1.H.4 (/admin/pengguna/[id] detail page).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H.1 + 1.H.2 + 1.H.3 + 1.H.4 DONE. Backend admin domain CLOSED. FE: auth stack + admin shell + /admin/pengguna list & create-user form & detail page (tabs + lifecycle actions, password reveal once, re-auth on promote/demote). Berikut: Task 1.H.5 (/admin/audit-log + /admin/login-attempts list pages).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 1.H.3 marked done, /admin/pengguna/baru 200)
+> Last updated: 2026-05-20 (Section 18: Task 1.H.4 marked done, /admin/pengguna/detail?id=:id 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1574,11 +1574,10 @@ Setelah tools jadi, runbook deploy jadi:
 - Done: RHF + Zod (name, email, role enum, password_strategy `manual|generate`, password conditional min 8 saat manual via superRefine). POST `/admin/users` body strict sesuai backend (`password` field di-omit saat strategy=generate). Two-card flow: form → success card setelah 201. Success card menampilkan password SEKALI per #31: copy button untuk password sendiri + combo "email / password", clipboard.writeText dengan fallback `execCommand` untuk non-secure context. Strategy chooser pakai radio cards (Generate otomatis / Ketik manual) dengan border highlight. Tombol pasca-sukses: Buka detail → `/admin/pengguna/[id]`, Tambah lagi (reset form), Selesai → list. Friendly errors: email_already_exists, weak_password, invalid_role, invalid_strategy, conflicting_password. **Tidak ada modal re-auth** — locked decision #52 cuma minta re-auth pada promote/demote (`/admin/users/:id/role`), backend create endpoint memang gak menerima `current_password`.
 - Live verified: `npx tsc --noEmit` PASS, `next build` PASS (12 static pages — /admin/pengguna/baru=4.24 kB), curl /admin/pengguna/baru=200, lms-api active.
 
-**Task 1.H.4 — /admin/pengguna detail**
-- Tabs: Detail, Sesi Aktif, Riwayat Audit, Login Attempts
-- Action buttons: reset password (manual/generate), suspend/unsuspend, unlock, promote/demote
-- Verify: e2e
-- Commit: `feat(fe-admin): user detail page with lifecycle actions`
+**Task 1.H.4 — /admin/pengguna detail** ✅ DONE (commits `3576c5e` BE GetUser, `e0c55a7` FE detail+dialogs, `5e2d7fc` lint fix, `6cd528e` static-export fix, 2026-05-20)
+- Done: Backend `GET /api/v1/admin/users/:id` ditambah (handler + test + route registration). FE: shadcn Dialog primitive port (`@radix-ui/react-dialog`). Halaman `/admin/pengguna/detail?id=:id` (query string instead of dynamic segment karena static export tidak punya generateStaticParams runtime — rename `[id]` → `detail`). Header: nama + email + 3 badges (role/status/must-change-password) + 7 tombol aksi conditional. TabBar lightweight pakai useState (no extra deps): Detail (key-value table), Sesi Aktif (reuse `/admin/users/:id/sessions`), Riwayat Audit (dua section actor_id + target_id, masing-masing pagination), Login Attempts (filter by email, success badge, IP, UA, failure_reason). Modals: EditNameDialog (RHF+Zod, PATCH `/admin/users/:id`), ChangeRoleDialog (re-auth current_password wajib, locked #52), ResetPasswordDialog (manual/generate, password reveal once two-state form→success card, locked #31), SuspendDialog (alasan optional, destructive button), Unsuspend/Unlock confirm dialogs, RevokeSessionsDialog (alasan optional, destructive). Error handling per error code (`invalid_credentials`/`cannot_self_demote`/`cannot_self_suspend`/`weak_password`/`invalid_role`/`not_locked`/dst). TanStack Query: `setQueryData` after mutation untuk fresh data tanpa refetch + invalidate `['admin','users']` & `['admin','audit-log']`.
+- Verify: tsc PASS, next build PASS (13 static pages, /admin/pengguna/detail = 11.6 kB), curl /admin/pengguna/detail=200, /api/v1/admin/users/<uuid>=401 (no auth, expected), lms-api active.
+- Commit: `feat(fe-admin): user detail page with tabs + action dialogs` (e0c55a7) + lint/static-export hotfixes.
 
 **Task 1.H.5 — /admin/audit-log + /admin/login-attempts list pages**
 - Verify: visual + filter
@@ -1722,7 +1721,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 1.H.4 — /admin/pengguna/[id] detail page.** Halaman detail user dengan client-side dynamic route (static export → pakai `useParams`, gak perlu `generateStaticParams`). Tabs: Detail (data lengkap + form edit nama PATCH `/admin/users/:id` + ubah role POST `/admin/users/:id/role` dengan modal re-auth current_password), Sesi Aktif (GET `/admin/users/:id/sessions` + tombol Revoke-all POST `/admin/users/:id/revoke-sessions`), Riwayat Audit (GET `/admin/audit-log?actor_id=:id` & `?target_id=:id` joined), Login Attempts (GET `/admin/login-attempts?email=:email`). Action buttons: Reset password (modal manual/generate, sukses tampilkan password sekali), Suspend/Unsuspend (POST `:id/suspend|unsuspend`), Unlock (POST `:id/unlock`, hanya muncul saat status=locked). Need shadcn `dialog` primitive (port manual). Place at `frontend/app/(authed)/admin/pengguna/[id]/page.tsx`.
+**Berikut: Task 1.H.5 — /admin/audit-log + /admin/login-attempts list pages.** Dua halaman list level-atas (bukan filtered per-user seperti yang sudah dipakai di tab detail). `/admin/audit-log` pakai `GET /admin/audit-log` dengan filter form: action (text), actor_id, target_id, since/until (date range), pagination. Tampilan tabel: timestamp Asia/Jakarta, action code, actor (resolve nama dari list-users cache atau show id), target, meta (JSON expandable). `/admin/login-attempts` pakai `GET /admin/login-attempts` dengan filter: email (text), success (true/false/all), since/until, pagination. Tampilan tabel: timestamp, email, success badge, IP, UA, failure_reason. Reuse pola debounced search dari `/admin/pengguna` list. Place at `frontend/app/(authed)/admin/audit-log/page.tsx` dan `frontend/app/(authed)/admin/login-attempts/page.tsx`. Sidebar di admin layout sudah ada link kedua route ini.
 
 > Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
 
