@@ -1,6 +1,6 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.4 — **Task 3.A.3 ✅ DONE** 2026-05-21 (commit `6b0f041`; live E2E smoke 6/6 PASS). Bab reorder bulk endpoint shipped: POST `/kelas/:id/bab/reorder` body `{order, versions}`, two-phase tx (temp negative urutan → final position+1) untuk future-proof UNIQUE(kelas_id, urutan) constraint, per-row version guard with ReorderConflictErr returning `{conflicts:[{bab_id,current_version}]}` di 409 body. Validation: empty/duplicate/foreign/missing → 400 dgn distinct codes. 7 reorder handler tests + 16 existing bab tests PASS. Audit: 1 row `bab_reordered` per call w/ meta.order + count + kelas_id verified live. Berikutnya: Task 3.A.4 (Bab duplicate dgn copy materi+pengumuman + R2 CopyObject).
+> Status: v0.8.5 — **Task 3.A.4 ✅ DONE** 2026-05-21 (commit `fcbf532`; live E2E smoke 8/8 PASS). Bab duplicate endpoint shipped: POST `/bab/:id/duplicate` body `{judul?}`, default suffix " (Salinan)", new bab status=draft + version=1 + urutan=max+1. MVP scope = bab-only (copy nomor+judul+deskripsi); Materi+Pengumuman child copy di-defer via `Service.SetChildCopier()` extension point — siap plug in pas Task 3.C.1 + 3.F.1 selesai. Guards: source 404, source archived 409, kelas archived 409, non-owner 403. Audit `bab_duplicated` w/ meta source_bab_id+new_bab_id+materi_count+pengumuman_count verified live. 7 new handler tests (total bab=30 PASS). **Sub-fase 3.A FULL DONE 4/4 (24% Fase 3).** Berikutnya: Task 3.B.1 (Bab FE Guru — tab list+DnD reorder+CRUD dialogs).
 > Owner: User (guru) + Apis (assistant)
 > Last updated: 2026-05-21 (Fase 3 planning — 7 locked decisions appended Section 0 #63-#69; Section 4/6/7/10 propagated; Section 18 Fase 3 task-by-task expanded 17 tasks split 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman; estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding 3.A.1+3.A.2+3.C.1+3.C.2+3.F.1)
 
@@ -1950,14 +1950,16 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: handler test mixed scenarios + race protection (version conflict mid-tx).
 - Commit: `feat(bab): bulk reorder endpoint with version guard`
 
-**Task 3.A.4 — Bab duplicate endpoint**
-- Files: `backend/internal/bab/duplicate.go`
-- Endpoint: `POST /bab/:id/duplicate` body `{judul_baru?}` → bikin bab baru status=`draft`, version=1, urutan=max+1, copy `nomor` (atau nomor+1?). Decision: **copy nomor as-is + judul tambah suffix " (Salinan)"** kalau `judul_baru` kosong.
-- Copy children: Materi (CopyObject ke uuid baru untuk PDF — lihat #58 storage convention), Pengumuman (copy isi, no created_at carry, set created_at=now). **Skip Soal/Tugas** — masuk Fase 4-5 saat infra-nya ada. Materi Read state TIDAK di-copy (siswa start fresh di bab baru).
-- Transaction: bab create → loop materi (DB row + R2 CopyObject untuk pdf tipe) → loop pengumuman → return new bab_id. Kalau R2 CopyObject fail mid-loop, rollback DB + DeleteObject yang udah ke-copy (compensating).
-- Audit: `bab_duplicated` dgn `meta={source_bab_id, target_bab_id, materi_count, pengumuman_count}`.
-- Verify: handler test happy path + cross-kelas forbidden + R2 mock for CopyObject failure rollback.
-- Commit: `feat(bab): duplicate endpoint with materi+pengumuman copy + R2 CopyObject`
+**Task 3.A.4 — Bab duplicate endpoint** ✅ DONE 2026-05-21 (commit `fcbf532`; live E2E smoke 8/8 PASS)
+- Files: `backend/internal/bab/duplicate.go` (+ handler tambahan + 7 tests)
+- Endpoint: `POST /bab/:id/duplicate` body `{judul?}` → bikin bab baru status=`draft`, version=1, urutan=max+1, copy `nomor` + `deskripsi`. Default judul = `<source_judul> (Salinan)`.
+- **MVP scope (bab-only):** copy fields bab saja. Child copy (materi PDF + pengumuman) di-defer karena Materi+Pengumuman tabel belum ada (Task 3.C.1 + 3.F.1).
+- **Extension hook:** `Service.SetChildCopier(childCopier)` interface — pas Materi+Pengumuman selesai, wire concrete impl di main.go yang copy DB rows + R2 CopyObject + compensating delete on rollback. Service.Duplicate sudah jalan inside tx, child copy plug in seamlessly. `meta.materi_count` + `meta.pengumuman_count` siap di audit log (sekarang 0).
+- Guards: source 404 → 404 `not_found`; kelas archived → 409 `kelas_archived`; source archived → 409 `already_archived`; non-owner → 403 `forbidden`.
+- Audit: `bab_duplicated` w/ meta `{source_bab_id, new_bab_id, new_judul, new_urutan, materi_count, pengumuman_count}` verified live.
+- Tests: 7 handler tests (no-body / custom judul / 404 / 403 / 409 kelas_archived / 409 already_archived / invalid uuid / bad json). Total bab handler tests: 30.
+- Live E2E smoke 8/8 PASS — login admin → create source bab urutan=1 → duplicate no-body (judul auto `(Salinan)`, urutan=2, draft, v1, deskripsi copied) → duplicate w/ custom judul (urutan=3) → 404 bogus id → archive source → 409 already_archived → 400 invalid uuid → cleanup.
+- Commit: `feat(bab): duplicate endpoint POST /bab/:id/duplicate (Task 3.A.4)`
 
 #### 3.B Bab Frontend Guru
 
@@ -2100,7 +2102,9 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **FASE 3 PLANNING DONE — siap eksekusi 2026-05-21.** Section 0 lock 7 decisions baru (#63-#69), Section 4/6/10 propagated, Section 18 expanded 17 task (3.A.1 .. 3.F.3) split sub-fase 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman. Estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
 
-**Eksekusi berikutnya: Task 3.A.4 — Bab duplicate endpoint.**
+**Eksekusi berikutnya: Task 3.B.1 — Tab "Bab" di kelas detail page (FE Guru: list + DnD reorder + create/edit/archive/duplicate).**
+
+**Sub-fase 3.A — Bab Backend FULL DONE 4/4 (✅ 3.A.1, 3.A.2, 3.A.3, 3.A.4)**. Endpoints live: POST `/kelas/:id/bab` (create), GET `/kelas/:id/bab` (list), POST `/kelas/:id/bab/reorder` (bulk reorder), GET `/bab/:id` (detail), PATCH `/bab/:id` (update), POST `/bab/:id/archive`, POST `/bab/:id/duplicate`. 30 handler tests PASS, audit actions: `bab_created`, `bab_updated`, `bab_status_changed`, `bab_archived`, `bab_reordered`, `bab_duplicated` semua verified live.
 
 Approach options:
 1. **Inline** — gua kerjain di chat: tulis migration SQL + Go model/repo + tests, push ke workspace, verify migrate up + go test, lalu commit. Best untuk task pertama ini biar pattern-nya bersih dan konsisten.
