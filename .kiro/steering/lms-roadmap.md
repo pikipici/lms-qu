@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0.a (Storage interface + MockStorage skeleton) DONE 2026-05-20. Berikutnya: Task 2.D.0.b (real R2 client via aws-sdk-go-v2), BLOCKED menunggu pre-requisite eksternal user (R2 bucket + API token + env vars).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0.a + 2.D.0.b DONE 2026-05-20 (Storage interface + MockStorage + real R2Client + readyz integration + boot prewarm). Berikutnya: Task 2.D.1 (CSV parser + validator).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.0.a done — Storage interface + MockStorage + R2Config skeleton shipped commit `1887aef`; build/vet/all-tests passing on server. Fase 2.D progress 1/7 sub-task. 2.D.0.b BLOCKED on user R2 credentials.)
+> Last updated: 2026-05-20 (Task 2.D.0.b done — real R2Client via aws-sdk-go-v2 + readyz cache 30s + boot prewarm 30s budget; integration test PASS against bucket lms-dev real; live restart applied; readyz returns "ok (r2:lms-dev, cached)" 45-60ms; commit `ecd26a9` + `0b36e9f` build deps + `2b8ab41` prewarm.)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1726,25 +1726,12 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verified server: build OK, vet OK, `go test ./...` ALL_TEST_OK (admin/auth/kelas/middleware/storage)
 - Live smoke deferred — gak butuh restart, behavior pre-eksisting tetap
 
-**2.D.0.b — Real R2 client (aws-sdk-go-v2) — BLOCKED menunggu user setup Cloudflare R2**
-- Files yang akan ditambahkan: `backend/internal/storage/r2.go` (R2Client struct implement Storage), `backend/internal/storage/r2_test.go` (mock unit + integration gated `R2_INTEGRATION=1`), `cmd/r2-init/main.go` (optional helper)
-- Implementasi pakai `aws-sdk-go-v2` v1.x latest, endpoint resolver v2 ke `https://<account_id>.r2.cloudflarestorage.com`, `region="auto"`, `UsePathStyle=true`
-- Storage interface SUDAH FINAL (PutObject/GetObject/DeleteObject/ObjectExists/PresignGet); `r2.go` tinggal implement
-- Readyz integration: `/api/v1/readyz` cek `s3.HeadBucket` dgn cache 30 detik (TTL fresh = 200; expired = re-check; gagal 2x consecutive = 503)
-- Bucket strategy: workspace `lms-dev`, prod `lms-prod` — name dari env, jangan hardcode
-- Verifikasi server: `R2_INTEGRATION=1 go test ./internal/storage/...` panggil R2 real (PutObject random key → ObjectExists → PresignGet curl → DeleteObject); restart `lms-api` + `curl /readyz` return 200 dengan field `r2_ok=true`
-- Pre-requisite eksternal user (BLOCKER):
-  1. Login Cloudflare → R2 → buat bucket `lms-dev` (workspace) + `lms-prod` (live)
-  2. Manage R2 API Tokens → Create Token (scope: object read/write per bucket)
-  3. Catat Account ID + Access Key + Secret + bucket names
-  4. Tambahkan ke `rdpkhorur:/home/ubuntu/lms/.env`:
-     - `R2_ACCOUNT_ID=...`
-     - `R2_ACCESS_KEY_ID=[REDACTED]`
-     - `R2_SECRET_ACCESS_KEY=[REDACTED]`
-     - `R2_BUCKET=lms-dev` (atau lms-prod live)
-     - `R2_PRESIGN_TTL_SECONDS=900`
-  5. Confirm balik ke assistant, baru gas 2.D.0.b
-- Commit (2.D.0.b): `feat(storage): real Cloudflare R2 client + readyz integration`
+**2.D.0.b — Real R2 client (aws-sdk-go-v2) ✅ DONE 2026-05-20 (commits `ecd26a9` + `0b36e9f` + `2b8ab41`)**
+- Files shipped: `backend/internal/storage/r2.go` (R2Client implement Storage via aws-sdk-go-v2: Put/Get/Delete/Exists/PresignGet/HeadBucket; endpoint `https://<account>.r2.cloudflarestorage.com`, region "auto", path-style); `backend/internal/storage/r2_test.go` (integration test gated `R2_INTEGRATION=1` + bad-creds rejection test); `backend/internal/health/health.go` updated (R2 HeadBucket cache 30s, 2-failure threshold, 5s probe timeout); `backend/cmd/server/main.go` (Storage wired into Handler, AllowMockFallback gated to non-prod, **boot prewarm** 30s budget non-fatal)
+- go.mod / go.sum: `github.com/aws/aws-sdk-go-v2` v1.41.7 + service/s3 v1.101.0 + smithy-go v1.25.1; toolchain bumped 1.22 → 1.24
+- Verified server: `go test ./...` ALL_TEST_OK; `R2_INTEGRATION=1 go test ./internal/storage/... -run TestR2Client` PASS (4.18s roundtrip + 5.78s bad-creds); restart `lms-api` boot log `storage ready r2_configured=true backend=*storage.R2Client` + `r2 prewarm ok bucket=lms-dev elapsed=1.158s`; readyz `status=ready db=ok storage=ok (r2:lms-dev, cached)` 45-60ms
+- Live notes: server pertama hit IPv6 ke Cloudflare R2 broken (`2606:4700:2ff9::1` no route), happy-eyeballs fallback IPv4 ~5-13s. Boot prewarm sebelum app.Listen primes cache → ExecStartPost curl /readyz langsung dapet cached-OK, gak timeout.
+- Commit: `ecd26a9` feat(storage): real Cloudflare R2 client + readyz integration; `0b36e9f` build(go): add aws-sdk-go-v2 deps; `2b8ab41` perf(server): pre-warm R2 HeadBucket at boot
 
 **Task 2.D.1 — CSV parser + validator**
 - Files: `backend/internal/import/parser.go`
