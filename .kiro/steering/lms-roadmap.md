@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 + 2.B.1 + 2.B.2 DONE (kelas/enrollment/import_jobs schema + GORM repos + kode invite generator + CRUD endpoints). Berikut: Task 2.B.3 (FE guru list + create kelas).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 + 2.B.1 + 2.B.2 + 2.B.3 DONE (kelas/enrollment/import_jobs schema + GORM repos + kode invite generator + CRUD endpoints + FE guru shell list/create). Berikut: Task 2.B.4 (FE guru kelas detail + edit + duplicate).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 2.B.1 + 2.B.2 marked done; kode invite generator + kelas CRUD service/handler shipped, E2E smoke test live di server)
+> Last updated: 2026-05-20 (Section 18: Task 2.B.3 marked done; FE guru shell + list kelas + create modal shipped, static export hijau, /guru.html + /guru/kelas.html serve 200)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1635,10 +1635,11 @@ Setelah tools jadi, runbook deploy jadi:
 - Commit: `c14640d` (CRUD), `9edba39` (charset fix), `620594f` (PATCH partial fix — pointer fields)
 - Verified server: build/vet/test PASS; E2E smoke 13 test scenario semua hijau (create/list/get/PATCH partial nama-only/PATCH bobot-only/version conflict/invalid bobot/duplicate/archive/cross-guru forbidden)
 
-**Task 2.B.3 — FE guru: list kelas + create form**
-- `frontend/app/guru/page.tsx`, `frontend/app/guru/kelas/page.tsx`
-- Verify: visual + bikin kelas
-- Commit: `feat(fe-guru): list kelas + create form`
+**Task 2.B.3 — FE guru: list kelas + create form** ✅ DONE 2026-05-20
+- Files: `frontend/lib/kelas-api.ts` (typed API client), `frontend/app/(authed)/guru/layout.tsx` (shell + RoleGuard guru), `frontend/app/(authed)/guru/page.tsx` (dashboard), `frontend/app/(authed)/guru/kelas/page.tsx` (list + create dialog)
+- Commit: `e0a84d3`
+- Shipped: typed API wrapper (`listKelas/createKelas/getKelas/updateKelas/archiveKelas/duplicateKelas`); guru shell mirror dari admin (sidebar Dashboard+Kelas, dropdown profil/perangkat/logout); landing dashboard (total kelas + 3 recent kelas snapshot via TanStack Query); list view card grid 1/2/3 responsive dgn filter `include_archived`, pagination Prev/Next, kode invite copy-to-clipboard, archived badge; create dialog react-hook-form + zod (total bobot validasi = 100, default 50/50, friendly error mapping). Detail button DISABLED — Task 2.B.4 wire-up.
+- Verified server: npm typecheck PASS, lint clean (1 warning lama di role-guard pre-existing), `npm run build` static export 17 pages (termasuk /guru + /guru/kelas), Fiber serve `/guru.html` + `/guru/kelas.html` → 200.
 
 **Task 2.B.4 — FE guru: kelas detail (tab placeholder Siswa/Pengaturan/Pengumuman) + edit pakai version + duplicate button**
 - `frontend/app/guru/kelas/[id]/page.tsx`
@@ -1730,7 +1731,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.B.3 — FE guru list kelas + create form.** Fase 2.B backend SELESAI: kode invite generator + CRUD service/handler hidup di server (commits `c14640d` + `9edba39` charset fix + `620594f` PATCH partial fix), kelas-routes registered di lms-api port 8200, E2E smoke test 13 scenario semua hijau (create/list/get/PATCH partial/version conflict/invalid bobot/duplicate/archive/cross-guru forbidden), audit log entries verified `target_kelas_id` terisi. Task 2.B.3 spec: build FE guru shell — `frontend/app/(authed)/guru/page.tsx` (landing pasca-login guru — daftar kelas miliknya pakai `GET /api/v1/kelas?page=...`), `frontend/app/(authed)/guru/kelas/page.tsx` (list view dgn filter `include_archived`), tombol "+ Buat Kelas Baru" buka modal/form (`POST /api/v1/kelas`). Pattern guard: pakai layout `(authed)` yang udah ada (force-change-password + role-guard guru), card grid responsive, tampilkan `kode_invite` (copy-to-clipboard), bobot, status archived. Static export friendly (no server-side data — fetch di client `useEffect` + `apiClient`). Commit: `feat(fe-guru): list kelas + create form`. Setelah ini berlanjut Task 2.B.4 (kelas detail page + edit version + duplicate button) — bisa di-bundle setelah 2.B.3 ke-review.
+**Berikut: Task 2.B.4 — FE guru kelas detail + edit pakai version + duplicate button.** Task 2.B.3 SELESAI: FE guru shell + list kelas + create dialog hidup di server (commit `e0a84d3`), static export 17 pages termasuk /guru + /guru/kelas (Fiber serve 200), kelas-api.ts typed wrapper sudah cover semua 6 endpoint kelas. Task 2.B.4 spec: bikin halaman detail `frontend/app/(authed)/guru/kelas/[id]/page.tsx` (atau pattern static-export friendly: `/guru/kelas/detail?id=...` mirror dari `/admin/pengguna/detail`). Halaman ini load `getKelas(id)` lalu render: header nama+kode invite, tab placeholder Siswa/Pengaturan/Pengumuman (skeleton), form edit pakai `updateKelas` w/ optimistic concurrency (kirim `version`, handle 409 → toast "konten ke-update orang lain, refresh dulu" + auto-refetch), tombol Duplicate (panggil `duplicateKelas` → toast + redirect ke /guru/kelas), tombol Arsipkan (archive). Wire link Detail di `KelasCard` (skrg disabled). Pattern reference: `/admin/pengguna/detail` query param + react-hook-form. Commit: `feat(fe-guru): kelas detail + edit + duplicate (Task 2.B.4)`. Setelah ini lanjut Task 2.C (enrollment via kode invite).
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
