@@ -23,8 +23,9 @@ type stubSvc struct {
 	listFn    func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ListInput) ([]Bab, error)
 	getFn     func(ctx context.Context, id, callerID uuid.UUID, role string) (*Bab, error)
 	updateFn  func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Bab, error)
-	archiveFn func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Bab, error)
-	reorderFn func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error)
+	archiveFn   func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Bab, error)
+	reorderFn   func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ReorderInput, ip, ua string) ([]Bab, error)
+	duplicateFn func(ctx context.Context, srcID, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Bab, error) {
@@ -51,6 +52,10 @@ func (s *stubSvc) Reorder(ctx context.Context, kelasID, callerID uuid.UUID, role
 	return s.reorderFn(ctx, kelasID, callerID, role, in, ip, ua)
 }
 
+func (s *stubSvc) Duplicate(ctx context.Context, srcID, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+	return s.duplicateFn(ctx, srcID, callerID, role, in, ip, ua)
+}
+
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
 	t.Helper()
 	app := fiber.New()
@@ -65,6 +70,7 @@ func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App 
 	app.Get("/bab/:id", h.Get)
 	app.Patch("/bab/:id", h.Update)
 	app.Post("/bab/:id/archive", h.Archive)
+	app.Post("/bab/:id/duplicate", h.Duplicate)
 	return app
 }
 
@@ -509,5 +515,152 @@ func TestHandler_Reorder_InvalidUUID(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "invalid_id") {
 		t.Fatalf("missing invalid_id code: %s", body)
+	}
+}
+
+func TestHandler_Duplicate_HappyPath_NoBody(t *testing.T) {
+	guruID := uuid.New()
+	srcID := uuid.New()
+	newID := uuid.New()
+	kelasID := uuid.New()
+	svc := &stubSvc{
+		duplicateFn: func(ctx context.Context, sID, cID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+			if sID != srcID {
+				t.Fatalf("srcID mismatch")
+			}
+			if cID != guruID {
+				t.Fatalf("callerID mismatch")
+			}
+			if in.Judul != "" {
+				t.Fatalf("expected empty judul (auto-suffix), got %q", in.Judul)
+			}
+			return &Bab{ID: newID, KelasID: kelasID, Nomor: 1, Judul: "Bab 1 (Salinan)", Urutan: 5, Status: StatusDraft, Version: 1}, nil
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	// Send POST with no body — handler must accept this for auto-suffix.
+	req := httptest.NewRequest("POST", "/bab/"+srcID.String()+"/duplicate", nil)
+	resp, err := app.Test(req, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("status %d body %s", resp.StatusCode, respBody)
+	}
+	if !strings.Contains(string(respBody), newID.String()) {
+		t.Fatalf("missing new bab id in response: %s", respBody)
+	}
+	if !strings.Contains(string(respBody), "(Salinan)") {
+		t.Fatalf("missing Salinan suffix: %s", respBody)
+	}
+}
+
+func TestHandler_Duplicate_HappyPath_CustomJudul(t *testing.T) {
+	guruID := uuid.New()
+	srcID := uuid.New()
+	newID := uuid.New()
+	kelasID := uuid.New()
+	svc := &stubSvc{
+		duplicateFn: func(ctx context.Context, sID, cID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+			if in.Judul != "Bab Custom" {
+				t.Fatalf("custom judul not propagated: %q", in.Judul)
+			}
+			return &Bab{ID: newID, KelasID: kelasID, Judul: in.Judul, Urutan: 3, Status: StatusDraft, Version: 1}, nil
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/bab/"+srcID.String()+"/duplicate", map[string]any{"judul": "Bab Custom"})
+	if resp.StatusCode != fiber.StatusCreated {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "Bab Custom") {
+		t.Fatalf("missing custom judul: %s", body)
+	}
+}
+
+func TestHandler_Duplicate_NotFound(t *testing.T) {
+	guruID := uuid.New()
+	svc := &stubSvc{
+		duplicateFn: func(ctx context.Context, sID, cID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+			return nil, ErrNotFound
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/bab/"+uuid.NewString()+"/duplicate", nil)
+	if resp.StatusCode != fiber.StatusNotFound {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+}
+
+func TestHandler_Duplicate_Forbidden(t *testing.T) {
+	guruID := uuid.New()
+	svc := &stubSvc{
+		duplicateFn: func(ctx context.Context, sID, cID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+			return nil, ErrForbidden
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/bab/"+uuid.NewString()+"/duplicate", nil)
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+}
+
+func TestHandler_Duplicate_KelasArchived(t *testing.T) {
+	guruID := uuid.New()
+	svc := &stubSvc{
+		duplicateFn: func(ctx context.Context, sID, cID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+			return nil, ErrKelasArchived
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/bab/"+uuid.NewString()+"/duplicate", nil)
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "kelas_archived") {
+		t.Fatalf("missing kelas_archived code: %s", body)
+	}
+}
+
+func TestHandler_Duplicate_SourceArchived(t *testing.T) {
+	guruID := uuid.New()
+	svc := &stubSvc{
+		duplicateFn: func(ctx context.Context, sID, cID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Bab, error) {
+			return nil, ErrAlreadyArchived
+		},
+	}
+	app := newApp(t, &Handler{svc: svc}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/bab/"+uuid.NewString()+"/duplicate", nil)
+	if resp.StatusCode != fiber.StatusConflict {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "already_archived") {
+		t.Fatalf("missing already_archived code: %s", body)
+	}
+}
+
+func TestHandler_Duplicate_InvalidUUID(t *testing.T) {
+	guruID := uuid.New()
+	app := newApp(t, &Handler{svc: &stubSvc{}}, string(auth.Guru), guruID)
+	resp, body := doReq(t, app, "POST", "/bab/not-a-uuid/duplicate", nil)
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "invalid_id") {
+		t.Fatalf("missing invalid_id code: %s", body)
+	}
+}
+
+func TestHandler_Duplicate_BadJSON(t *testing.T) {
+	guruID := uuid.New()
+	app := newApp(t, &Handler{svc: &stubSvc{}}, string(auth.Guru), guruID)
+	req := httptest.NewRequest("POST", "/bab/"+uuid.NewString()+"/duplicate", strings.NewReader("{not json"))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := app.Test(req, -1)
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
 	}
 }

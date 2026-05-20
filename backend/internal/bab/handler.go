@@ -23,6 +23,7 @@ type babService interface {
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Bab, error)
 	Archive(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Bab, error)
 	Reorder(ctx context.Context, kelasID, callerID uuid.UUID, callerRole string, in ReorderInput, ip, userAgent string) ([]Bab, error)
+	Duplicate(ctx context.Context, srcID, callerID uuid.UUID, callerRole string, in DuplicateInput, ip, userAgent string) (*Bab, error)
 }
 
 // Handler wires HTTP routes to bab Service.
@@ -188,6 +189,40 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 		return mapServiceErr(c, err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"bab": b})
+}
+
+type duplicateRequest struct {
+	Judul string `json:"judul"`
+}
+
+// Duplicate handles POST /api/v1/bab/:id/duplicate.
+//
+// Body: { judul?: string } — optional override; default appends " (Salinan)"
+// to the source bab judul. Response 201 + { bab: <new_bab> }.
+func (h *Handler) Duplicate(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return babError(c, fiber.StatusBadRequest, "invalid bab id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return babError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+
+	var req duplicateRequest
+	// Body is optional — empty body is fine (auto-suffix).
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&req); err != nil {
+			return babError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+		}
+	}
+
+	b, err := h.svc.Duplicate(c.UserContext(), id, callerID, role, DuplicateInput{Judul: req.Judul}, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"bab": b})
 }
 
 type reorderRequest struct {

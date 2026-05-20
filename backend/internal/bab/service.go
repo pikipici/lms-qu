@@ -58,15 +58,23 @@ type auditLogger interface {
 
 // Service handles bab business logic.
 type Service struct {
-	repo  babRepo
-	kelas kelasLookup
-	audit auditLogger
-	now   func() time.Time
+	repo        babRepo
+	kelas       kelasLookup
+	audit       auditLogger
+	childCopier childCopier
+	now         func() time.Time
 }
 
 // NewService wires bab Repo + kelas lookup + audit logger.
 func NewService(repo babRepo, kelas kelasLookup, audit auditLogger) *Service {
 	return &Service{repo: repo, kelas: kelas, audit: audit, now: time.Now}
+}
+
+// SetChildCopier wires the optional materi+pengumuman duplicator. Called by
+// main.go after Materi/Pengumuman services exist (Task 3.C / 3.F). When unset,
+// Duplicate copies bab fields only.
+func (s *Service) SetChildCopier(c childCopier) {
+	s.childCopier = c
 }
 
 // CreateInput holds fields for POST /kelas/:id/bab.

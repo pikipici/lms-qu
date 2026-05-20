@@ -334,6 +334,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	babGroup.Get("/:id", babHandler.Get)
 	babGroup.Patch("/:id", babHandler.Update)
 	babGroup.Post("/:id/archive", babHandler.Archive)
+	babGroup.Post("/:id/duplicate", babHandler.Duplicate)
 
 	// Siswa-side enrollment (Phase 2.C): siswa joins a kelas via kode invite.
 	// Rate-limited per IP+siswa to deter scraping. Mounted under /siswa group
