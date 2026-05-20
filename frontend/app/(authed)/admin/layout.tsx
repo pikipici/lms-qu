@@ -20,6 +20,7 @@ import {
   ScrollText,
   LogOut,
   UserCog,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 import { api } from '@/lib/api';
@@ -46,6 +47,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', Icon: LayoutDashboard },
   { href: '/admin/pengguna', label: 'Pengguna', Icon: Users },
+  { href: '/admin/import-csv', label: 'Import CSV', Icon: FileSpreadsheet },
   { href: '/admin/audit-log', label: 'Audit Log', Icon: ScrollText },
   { href: '/admin/login-attempts', label: 'Login Attempts', Icon: ShieldAlert },
 ];
