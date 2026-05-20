@@ -35,5 +35,5 @@ CREATE TRIGGER bab_set_updated_at
     EXECUTE FUNCTION set_updated_at();
 
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '000004_bab')
+VALUES ('schema_version', '000005_bab')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, set_at = NOW();

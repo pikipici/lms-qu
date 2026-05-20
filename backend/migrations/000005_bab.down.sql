@@ -5,4 +5,4 @@ DROP INDEX IF EXISTS idx_bab_kelas_status;
 DROP INDEX IF EXISTS idx_bab_kelas_urutan;
 DROP TABLE IF EXISTS bab;
 
-DELETE FROM schema_meta WHERE key = 'schema_version' AND value = '000004_bab';
+DELETE FROM schema_meta WHERE key = 'schema_version' AND value = '000005_bab';

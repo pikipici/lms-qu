@@ -1,6 +1,6 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.1 — **Fase 3 PLANNING DONE** 2026-05-21. 7 Fase 3 decisions locked (#63-#69 di Section 0): Materi 3-tipe (pdf/youtube/markdown — drop direct video upload), PDF max 20MB, YouTube strict video-id parse + nocookie embed, Pengumuman passive timestamp (no dismiss state), Bab reorder via bulk urutan, Bab progress Fase-3-partial = materi-only re-normalize, Materi hard-delete + compensating R2 cleanup. Section 18 expanded: Fase 3 = 17 task (3.A.1 … 3.F.3). Berikutnya: Task 3.A.1 (Bab model + migration + repo).
+> Status: v0.8.2 — **Fase 3 EKSEKUSI dimulai** 2026-05-21. Task 3.A.1 ✅ DONE (commit `aafcfa4`): migration `000005_bab` (status enum draft|published|archived, version, indexes (kelas,urutan)+(kelas,status), trigger updated_at), Bab GORM model + Repo (Create/FindByID/MaxUrutan/ListByKelas+CountByKelas dgn ListFilter, UpdateBasic+UpdateStatus+Archive+UpdateUrutan dgn optimistic concurrency reprobe). Workspace build/test PASS. Migrate up pending (renumber 000004→000005 conflict dgn 000004_import_jobs_object_key existing). Berikutnya: Task 3.A.2 (Bab CRUD service + handler).
 > Owner: User (guru) + Apis (assistant)
 > Last updated: 2026-05-21 (Fase 3 planning — 7 locked decisions appended Section 0 #63-#69; Section 4/6/7/10 propagated; Section 18 Fase 3 task-by-task expanded 17 tasks split 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman; estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding 3.A.1+3.A.2+3.C.1+3.C.2+3.F.1)
 
@@ -1919,8 +1919,8 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.A Bab Backend
 
-**Task 3.A.1 — Migration `000004_bab.up.sql` + Bab GORM model + repo dasar**
-- Files: `backend/migrations/000004_bab.up.sql` + `down.sql`, `backend/internal/bab/{model,repo}.go`
+**Task 3.A.1 — Migration `000005_bab.up.sql` + Bab GORM model + repo dasar** ✅ DONE 2026-05-21 (commit `aafcfa4` + renumber 000004→000005 dalam `<next-commit>`)
+- Files: `backend/migrations/000005_bab.up.sql` + `down.sql`, `backend/internal/bab/{model,repo}.go`
 - Schema (locked Section 6): `bab(id uuid pk, kelas_id uuid fk→kelas restrict, nomor int, judul text, deskripsi text, urutan int, status text default 'draft', version int default 1, created_at timestamptz, archived_at timestamptz null)`. Note: `archived_at` di-keep untuk tombstone hard archive — `Status='archived'` workflow guru tetap di kolom `status` (tunggal kolom enum, not bool). Cek catatan Section 6.1 line 478: gabung jadi 1 enum, **drop archived_at di Bab** (kelas tetap pakai). Update model + migration sesuai.
 - Indexes: `(kelas_id, urutan)` btree, `(kelas_id, status)` btree (filter siswa published-only).
 - Trigger `bab_set_updated_at` reuse `set_updated_at()` dari 000002 (kalau perlu `updated_at` — atau skip dan rely on `version` bump saja; Fase 2 kelas pattern → ada `updated_at`. **Decision: tambah `updated_at` di Bab juga**, konsistensi).
@@ -1979,8 +1979,8 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.C Materi Backend
 
-**Task 3.C.1 — Migration `000005_materi.up.sql` + Materi GORM model + repo**
-- Files: `backend/migrations/000005_materi.up.sql` + `down.sql`, `backend/internal/materi/{model,repo}.go`
+**Task 3.C.1 — Migration `000006_materi.up.sql` + Materi GORM model + repo**
+- Files: `backend/migrations/000006_materi.up.sql` + `down.sql`, `backend/internal/materi/{model,repo}.go`
 - Schema: `materi(id uuid pk, kelas_id uuid fk→kelas restrict, bab_id uuid fk→bab set null, judul text, tipe text check in ('pdf','youtube','markdown'), konten text, object_key text null, original_filename text null, mime_type text null, size_bytes bigint null, urutan int, version int default 1, created_at timestamptz, updated_at timestamptz)`. Trigger `materi_set_updated_at`. Indexes: `(kelas_id, bab_id, urutan)`, `(kelas_id, tipe)`.
 - Tambah `materi_read(materi_id uuid fk cascade, siswa_id uuid fk cascade, read_at timestamptz, PK(materi_id, siswa_id))` di migration yang sama.
 - Repo: Create, FindByID, ListByKelas (filter `?bab_id=`), ListByBab, UpdateBasic dgn optimistic concurrency, Delete (hard, return ObjectKey untuk caller R2 cleanup), MarkRead (idempotent ON CONFLICT DO NOTHING), CountReadByBabSiswa(bab_id, siswa_id) → progress calc.
@@ -2068,8 +2068,8 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.F Pengumuman
 
-**Task 3.F.1 — Migration `000006_pengumuman.up.sql` + Pengumuman model + repo + CRUD endpoints**
-- Files: `backend/migrations/000006_pengumuman.up.sql` + `down.sql`, `backend/internal/pengumuman/{model,repo,service,handler,handler_test}.go`. Wire group `/api/v1`.
+**Task 3.F.1 — Migration `000007_pengumuman.up.sql` + Pengumuman model + repo + CRUD endpoints**
+- Files: `backend/migrations/000007_pengumuman.up.sql` + `down.sql`, `backend/internal/pengumuman/{model,repo,service,handler,handler_test}.go`. Wire group `/api/v1`.
 - Schema: `pengumuman(id uuid pk, kelas_id uuid fk→kelas restrict, bab_id uuid fk→bab set null, judul text, isi text, created_by_id uuid fk→users restrict, status text default 'published' check in ('published','archived'), created_at timestamptz, updated_at timestamptz)`. Index `(kelas_id, created_at DESC)` (Section 6.3).
 - Endpoints:
   - `POST /kelas/:id/pengumuman` (guru-only, kelas owner) body `{judul, isi, bab_id?}`
@@ -2100,7 +2100,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **FASE 3 PLANNING DONE — siap eksekusi 2026-05-21.** Section 0 lock 7 decisions baru (#63-#69), Section 4/6/10 propagated, Section 18 expanded 17 task (3.A.1 .. 3.F.3) split sub-fase 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman. Estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
 
-**Eksekusi berikutnya: Task 3.A.1 — Migration `000004_bab.up.sql` + Bab GORM model + repo dasar.**
+**Eksekusi berikutnya: Task 3.A.2 — Bab CRUD service + handler (Create/List/Get/Patch/Archive).**
 
 Approach options:
 1. **Inline** — gua kerjain di chat: tulis migration SQL + Go model/repo + tests, push ke workspace, verify migrate up + go test, lalu commit. Best untuk task pertama ini biar pattern-nya bersih dan konsisten.
