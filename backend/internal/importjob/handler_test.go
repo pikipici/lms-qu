@@ -128,6 +128,7 @@ func testApp(t *testing.T, svc uploadService, audit auditLogger, adminID uuid.UU
 	})
 	h := NewHandler(svc, audit)
 	app.Post("/api/v1/admin/import-csv/upload", h.PreviewUpload)
+	app.Get("/api/v1/admin/import-csv/:job_id/credentials.csv", h.DownloadCredentials)
 	app.Get("/api/v1/admin/import-csv/:job_id", h.GetPreview)
 	app.Post("/api/v1/admin/import-csv/:job_id/cancel", h.Cancel)
 	app.Post("/api/v1/admin/import-csv/:job_id/confirm", h.Confirm)
