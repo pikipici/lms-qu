@@ -1,0 +1,144 @@
+'use client';
+
+/**
+ * /guru — landing dashboard.
+ *
+ * For Phase 2.B.3 the only meaningful flow is "kelas". Show a compact
+ * dashboard with quick links and a recent-kelas snapshot (top 3 by
+ * created_at desc, hide archived). Real stat tiles wire up later.
+ */
+
+import * as React from 'react';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowRight, GraduationCap, Plus, Users } from 'lucide-react';
+
+import { listKelas } from '@/lib/kelas-api';
+import { useAuthStore } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+
+export default function GuruDashboardPage() {
+  const userName = useAuthStore((s) => s.user?.name ?? 'Guru');
+
+  const recentKelas = useQuery({
+    queryKey: ['guru', 'kelas', 'recent'],
+    queryFn: () => listKelas({ page: 1, pageSize: 3, includeArchived: false }),
+    staleTime: 15_000,
+  });
+
+  const items = recentKelas.data?.items ?? [];
+  const total = recentKelas.data?.total ?? 0;
+
+  return (
+    <div className="space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Halo, {userName}!
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Kelola kelas, materi, dan tugas dari sini. Statistik real akan
+          tersambung di task berikutnya.
+        </p>
+      </header>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card className="flex flex-col">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Total Kelas Aktif</CardTitle>
+              <CardDescription>Kelas yang sedang lu kelola.</CardDescription>
+            </div>
+            <GraduationCap className="size-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="mt-auto flex items-end justify-between gap-2">
+            {recentKelas.isPending ? (
+              <div className="h-7 w-12 animate-pulse rounded bg-muted" />
+            ) : (
+              <span className="text-2xl font-semibold">{total}</span>
+            )}
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/guru/kelas">
+                Buka
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col sm:col-span-2 lg:col-span-2">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Bikin Kelas Baru</CardTitle>
+              <CardDescription>
+                Generate kode invite, atur bobot soal vs tugas, undang siswa
+                lewat kode atau bulk import.
+              </CardDescription>
+            </div>
+            <Users className="size-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="sm">
+              <Link href="/guru/kelas">
+                <Plus className="size-4" />
+                Buat / lihat kelas
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Kelas terbaru</CardTitle>
+          <CardDescription>
+            Tiga kelas yang baru lu buat. Klik untuk masuk halaman daftar
+            lengkap.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentKelas.isPending ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-12 animate-pulse rounded-md border bg-muted/40"
+                />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Belum ada kelas. Buat kelas pertama lu sekarang.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {items.map((k) => (
+                <li
+                  key={k.id}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="truncate text-sm font-medium">{k.nama}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      Kode: <span className="font-mono">{k.kode_invite}</span>
+                      {' · '}Bobot {k.bobot_soal_ulangan}/{k.bobot_tugas}
+                    </p>
+                  </div>
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href="/guru/kelas">Detail</Link>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
