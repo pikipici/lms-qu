@@ -28,6 +28,7 @@ import (
 
 	"github.com/pikip/lms/backend/internal/admin"
 	"github.com/pikip/lms/backend/internal/auth"
+	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"github.com/pikip/lms/backend/internal/health"
@@ -315,6 +316,23 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	kelasGroup.Post("/:id/archive", kelasHandler.Archive)
 	kelasGroup.Post("/:id/duplicate", kelasHandler.Duplicate)
 	kelasGroup.Get("/:id/enrollments", kelasHandler.ListEnrollments)
+
+	// Bab (Phase 3): chapter CRUD per kelas. Mounted under same /kelas group
+	// for list/create (POST /kelas/:id/bab) — but Get/Patch/Archive use the
+	// flat /bab/:id form (Section 7) so the bab id alone is enough to route.
+	babRepo := bab.NewRepo(gdb)
+	babSvc := bab.NewService(babRepo, kelasRepo, authRepo)
+	babHandler := bab.NewHandler(babSvc)
+	kelasGroup.Get("/:id/bab", babHandler.ListByKelas)
+	kelasGroup.Post("/:id/bab", babHandler.Create)
+	babGroup := api.Group("/bab",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	babGroup.Get("/:id", babHandler.Get)
+	babGroup.Patch("/:id", babHandler.Update)
+	babGroup.Post("/:id/archive", babHandler.Archive)
 
 	// Siswa-side enrollment (Phase 2.C): siswa joins a kelas via kode invite.
 	// Rate-limited per IP+siswa to deter scraping. Mounted under /siswa group

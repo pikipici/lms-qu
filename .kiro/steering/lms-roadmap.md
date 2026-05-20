@@ -1,6 +1,6 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.2 — **Fase 3 EKSEKUSI dimulai** 2026-05-21. Task 3.A.1 ✅ DONE (commit `aafcfa4`): migration `000005_bab` (status enum draft|published|archived, version, indexes (kelas,urutan)+(kelas,status), trigger updated_at), Bab GORM model + Repo (Create/FindByID/MaxUrutan/ListByKelas+CountByKelas dgn ListFilter, UpdateBasic+UpdateStatus+Archive+UpdateUrutan dgn optimistic concurrency reprobe). Workspace build/test PASS. Migrate up pending (renumber 000004→000005 conflict dgn 000004_import_jobs_object_key existing). Berikutnya: Task 3.A.2 (Bab CRUD service + handler).
+> Status: v0.8.3 — **Task 3.A.2 ✅ DONE** 2026-05-21. Bab CRUD service + handler shipped: 5 endpoints (POST `/kelas/:id/bab`, GET `/kelas/:id/bab` w/ status+include_archived filters, GET/PATCH/Archive `/bab/:id`), kelas ownership guard via `findKelasOrForbidden`, partial PATCH dgn pointer fields + multi-phase tx (basic→urutan→status, version bumped per phase), audit log split `bab_created/bab_updated/bab_status_changed/bab_archived` w/ target_kelas_id, 16 handler tests PASS. Wired ke main.go: `kelasGroup` (POST/GET list) + `babGroup` (GET/PATCH/Archive). Berikutnya: Task 3.A.3 (Bab reorder bulk endpoint).
 > Owner: User (guru) + Apis (assistant)
 > Last updated: 2026-05-21 (Fase 3 planning — 7 locked decisions appended Section 0 #63-#69; Section 4/6/7/10 propagated; Section 18 Fase 3 task-by-task expanded 17 tasks split 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman; estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding 3.A.1+3.A.2+3.C.1+3.C.2+3.F.1)
 
@@ -1928,7 +1928,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: `go build ./... && go test ./...` + `migrate up` di workspace → cek `\d bab` show schema + indexes.
 - Commit: `feat(migrations): 000004 bab + status enum + version`, `feat(bab): GORM model + repo + optimistic concurrency`
 
-**Task 3.A.2 — Bab CRUD service + handler (Create/List/Get/Patch/Archive)**
+**Task 3.A.2 — Bab CRUD service + handler (Create/List/Get/Patch/Archive)** ✅ DONE 2026-05-21 (commit `<next>`)
 - Files: `backend/internal/bab/{service,handler,handler_test}.go`. Wire di `cmd/server/main.go` group `/api/v1` dgn middleware order `BearerAuth → ForceChangePassword → RoleGuard(admin,guru) → kelasOwnershipGuard`.
 - Endpoints (Section 7):
   - `POST /kelas/:id/bab` body `{nomor, judul, deskripsi}` (urutan auto = max+1, status default draft, version=1)
@@ -2100,7 +2100,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **FASE 3 PLANNING DONE — siap eksekusi 2026-05-21.** Section 0 lock 7 decisions baru (#63-#69), Section 4/6/10 propagated, Section 18 expanded 17 task (3.A.1 .. 3.F.3) split sub-fase 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman. Estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
 
-**Eksekusi berikutnya: Task 3.A.2 — Bab CRUD service + handler (Create/List/Get/Patch/Archive).**
+**Eksekusi berikutnya: Task 3.A.3 — Bab reorder bulk endpoint.**
 
 Approach options:
 1. **Inline** — gua kerjain di chat: tulis migration SQL + Go model/repo + tests, push ke workspace, verify migrate up + go test, lalu commit. Best untuk task pertama ini biar pattern-nya bersih dan konsisten.
