@@ -469,6 +469,119 @@ func TestHandler_Cancel_NotFound(t *testing.T) {
 	}
 }
 
+// --- Confirm handler tests (Task 2.D.4) ---
+
+func TestHandler_Confirm_Happy(t *testing.T) {
+	jobID := uuid.New()
+	objKey := "import/" + jobID.String() + ".csv"
+	credKey := "credentials/" + jobID.String() + ".csv"
+	svc := &stubUploadService{
+		confirmRes: &ConfirmResult{
+			Job: &ImportJob{
+				ID:        jobID,
+				Filename:  "users.csv",
+				ObjectKey: &objKey,
+				Status:    StatusCompleted,
+			},
+			SuccessCount:         3,
+			FailCount:            1,
+			CredentialsObjectKey: credKey,
+			Failures: []ConfirmFailure{
+				{LineNo: 4, Email: "dup@a.id", Reason: ConfirmReasonDuplicateInDB},
+			},
+		},
+	}
+	audit := &stubAudit{}
+	adminID := uuid.New()
+	app := testApp(t, svc, audit, adminID)
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/"+jobID.String()+"/confirm", nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, mustBody(resp))
+	}
+	if svc.gotConfirmID != jobID {
+		t.Errorf("gotConfirmID = %v, want %v", svc.gotConfirmID, jobID)
+	}
+	if svc.gotConfirmAdm != adminID {
+		t.Errorf("gotConfirmAdm = %v, want %v", svc.gotConfirmAdm, adminID)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["status"] != string(StatusCompleted) {
+		t.Errorf("status = %v, want completed", got["status"])
+	}
+	if got["success_count"] != float64(3) {
+		t.Errorf("success_count = %v, want 3", got["success_count"])
+	}
+	if got["fail_count"] != float64(1) {
+		t.Errorf("fail_count = %v, want 1", got["fail_count"])
+	}
+	if got["credentials_object_key"] != credKey {
+		t.Errorf("credentials_object_key = %v, want %s", got["credentials_object_key"], credKey)
+	}
+	if failures, _ := got["failures"].([]any); len(failures) != 1 {
+		t.Errorf("failures length = %d, want 1", len(failures))
+	}
+
+	// Audit recorded.
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(audit.entries))
+	}
+	if audit.entries[0].Action != "import_csv_confirmed" {
+		t.Errorf("audit action = %s, want import_csv_confirmed", audit.entries[0].Action)
+	}
+}
+
+func TestHandler_Confirm_ServiceErrorMapping(t *testing.T) {
+	cases := []struct {
+		name       string
+		serviceErr error
+		wantStatus int
+		wantCode   string
+	}{
+		{"not found", ErrJobNotFound, http.StatusNotFound, "not_found"},
+		{"not in preview", ErrJobNotInPreview, http.StatusConflict, "not_in_preview"},
+		{"expired", ErrJobExpired, http.StatusGone, "preview_expired"},
+		{"rows mismatch", ErrConfirmRowsMismatch, http.StatusConflict, "rows_mismatch"},
+		{"internal confirm", ErrInternalConfirm, http.StatusInternalServerError, "confirm_failed"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &stubUploadService{confirmErr: tc.serviceErr}
+			audit := &stubAudit{}
+			app := testApp(t, svc, audit, uuid.New())
+			resp := do(t, app, "POST", "/api/v1/admin/import-csv/"+uuid.New().String()+"/confirm", nil, "")
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", resp.StatusCode, tc.wantStatus, mustBody(resp))
+			}
+			if !strings.Contains(mustBody(resp), `"`+tc.wantCode+`"`) {
+				t.Errorf("response missing code %q", tc.wantCode)
+			}
+			// No audit on failure.
+			if len(audit.entries) != 0 {
+				t.Errorf("audit entries = %d, want 0 on error", len(audit.entries))
+			}
+		})
+	}
+}
+
+func TestHandler_Confirm_InvalidJobID(t *testing.T) {
+	svc := &stubUploadService{}
+	app := testApp(t, svc, &stubAudit{}, uuid.New())
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/not-a-uuid/confirm", nil, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if !strings.Contains(mustBody(resp), "invalid_job_id") {
+		t.Errorf("expected code invalid_job_id")
+	}
+}
+
 // --- helpers ---
 
 func do(t *testing.T, app *fiber.App, method, path string, body io.Reader, contentType string) *http.Response {

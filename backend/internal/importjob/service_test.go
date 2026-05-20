@@ -11,7 +11,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pikip/lms/backend/internal/auth"
+	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/storage"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // stubStore is a minimal in-memory storage.Storage for service tests. Mirrors
@@ -605,5 +609,355 @@ func TestService_Cancel_DBFailureSurfaces(t *testing.T) {
 	// R2 object must NOT be deleted if DB update failed.
 	if _, ok := store.objects[*uploaded.Job.ObjectKey]; !ok {
 		t.Errorf("R2 object should still exist when DB update fails")
+	}
+}
+
+// --- Confirm tests (Task 2.D.4) ---
+
+// stubUserCreator captures CreateUser + lookups for Confirm tests.
+type stubUserCreator struct {
+	mu       sync.Mutex
+	created  []*auth.User
+	emails   map[string]*auth.User // pre-seeded existing users
+	createFn func(u *auth.User) error
+	findErr  error
+}
+
+func newStubUsers() *stubUserCreator {
+	return &stubUserCreator{emails: map[string]*auth.User{}}
+}
+
+func (s *stubUserCreator) FindUserByEmail(ctx context.Context, email string) (*auth.User, error) {
+	if s.findErr != nil {
+		return nil, s.findErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u, ok := s.emails[email]; ok {
+		return u, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubUserCreator) CreateUser(ctx context.Context, u *auth.User) error {
+	if s.createFn != nil {
+		return s.createFn(u)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, dup := s.emails[u.Email]; dup {
+		return errors.New("duplicate key value violates unique constraint \"users_email_key\"")
+	}
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
+	}
+	s.emails[u.Email] = u
+	s.created = append(s.created, u)
+	return nil
+}
+
+// stubKelasRepo captures FindByKodeInvite + Enroll for Confirm tests.
+type stubKelasRepo struct {
+	mu       sync.Mutex
+	byKode   map[string]*kelas.Kelas
+	enrolled []enrollCall
+	findErr  error
+	enrollFn func(kelasID, siswaID uuid.UUID, via kelas.JoinedVia) (bool, error)
+}
+
+type enrollCall struct {
+	KelasID uuid.UUID
+	SiswaID uuid.UUID
+	Via     kelas.JoinedVia
+}
+
+func newStubKelas() *stubKelasRepo {
+	return &stubKelasRepo{byKode: map[string]*kelas.Kelas{}}
+}
+
+func (s *stubKelasRepo) FindByKodeInvite(ctx context.Context, kode string) (*kelas.Kelas, error) {
+	if s.findErr != nil {
+		return nil, s.findErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if k, ok := s.byKode[kode]; ok {
+		return k, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubKelasRepo) Enroll(ctx context.Context, kelasID, siswaID uuid.UUID, via kelas.JoinedVia) (bool, error) {
+	if s.enrollFn != nil {
+		return s.enrollFn(kelasID, siswaID, via)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.enrolled = append(s.enrolled, enrollCall{KelasID: kelasID, SiswaID: siswaID, Via: via})
+	return true, nil
+}
+
+// confirmEnv builds a Service ready for Confirm with all dependencies wired.
+func confirmEnv(t *testing.T) (*Service, *stubStore, *stubRepo, *stubUserCreator, *stubKelasRepo) {
+	t.Helper()
+	store := newStubStore()
+	repo := &stubRepo{}
+	users := newStubUsers()
+	kr := newStubKelas()
+	svc := newSvc(store, repo)
+	svc.SetUserCreator(users)
+	svc.SetKelasRepo(kr)
+	svc.SetBcryptCost(bcrypt.MinCost) // fast tests
+	return svc, store, repo, users, kr
+}
+
+func TestService_Confirm_Happy(t *testing.T) {
+	svc, store, _, users, kr := confirmEnv(t)
+	adminID := uuid.New()
+
+	kelasID := uuid.New()
+	kr.byKode["KLS-1"] = &kelas.Kelas{ID: kelasID, Nama: "Kelas Satu", KodeInvite: "KLS-1"}
+
+	csv := []byte("nama,email,kode_kelas\n" +
+		"Andi,andi@a.id,KLS-1\n" +
+		"Budi,budi@a.id,\n")
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: csv,
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	res, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID)
+	if err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	if res.SuccessCount != 2 {
+		t.Errorf("SuccessCount = %d, want 2", res.SuccessCount)
+	}
+	if res.FailCount != 0 {
+		t.Errorf("FailCount = %d, want 0", res.FailCount)
+	}
+	if res.Job.Status != StatusCompleted {
+		t.Errorf("Status = %s, want completed", res.Job.Status)
+	}
+	if res.CredentialsObjectKey == "" {
+		t.Errorf("CredentialsObjectKey should be populated")
+	}
+	if !strings.HasPrefix(res.CredentialsObjectKey, "credentials/") {
+		t.Errorf("credentials key = %q, want 'credentials/' prefix", res.CredentialsObjectKey)
+	}
+	if _, ok := store.objects[res.CredentialsObjectKey]; !ok {
+		t.Errorf("R2 should contain credentials.csv at %s", res.CredentialsObjectKey)
+	}
+	if len(users.created) != 2 {
+		t.Errorf("users created = %d, want 2", len(users.created))
+	}
+	for _, u := range users.created {
+		if u.Role != auth.Siswa {
+			t.Errorf("user %s role = %s, want siswa", u.Email, u.Role)
+		}
+		if !u.MustChangePassword {
+			t.Errorf("user %s must_change_password should be true", u.Email)
+		}
+		if u.PasswordHash == "" {
+			t.Errorf("user %s password_hash empty", u.Email)
+		}
+	}
+	if len(kr.enrolled) != 1 {
+		t.Errorf("enrolled calls = %d, want 1 (only Andi has kode_kelas)", len(kr.enrolled))
+	}
+}
+
+func TestService_Confirm_DuplicateEmail(t *testing.T) {
+	svc, _, _, users, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	// Pre-seed existing user with email that's also in CSV.
+	users.emails["andi@a.id"] = &auth.User{ID: uuid.New(), Email: "andi@a.id"}
+
+	csv := []byte("nama,email\nAndi,andi@a.id\nBudi,budi@a.id\n")
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: csv,
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	res, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID)
+	if err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	if res.SuccessCount != 1 {
+		t.Errorf("SuccessCount = %d, want 1", res.SuccessCount)
+	}
+	if res.FailCount != 1 {
+		t.Errorf("FailCount = %d, want 1", res.FailCount)
+	}
+	if len(res.Failures) != 1 || res.Failures[0].Reason != ConfirmReasonDuplicateInDB {
+		t.Errorf("Failures = %+v, want one duplicate_in_db", res.Failures)
+	}
+}
+
+func TestService_Confirm_KelasNotFound(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	csv := []byte("nama,email,kode_kelas\nAndi,andi@a.id,DOES-NOT-EXIST\n")
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: csv,
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	res, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID)
+	if err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	// User created (we don't roll back on enroll failure).
+	if res.SuccessCount != 1 {
+		t.Errorf("SuccessCount = %d, want 1 (user created despite kelas miss)", res.SuccessCount)
+	}
+	if res.FailCount != 1 {
+		t.Errorf("FailCount = %d, want 1 (kelas not found)", res.FailCount)
+	}
+	if len(res.Failures) != 1 || res.Failures[0].Reason != ConfirmReasonKelasNotFound {
+		t.Errorf("Failures = %+v, want one kelas_not_found", res.Failures)
+	}
+}
+
+func TestService_Confirm_IdempotentGuard(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nA,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	// First confirm: ok.
+	if _, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID); err != nil {
+		t.Fatalf("first Confirm: %v", err)
+	}
+	// Second confirm: status moved off preview → 409.
+	_, err = svc.Confirm(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrJobNotInPreview) {
+		t.Fatalf("err = %v, want ErrJobNotInPreview (idempotent guard)", err)
+	}
+}
+
+func TestService_Confirm_NotFoundCrossAdmin(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	owner := uuid.New()
+
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: owner, Filename: "x.csv", Body: []byte("nama,email\nA,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	other := uuid.New()
+	_, err = svc.Confirm(context.Background(), uploaded.Job.ID, other)
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("err = %v, want ErrJobNotFound (cross-admin scope)", err)
+	}
+}
+
+func TestService_Confirm_Expired(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nA,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+	svc.SetClock(func() time.Time { return uploaded.Job.ExpiresAt.Add(time.Minute) })
+
+	_, err = svc.Confirm(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrJobExpired) {
+		t.Fatalf("err = %v, want ErrJobExpired", err)
+	}
+}
+
+func TestService_Confirm_DepsNotWired(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := NewService(repo, store, 0)
+	// Don't wire users / kelasRepo.
+
+	_, err := svc.Confirm(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, ErrInternalConfirm) {
+		t.Fatalf("err = %v, want ErrInternalConfirm", err)
+	}
+}
+
+func TestService_Confirm_PartialInvalidRows(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	csv := []byte("nama,email\n" +
+		"Andi,andi@a.id\n" +
+		"BadGuy,not-an-email\n" +
+		"Budi,budi@a.id\n")
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: csv,
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	res, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID)
+	if err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	if res.SuccessCount != 2 {
+		t.Errorf("SuccessCount = %d, want 2", res.SuccessCount)
+	}
+	if res.FailCount != 1 {
+		t.Errorf("FailCount = %d, want 1", res.FailCount)
+	}
+	if len(res.Failures) != 1 || res.Failures[0].Reason != ConfirmReasonInvalidRow {
+		t.Errorf("Failures = %+v, want one invalid_row", res.Failures)
+	}
+}
+
+func TestService_Confirm_GeneratedPasswordsAreUnique(t *testing.T) {
+	svc, _, _, users, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	var buf bytes.Buffer
+	buf.WriteString("nama,email\n")
+	for i := 0; i < 8; i++ {
+		buf.WriteString("U")
+		buf.WriteString(itoa(i))
+		buf.WriteString(",u")
+		buf.WriteString(itoa(i))
+		buf.WriteString("@a.id\n")
+	}
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: buf.Bytes(),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	if _, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	if len(users.created) != 8 {
+		t.Fatalf("users created = %d, want 8", len(users.created))
+	}
+	seenHashes := map[string]struct{}{}
+	for _, u := range users.created {
+		if _, dup := seenHashes[u.PasswordHash]; dup {
+			t.Errorf("duplicate password hash for %s — RNG broken", u.Email)
+		}
+		seenHashes[u.PasswordHash] = struct{}{}
 	}
 }
