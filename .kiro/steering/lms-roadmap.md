@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). Fase 1 + Fase 2.A/2.B/2.C FULL DONE. Task 2.D.0 + 2.D.1 + 2.D.2 + 2.D.3 + 2.D.4 + 2.D.5 + 2.D.6 DONE 2026-05-20 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2 + presigned download w/ TTL + hourly cleanup cron). **Fase 2.D BE 100% DONE; Fase 2 = 18/20** (sisa 2 task = Fase 2.E FE Admin Import, out-of-scope BE roadmap). Berikutnya: Fase 2.E (FE) atau pivot ke Fase 3 (Bab & Materi).
+> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). **Fase 1 + Fase 2 FULL DONE (20/20)** 2026-05-21. Backend 2.D 6/6 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2 + presigned download w/ TTL + hourly cleanup cron). Frontend 2.E 3/3 (admin import-csv page: drag-drop upload + resume preview via ?job_id + cancel/confirm + success dialog with download credentials.csv). E2E live smoke 5/5 PASS. Berikutnya: Fase 3 (Bab & Materi + Pengumuman).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Task 2.D.6 done — hourly cleanup cron live; preview expiry + credentials TTL eviction sweeps bound ke rootCtx; tests 5 cases ALL_TEST_OK; live smoke PASS preview/credentials swept dengan R2 + DB state verified; commits `a9dbbc3` + `2dd9edb`. Fase 2.D BE 100%; Fase 2 = 18/20)
+> Last updated: 2026-05-21 (Fase 2 closed — Task 2.E.1+2.E.2+2.E.3 done in single commit `0f3772e`; 614-LOC import-csv page with state machine driven by ?job_id, drag-drop upload validating .csv + 5MB cap, preview table with row status pills, cancel/confirm CTAs, success dialog with per-row failure table + download credentials.csv via 302→R2 presigned URL opening in new tab. FE build 21 pages, /admin/import-csv = 12.4kB. Smoke E2E 5/5 PASS via curl flow upload→preview→confirm→download)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1857,19 +1857,36 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Cleanup: 1 user + 0 enroll + 3 audit + 2 import_jobs + 1 R2 object deleted; users_left=0, jobs_left=0
 - **Fase 2.D = 6/6 DONE; Fase 2 progress = 18/20** (sisa 2 task = Fase 2.E FE Admin Import, out-of-scope BE roadmap)
 
-#### 2.E FE Admin Import
+#### 2.E FE Admin Import — ✅ ALL DONE 2026-05-21 (commit `0f3772e`)
 
-**Task 2.E.1 — /admin/import-csv page (drag-and-drop upload)**
-- Visual: file picker, parsing progress, error rows
-- Commit: `feat(fe-admin): import CSV upload`
+**Task 2.E.1 — /admin/import-csv page (drag-and-drop upload)** ✅
+- File baru: `frontend/lib/import-api.ts` (232 LOC) — types + uploadImportCSV (multipart, hand-rolled fetch karena api() force JSON), getImportPreview, cancelImport, confirmImport, downloadCredentialsCSV (manual redirect handling)
+- File baru: `frontend/app/(authed)/admin/import-csv/page.tsx` (614 LOC) — single state machine driven by ?job_id query string (Next 14 static export pattern, mirror /admin/pengguna/detail)
+- UploadCard: drag-and-drop + file picker, client-side validation (.csv, max 5MB, non-zero), `onDragOver`/`onDrop` handlers, contoh CSV format collapsible
+- Sidebar: tambah entry `Import CSV` antara Pengguna + Audit Log dengan FileSpreadsheet icon
 
-**Task 2.E.2 — Preview tabel persistent (admin bisa close + balik)**
-- Read job_id dari URL, GET preview, render table
-- Commit: `feat(fe-admin): import preview persistent`
+**Task 2.E.2 — Preview tabel persistent (admin bisa close + balik)** ✅
+- `useQuery(['admin','import-csv',jobID])` enabled saat ?job_id present, retry=false, staleTime=5s
+- Auto-drop ?job_id saat 410 expired / 409 not_in_preview / 404 not_found via toast + router.replace
+- PreviewCard: header dengan filename + valid/invalid/total counters + ExpiresAt; table dengan row status pill (valid/invalid/duplicate); error notes column; "trimmed rows" hint kalau preview_rows < total_rows; "0 valid → upload ulang" warning
+- Cancel button → cancelImport → toast + back to upload card; Confirm button gated (status=preview && valid_count>0)
 
-**Task 2.E.3 — Confirm + modal sukses + download credentials.csv**
-- Visual: confirm button → POST → poll status → modal download
-- Commit: `feat(fe-admin): import confirm + credentials download`
+**Task 2.E.3 — Confirm + modal sukses + download credentials.csv** ✅
+- Confirm mutation → SuccessDialog (shadcn Dialog) shows X akun berhasil + Y gagal + per-row failure table dengan confirmReasonLabel mapping (invalid_row/duplicate_in_db/user_create_error/hash_error/kelas_not_found/enroll_error)
+- Download button → downloadCredentialsCSV (fetch dengan bearer header, redirect:'manual', baca Location header dari 302) → window.open(URL,'_blank') agar attachment Content-Disposition trigger save-as
+- Close dialog → router.replace('/admin/import-csv') untuk start fresh
+
+**Build verify (server)**: `npm run build` ALL OK; 21 pages (was 20); `/admin/import-csv = 12.4 kB / 130 kB First Load JS`; `lib/role-guard.tsx` warning pre-existing (unrelated, useMemo suggestion).
+
+**Live smoke 5/5 PASS via curl:**
+1. Upload 3-row CSV (2 valid + 1 invalid email) → 201 valid=2 invalid=1 total=3
+2. GET resume → status=preview filename=smoke-2e.csv
+3. POST confirm → 200 status=completed success=2 fail=1 credentials=credentials/<uuid>.csv
+4. GET credentials.csv → 302 Location=`https://<acct>.r2.cloudflarestorage.com/lms-dev/credentials/<uuid>.csv?X-Amz-...`
+5. Fetch presigned → 200 OK, `Content-Disposition: attachment; filename="credentials-<uuid>.csv"; filename*=UTF-8''…`, body 3 lines (header + 2 creds dengan password 12 char)
+- Cleanup: 2 users + 0 enroll + 4 audit + 1 import_job + 2 R2 objects deleted
+
+**Fase 2 = 20/20 DONE 100%.** Backend (Kelas + Enrollment + Bulk Import via R2) + Frontend (admin shell + import-csv page) full-stack complete. Pivot ke Fase 3 (Bab & Materi + Pengumuman).
 
 #### 2.F E2E Manual Fase 2
 
@@ -1885,19 +1902,19 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Fase 2 BE = 100% DONE.** Task 2.D.6 SELESAI 2026-05-20 (commits `a9dbbc3` feat + `2dd9edb` fix). Hourly cleanup cron live: 2 sweeps (preview expiry + credentials eviction) bound ke `rootCtx` graceful shutdown. Initial sweep on boot + 1h ticker. Tests 5 cases ALL_TEST_OK. Live smoke PASS: aged 1 preview + 1 completed row → restart → both sweeps fired (preview r2_deleted=1, credentials r2_deleted=1) → DB + R2 state matched spec exactly. **Fase 2.D = 6/6 DONE; Fase 2 progress = 18/20** (sisa 2 task FE out-of-scope BE).
+**FASE 2 CLOSED — 20/20 DONE 2026-05-21.** Task 2.E.1+2.E.2+2.E.3 selesai dalam commit `0f3772e` (614-LOC `/admin/import-csv` page + 232-LOC import-api.ts + sidebar nav + 2 file modified). FE build 21 pages OK, `/admin/import-csv = 12.4kB`. Live E2E smoke 5/5 PASS via curl flow (upload → resume preview → confirm → 302 redirect → R2 presigned URL → body verified). Cleanup smoke artifacts done (2 users + 4 audit + 1 import_job + 2 R2 objects).
 
 **Pilihan next:**
-1. **Pivot ke Fase 3 — Bab & Materi + Pengumuman** (rekomen gue) — backend Fase 2 udah closed, lanjut ke domain berikutnya yang full-stack lagi (CRUD bab, upload materi PDF/video ke R2, pengumuman per kelas).
-2. **Build Fase 2.E FE Admin Import** — close lingkaran Fase 2 dengan UI admin import-csv (3 task: upload page, preview persistent, confirm + download). Out-of-scope BE roadmap tapi unblock E2E browser test.
-3. **Pause + ringkas hari ini** — produktif: 9 task closed (2.C.4, 2.D.0.a/b, 2.D.1-2.D.6).
+1. **Pivot ke Fase 3 — Bab & Materi + Pengumuman** (rekomen) — domain full-stack baru: CRUD bab per kelas, upload materi PDF/video ke R2 (reusable Storage interface dari 2.D), pengumuman per kelas dengan notif. Estimasi: 6-10 task.
+2. **QA + tutup hari** — udah produktif: 12 task closed (2.C.4 + 2.D.0.a/b + 2.D.1-2.D.6 + 2.E.1-2.E.3). Bisa run E2E manual flow guru-siswa-import (Fase 2.F task 1+2) sebelum pivot.
+3. **Tuning + maintenance** — fix `lib/role-guard.tsx` warning useMemo, audit existing pages untuk konsistensi style, update test count di docs.
 
-Default rekomen gue: **opsi 1** (pivot Fase 3) — Fase 2 BE complete, momentum bagus pivot ke domain baru. Fase 2.E FE bisa dijadwalin bareng Fase 3.
+Default rekomen gue: **opsi 1** (pivot Fase 3). Fase 2 closed clean, momentum bagus pivot ke domain baru. Bisa reuse banyak pattern: Storage interface untuk file upload, presigned download untuk akses materi, audit log conventions, R2 cleanup cron pattern (skill `go-cleanup-cron-ctx-bound`).
 
-> Catatan: admin password sementara `Smoke-2D5-Tmp!` (gua reset untuk smoke 2.D.5). Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
+> Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
-QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
+QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang: `ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`.
 
-> Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat (mis. 1.G.2 auth interceptor + 1.H.4 admin user detail), bisa delegasi ke `codex` atau `claude-code` per task.
+> Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat, bisa delegasi ke `codex` atau `claude-code` per task.
 
 > Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
