@@ -19,7 +19,7 @@ import (
 
 // KodeInviteCharset adalah karakter yang dipakai generator. Sengaja skip
 // 0/O, 1/I/L, 8/B karena ambigu di tulisan tangan.
-const KodeInviteCharset = "ACDEFGHJKMNPQRTUVWXYZ23456789"
+const KodeInviteCharset = "ACDEFGHJKMNPQRTUVWXYZ234567"
 
 // KodeInviteLength adalah panjang kode invite (6 char per spec).
 const KodeInviteLength = 6
