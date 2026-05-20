@@ -57,11 +57,11 @@ type createRequest struct {
 }
 
 type updateRequest struct {
-	Version          int    `json:"version"`
-	Nama             string `json:"nama"`
-	Deskripsi        string `json:"deskripsi"`
-	BobotSoalUlangan int    `json:"bobot_soal_ulangan"`
-	BobotTugas       int    `json:"bobot_tugas"`
+	Version          int     `json:"version"`
+	Nama             string  `json:"nama"`
+	Deskripsi        *string `json:"deskripsi"`
+	BobotSoalUlangan *int    `json:"bobot_soal_ulangan"`
+	BobotTugas       *int    `json:"bobot_tugas"`
 }
 
 type duplicateRequest struct {

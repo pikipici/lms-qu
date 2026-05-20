@@ -269,8 +269,8 @@ func TestService_Update_VersionConflict(t *testing.T) {
 	_, err = svc.Update(context.Background(), k.ID, guruID, string(auth.Guru), UpdateInput{
 		ExpectedVersion:  1,
 		Nama:             "Y",
-		BobotSoalUlangan: 50,
-		BobotTugas:       50,
+		BobotSoalUlangan: intPtr(50),
+		BobotTugas:       intPtr(50),
 	}, "", "")
 	if !errors.Is(err, ErrVersionConflict) {
 		t.Fatalf("expected ErrVersionConflict, got %v", err)
@@ -288,9 +288,9 @@ func TestService_Update_HappyPath(t *testing.T) {
 	updated, err := svc.Update(context.Background(), k.ID, guruID, string(auth.Guru), UpdateInput{
 		ExpectedVersion:  1,
 		Nama:             "  IPA 7A ",
-		Deskripsi:        "fisika",
-		BobotSoalUlangan: 70,
-		BobotTugas:       30,
+		Deskripsi:        strRefPtr("fisika"),
+		BobotSoalUlangan: intPtr(70),
+		BobotTugas:       intPtr(30),
 	}, "127.0.0.1", "ua")
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -318,7 +318,7 @@ func TestService_Update_ForbiddenForOtherGuru(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = svc.Update(context.Background(), k.ID, stranger, string(auth.Guru), UpdateInput{
-		ExpectedVersion: 1, Nama: "Y", BobotSoalUlangan: 50, BobotTugas: 50,
+		ExpectedVersion: 1, Nama: "Y", BobotSoalUlangan: intPtr(50), BobotTugas: intPtr(50),
 	}, "", "")
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
@@ -334,7 +334,7 @@ func TestService_Update_AdminCanEditOtherGurusKelas(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = svc.Update(context.Background(), k.ID, admin, string(auth.Admin), UpdateInput{
-		ExpectedVersion: 1, Nama: "Y", BobotSoalUlangan: 50, BobotTugas: 50,
+		ExpectedVersion: 1, Nama: "Y", BobotSoalUlangan: intPtr(50), BobotTugas: intPtr(50),
 	}, "", "")
 	if err != nil {
 		t.Fatalf("admin should be allowed: %v", err)

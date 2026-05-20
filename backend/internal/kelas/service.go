@@ -165,13 +165,16 @@ func (s *Service) Get(ctx context.Context, id, viewerID uuid.UUID, viewerRole st
 	return k, nil
 }
 
-// UpdateInput represents the patch payload (PATCH /kelas/:id).
+// UpdateInput represents the patch payload (PATCH /kelas/:id). Pointer fields
+// are optional: nil means "leave unchanged"; non-nil means "set to this value".
+// ExpectedVersion + Nama tetap wajib (Nama selalu re-affirmed lewat PATCH body
+// supaya audit log nge-capture nilai final yang konsisten).
 type UpdateInput struct {
 	ExpectedVersion  int
 	Nama             string
-	Deskripsi        string
-	BobotSoalUlangan int
-	BobotTugas       int
+	Deskripsi        *string
+	BobotSoalUlangan *int
+	BobotTugas       *int
 }
 
 // Update applies an optimistic-concurrency update. ExpectedVersion mismatch
@@ -183,9 +186,6 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 	nama := strings.TrimSpace(in.Nama)
 	if nama == "" {
 		return nil, fmt.Errorf("%w: nama is required", ErrInvalidInput)
-	}
-	if err := validateBobot(in.BobotSoalUlangan, in.BobotTugas); err != nil {
-		return nil, err
 	}
 
 	existing, err := s.repo.FindByID(ctx, id)
@@ -199,8 +199,24 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 		return nil, ErrForbidden
 	}
 
-	deskripsi := strings.TrimSpace(in.Deskripsi)
-	if err := s.repo.UpdateBasic(ctx, id, in.ExpectedVersion, nama, deskripsi, in.BobotSoalUlangan, in.BobotTugas); err != nil {
+	// Resolve final values: caller-supplied wins, otherwise carry existing.
+	deskripsi := existing.Deskripsi
+	if in.Deskripsi != nil {
+		deskripsi = strings.TrimSpace(*in.Deskripsi)
+	}
+	bobotSoalUlangan := existing.BobotSoalUlangan
+	if in.BobotSoalUlangan != nil {
+		bobotSoalUlangan = *in.BobotSoalUlangan
+	}
+	bobotTugas := existing.BobotTugas
+	if in.BobotTugas != nil {
+		bobotTugas = *in.BobotTugas
+	}
+	if err := validateBobot(bobotSoalUlangan, bobotTugas); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.UpdateBasic(ctx, id, in.ExpectedVersion, nama, deskripsi, bobotSoalUlangan, bobotTugas); err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			return nil, ErrNotFound
