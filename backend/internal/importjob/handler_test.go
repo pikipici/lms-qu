@@ -54,9 +54,13 @@ func (s *stubAudit) LogAudit(ctx context.Context, entry *auth.AuditLog) error {
 }
 
 // testApp wires Handler under a Fiber app with adminID injected via locals.
+// BodyLimit is set generous enough to test our own MaxCSVBytes (5MB) check;
+// production also has a generous BodyLimit per cfg.Storage.MaxTugasFileMB.
 func testApp(t *testing.T, svc uploadService, audit auditLogger, adminID uuid.UUID) *fiber.App {
 	t.Helper()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		BodyLimit: MaxCSVBytes * 2, // generous; per-route handler enforces real limit
+	})
 	app.Use(middleware.RequestID())
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals(middleware.LocalsUserID, adminID)
