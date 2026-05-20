@@ -29,6 +29,7 @@ type uploadService interface {
 	GetPreview(ctx context.Context, id, adminID uuid.UUID) (*GetPreviewResult, error)
 	Cancel(ctx context.Context, id, adminID uuid.UUID) (*CancelResult, error)
 	Confirm(ctx context.Context, id, adminID uuid.UUID) (*ConfirmResult, error)
+	DownloadCredentials(ctx context.Context, id, adminID uuid.UUID) (*DownloadCredentialsResult, error)
 }
 
 // auditLogger captures the LogAudit slice of auth.Repo. Inlined so we don't
@@ -245,6 +246,46 @@ func (h *Handler) Confirm(c *fiber.Ctx) error {
 	})
 }
 
+// DownloadCredentials handles GET /api/v1/admin/import-csv/:job_id/credentials.csv.
+//
+// Issues a presigned R2 GET URL with a forced attachment Content-Disposition
+// and 302-redirects the client. The browser fetches R2 directly using that
+// short-lived URL — the API never streams credential bytes itself. Status:
+//   - 302 Found             → Location header set to presigned URL
+//   - 400 invalid_job_id    → :job_id is not a UUID
+//   - 404 not_found         → job missing or wrong owner
+//   - 409 not_completed     → job is preview/processing/cancelled/etc
+//   - 410 credentials_expired → CompletedAt + 1h elapsed
+//   - 404 credentials_missing → job completed but no credentials_csv key
+//                                (or R2 object went away)
+//   - 500 download_failed   → R2 presign or other internal failure
+//
+// Audit action: file_url_issued — meta { object_key, filename, ttl_sec }.
+func (h *Handler) DownloadCredentials(c *fiber.Ctx) error {
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return importError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	jobID, err := uuid.Parse(c.Params("job_id"))
+	if err != nil {
+		return importError(c, fiber.StatusBadRequest, "job_id bukan UUID valid", "invalid_job_id")
+	}
+
+	res, err := h.svc.DownloadCredentials(c.UserContext(), jobID, adminID)
+	if err != nil {
+		status, code, msg := mapServiceError(err)
+		return importError(c, status, msg, code)
+	}
+
+	h.logAudit(c, adminID, res.Job.ID, "file_url_issued", auditMeta(map[string]any{
+		"object_key": res.ObjectKey,
+		"filename":   res.Filename,
+		"ttl_sec":    int(res.TTL.Seconds()),
+	}))
+
+	return c.Redirect(res.URL, fiber.StatusFound)
+}
+
 // mapServiceError translates parser/service sentinel errors into stable HTTP
 // status + code pairs the FE can branch on.
 func mapServiceError(err error) (status int, code string, msg string) {
@@ -275,6 +316,14 @@ func mapServiceError(err error) (status int, code string, msg string) {
 		return fiber.StatusConflict, "rows_mismatch", "csv di r2 berbeda dari preview, upload ulang"
 	case errors.Is(err, ErrInternalConfirm):
 		return fiber.StatusInternalServerError, "confirm_failed", "gagal memproses konfirmasi import"
+	case errors.Is(err, ErrJobNotCompleted):
+		return fiber.StatusConflict, "not_completed", "import job belum selesai"
+	case errors.Is(err, ErrCredentialsExpired):
+		return fiber.StatusGone, "credentials_expired", "credentials.csv kadaluarsa, jalankan import ulang"
+	case errors.Is(err, ErrCredentialsMissing):
+		return fiber.StatusNotFound, "credentials_missing", "credentials.csv tidak tersedia"
+	case errors.Is(err, ErrInternalDownload):
+		return fiber.StatusInternalServerError, "download_failed", "gagal generate link unduh"
 	case errors.Is(err, ErrPersistFailed):
 		return fiber.StatusInternalServerError, "persist_failed", "gagal menyimpan import job"
 	default:

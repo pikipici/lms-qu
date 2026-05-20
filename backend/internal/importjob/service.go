@@ -51,6 +51,20 @@ var (
 	// ErrInternalConfirm — generic Confirm-time failure (R2 fetch, marshal,
 	// etc) that isn't covered by a more-specific sentinel.
 	ErrInternalConfirm = errors.New("import: confirm failed")
+	// ErrJobNotCompleted — download credentials requested but job is not
+	// in status=completed (e.g. still preview/processing/cancelled). Surface
+	// as 409 so FE knows to wait for confirm to finish first.
+	ErrJobNotCompleted = errors.New("import: job not completed")
+	// ErrCredentialsExpired — credentials.csv lives at most 1h after
+	// CompletedAt before the cleanup cron deletes it (Task 2.D.6). Surfaced
+	// as 410 so FE drops the download button.
+	ErrCredentialsExpired = errors.New("import: credentials window expired")
+	// ErrCredentialsMissing — job is completed but no credentials_csv key
+	// is set (e.g. Confirm flipped to failed before uploading). Surface as
+	// 404 so admin re-runs.
+	ErrCredentialsMissing = errors.New("import: credentials object not available")
+	// ErrInternalDownload — generic Download-time failure (R2 presign, etc).
+	ErrInternalDownload = errors.New("import: download failed")
 )
 
 // jobRepo is the subset of *Repo used by Service. Defined as an interface
@@ -87,8 +101,9 @@ type Service struct {
 	users        userCreator
 	kelasRepo    kelasFinderEnroller
 	now          func() time.Time
-	previewLimit int // soft cap on rows persisted into PreviewRowsJSON
-	bcryptCost   int // 0 = use bcrypt.DefaultCost via auth.HashPassword
+	previewLimit int           // soft cap on rows persisted into PreviewRowsJSON
+	bcryptCost   int           // 0 = use bcrypt.DefaultCost via auth.HashPassword
+	presignTTL   time.Duration // 0 = use 15min default; bumped via SetPresignTTL
 }
 
 // NewService constructs a Service. previewLimit caps how many rows are
@@ -116,6 +131,15 @@ func (s *Service) SetKelasRepo(k kelasFinderEnroller) { s.kelasRepo = k }
 // passwords. 0 means use auth.HashPassword's default (bcrypt.DefaultCost).
 // Tests pass bcrypt.MinCost to keep them fast.
 func (s *Service) SetBcryptCost(c int) { s.bcryptCost = c }
+
+// SetPresignTTL overrides the lifetime of presigned download URLs. Wired
+// from main.go via cfg.Storage.R2.PresignTTLSec. <=0 falls back to 15min.
+func (s *Service) SetPresignTTL(d time.Duration) {
+	if d <= 0 {
+		d = 0 // service.DownloadCredentials applies the 15m default
+	}
+	s.presignTTL = d
+}
 
 // SetClock overrides the time source (test hook).
 func (s *Service) SetClock(now func() time.Time) {
@@ -579,6 +603,80 @@ func (s *Service) Confirm(ctx context.Context, id, adminID uuid.UUID) (*ConfirmR
 		FailCount:            len(failures),
 		CredentialsObjectKey: credKey,
 		Failures:             failures,
+	}, nil
+}
+
+// CredentialsTTL is the lifetime of a generated credentials.csv after the
+// import job moves to completed. After this window the cleanup cron (Task
+// 2.D.6) deletes the R2 object and admins must re-import. Locked decision:
+// 1 hour, conservative since the file contains plaintext passwords.
+const CredentialsTTL = 1 * time.Hour
+
+// DownloadCredentialsResult is the public response from DownloadCredentials.
+type DownloadCredentialsResult struct {
+	Job              *ImportJob
+	URL              string        // presigned GET URL with attachment Content-Disposition
+	ObjectKey        string        // R2 object key (for audit logging)
+	Filename         string        // suggested attachment filename ("credentials-<job_id>.csv")
+	TTL              time.Duration // how long the URL stays valid
+	ExpiresAt        time.Time     // CompletedAt + CredentialsTTL — used by FE to disable button
+}
+
+// DownloadCredentials issues a presigned GET URL for an admin's
+// credentials.csv. Lifecycle requirements:
+//   - Job exists + owned by admin → else ErrJobNotFound (404)
+//   - Status == completed         → else ErrJobNotCompleted (409)
+//   - CompletedAt + CredentialsTTL not elapsed → else ErrCredentialsExpired (410)
+//   - CredentialsCSV key set + R2 object still exists → else ErrCredentialsMissing (404)
+//
+// The presigned URL embeds Content-Disposition: attachment;
+// filename="credentials-<job_id>.csv" so browsers download instead of
+// previewing. TTL defaults to s.PresignTTL (config-driven, 15m default).
+func (s *Service) DownloadCredentials(ctx context.Context, id, adminID uuid.UUID) (*DownloadCredentialsResult, error) {
+	job, err := s.repo.FindByIDForAdmin(ctx, id, adminID)
+	if err != nil {
+		return nil, ErrJobNotFound
+	}
+	if job.Status != StatusCompleted {
+		return nil, ErrJobNotCompleted
+	}
+	if job.CompletedAt == nil {
+		// Defensive: completed jobs should always have CompletedAt set
+		// (Confirm sets it). If not, treat as expired so admin re-runs.
+		return nil, ErrCredentialsExpired
+	}
+	expiresAt := job.CompletedAt.Add(CredentialsTTL)
+	if s.now().After(expiresAt) {
+		return nil, ErrCredentialsExpired
+	}
+	if job.CredentialsCSV == nil || *job.CredentialsCSV == "" {
+		return nil, ErrCredentialsMissing
+	}
+	objectKey := *job.CredentialsCSV
+
+	filename := fmt.Sprintf("credentials-%s.csv", job.ID.String())
+	ttl := s.presignTTL
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	url, err := s.store.PresignGetDownload(ctx, objectKey, ttl, filename)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			// R2 lost the object (cleanup cron raced us, or operator
+			// purged the bucket). Match what the FE expects when the TTL
+			// gate would have caught it.
+			return nil, ErrCredentialsMissing
+		}
+		return nil, fmt.Errorf("%w: presign %s: %v", ErrInternalDownload, objectKey, err)
+	}
+
+	return &DownloadCredentialsResult{
+		Job:       job,
+		URL:       url,
+		ObjectKey: objectKey,
+		Filename:  filename,
+		TTL:       ttl,
+		ExpiresAt: expiresAt,
 	}, nil
 }
 

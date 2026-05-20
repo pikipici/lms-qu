@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -160,6 +161,26 @@ func (r *R2Client) ObjectExists(ctx context.Context, key string) (bool, error) {
 
 // PresignGet implements Storage. ttl is clamped to [60s, 24h].
 func (r *R2Client) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	return r.presignGet(ctx, key, ttl, "")
+}
+
+// PresignGetDownload implements Storage with a forced attachment Content-
+// Disposition. filename is RFC 5987-encoded into the disposition header so
+// browsers display it correctly even when it contains UTF-8 / spaces.
+func (r *R2Client) PresignGetDownload(ctx context.Context, key string, ttl time.Duration, filename string) (string, error) {
+	disp := "attachment"
+	if filename != "" {
+		// path-safe printable ASCII subset for the unquoted form; UTF-8
+		// goes into filename* via RFC 5987 percent-encoding.
+		disp = fmt.Sprintf("attachment; filename=%q; filename*=UTF-8''%s",
+			sanitizeASCII(filename), urlPathEscape(filename))
+	}
+	return r.presignGet(ctx, key, ttl, disp)
+}
+
+// presignGet is the shared implementation; contentDisposition is empty for
+// PresignGet (no override) or a fully-formed header value for downloads.
+func (r *R2Client) presignGet(ctx context.Context, key string, ttl time.Duration, contentDisposition string) (string, error) {
 	if ttl <= 0 {
 		ttl = r.defaultTTL
 	}
@@ -180,11 +201,14 @@ func (r *R2Client) PresignGet(ctx context.Context, key string, ttl time.Duration
 		return "", fmt.Errorf("%w: %s", ErrObjectNotFound, key)
 	}
 
-	req, err := r.presign.PresignGetObject(ctx,
-		&s3.GetObjectInput{
-			Bucket: aws.String(r.bucket),
-			Key:    aws.String(key),
-		},
+	getInput := &s3.GetObjectInput{
+		Bucket: aws.String(r.bucket),
+		Key:    aws.String(key),
+	}
+	if contentDisposition != "" {
+		getInput.ResponseContentDisposition = aws.String(contentDisposition)
+	}
+	req, err := r.presign.PresignGetObject(ctx, getInput,
 		func(o *s3.PresignOptions) {
 			o.Expires = ttl
 		},
@@ -223,6 +247,39 @@ func isNotFound(err error) bool {
 
 // Compile-time check.
 var _ Storage = (*R2Client)(nil)
+
+// sanitizeASCII strips characters that are unsafe to put in a quoted
+// filename header value. Replaces non-printable / control / quote chars
+// with underscore. Output is intended for the legacy `filename="..."`
+// segment of Content-Disposition, where most clients only consume ASCII.
+func sanitizeASCII(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r < 0x20 || r == 0x7f:
+			b.WriteByte('_')
+		case r == '"' || r == '\\':
+			b.WriteByte('_')
+		case r > 0x7e:
+			b.WriteByte('_')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	out := b.String()
+	if out == "" {
+		return "download"
+	}
+	return out
+}
+
+// urlPathEscape percent-encodes a UTF-8 filename for use in the RFC 5987
+// `filename*=UTF-8''…` segment of Content-Disposition. url.PathEscape is
+// closer to the RFC 3986 spec than QueryEscape (which would encode space as +).
+func urlPathEscape(s string) string {
+	return url.PathEscape(s)
+}
 
 // Avoid unused import when SDK constants aren't referenced elsewhere.
 var _ = io.EOF

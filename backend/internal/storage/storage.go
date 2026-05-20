@@ -101,6 +101,14 @@ type Storage interface {
 	// object directly. ttl is clamped to a sane minimum/maximum by the
 	// implementation. Returns ErrObjectNotFound if the key does not exist.
 	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
+
+	// PresignGetDownload is like PresignGet but the resulting URL forces the
+	// browser to treat the response as an attachment with the given filename
+	// (via ResponseContentDisposition on S3/R2). filename may be empty to
+	// fall back to plain attachment without a name. Used by Task 2.D.5 so
+	// admins downloading credentials.csv get a stable filename instead of
+	// the uuid-based object key.
+	PresignGetDownload(ctx context.Context, key string, ttl time.Duration, filename string) (string, error)
 }
 
 // BuildKey constructs an object key with the canonical "<kategori>/<...>"

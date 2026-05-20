@@ -42,6 +42,12 @@ type stubUploadService struct {
 	confirmErr    error
 	gotConfirmID  uuid.UUID
 	gotConfirmAdm uuid.UUID
+
+	// DownloadCredentials hooks (Task 2.D.5).
+	downloadRes    *DownloadCredentialsResult
+	downloadErr    error
+	gotDownloadID  uuid.UUID
+	gotDownloadAdm uuid.UUID
 }
 
 func (s *stubUploadService) PreviewUpload(ctx context.Context, in PreviewUploadInput) (*PreviewUploadResult, error) {
@@ -78,6 +84,15 @@ func (s *stubUploadService) Confirm(ctx context.Context, id, adminID uuid.UUID) 
 		return nil, s.confirmErr
 	}
 	return s.confirmRes, nil
+}
+
+func (s *stubUploadService) DownloadCredentials(ctx context.Context, id, adminID uuid.UUID) (*DownloadCredentialsResult, error) {
+	s.gotDownloadID = id
+	s.gotDownloadAdm = adminID
+	if s.downloadErr != nil {
+		return nil, s.downloadErr
+	}
+	return s.downloadRes, nil
 }
 
 // stubAudit captures LogAudit calls.
@@ -574,6 +589,113 @@ func TestHandler_Confirm_InvalidJobID(t *testing.T) {
 	app := testApp(t, svc, &stubAudit{}, uuid.New())
 
 	resp := do(t, app, "POST", "/api/v1/admin/import-csv/not-a-uuid/confirm", nil, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if !strings.Contains(mustBody(resp), "invalid_job_id") {
+		t.Errorf("expected code invalid_job_id")
+	}
+}
+
+// --- DownloadCredentials tests (Task 2.D.5) ---
+
+func TestHandler_DownloadCredentials_Happy(t *testing.T) {
+	jobID := uuid.New()
+	credKey := "credentials/" + jobID.String() + ".csv"
+	completed := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	presignedURL := "https://r2.example.com/" + credKey + "?X-Amz-Sig=stub"
+	svc := &stubUploadService{
+		downloadRes: &DownloadCredentialsResult{
+			Job: &ImportJob{
+				ID:          jobID,
+				Filename:    "users.csv",
+				Status:      StatusCompleted,
+				CompletedAt: &completed,
+			},
+			URL:       presignedURL,
+			ObjectKey: credKey,
+			Filename:  "credentials-" + jobID.String() + ".csv",
+			TTL:       15 * time.Minute,
+			ExpiresAt: completed.Add(time.Hour),
+		},
+	}
+	audit := &stubAudit{}
+	adminID := uuid.New()
+	app := testApp(t, svc, audit, adminID)
+
+	resp := do(t, app, "GET", "/api/v1/admin/import-csv/"+jobID.String()+"/credentials.csv", nil, "")
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body=%s", resp.StatusCode, mustBody(resp))
+	}
+	if got := resp.Header.Get("Location"); got != presignedURL {
+		t.Errorf("Location = %q, want %q", got, presignedURL)
+	}
+	if svc.gotDownloadID != jobID {
+		t.Errorf("gotDownloadID = %v, want %v", svc.gotDownloadID, jobID)
+	}
+	if svc.gotDownloadAdm != adminID {
+		t.Errorf("gotDownloadAdm = %v, want %v", svc.gotDownloadAdm, adminID)
+	}
+
+	// Audit recorded.
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(audit.entries))
+	}
+	if audit.entries[0].Action != "file_url_issued" {
+		t.Errorf("audit action = %s, want file_url_issued", audit.entries[0].Action)
+	}
+	// Meta has stable shape.
+	metaStr := string(audit.entries[0].Meta)
+	if !strings.Contains(metaStr, credKey) {
+		t.Errorf("audit meta missing object_key %q: %s", credKey, metaStr)
+	}
+	if !strings.Contains(metaStr, "credentials-"+jobID.String()+".csv") {
+		t.Errorf("audit meta missing filename: %s", metaStr)
+	}
+	if !strings.Contains(metaStr, "\"ttl_sec\":900") {
+		t.Errorf("audit meta missing ttl_sec=900: %s", metaStr)
+	}
+}
+
+func TestHandler_DownloadCredentials_ServiceErrorMapping(t *testing.T) {
+	cases := []struct {
+		name       string
+		serviceErr error
+		wantStatus int
+		wantCode   string
+	}{
+		{"not found", ErrJobNotFound, http.StatusNotFound, "not_found"},
+		{"not completed", ErrJobNotCompleted, http.StatusConflict, "not_completed"},
+		{"expired", ErrCredentialsExpired, http.StatusGone, "credentials_expired"},
+		{"missing", ErrCredentialsMissing, http.StatusNotFound, "credentials_missing"},
+		{"internal download", ErrInternalDownload, http.StatusInternalServerError, "download_failed"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &stubUploadService{downloadErr: tc.serviceErr}
+			audit := &stubAudit{}
+			app := testApp(t, svc, audit, uuid.New())
+			resp := do(t, app, "GET", "/api/v1/admin/import-csv/"+uuid.New().String()+"/credentials.csv", nil, "")
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", resp.StatusCode, tc.wantStatus, mustBody(resp))
+			}
+			if !strings.Contains(mustBody(resp), `"`+tc.wantCode+`"`) {
+				t.Errorf("response missing code %q", tc.wantCode)
+			}
+			// No audit on failure.
+			if len(audit.entries) != 0 {
+				t.Errorf("audit entries = %d, want 0 on error", len(audit.entries))
+			}
+		})
+	}
+}
+
+func TestHandler_DownloadCredentials_InvalidJobID(t *testing.T) {
+	svc := &stubUploadService{}
+	app := testApp(t, svc, &stubAudit{}, uuid.New())
+
+	resp := do(t, app, "GET", "/api/v1/admin/import-csv/not-a-uuid/credentials.csv", nil, "")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}

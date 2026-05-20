@@ -73,6 +73,23 @@ func (s *stubStore) ObjectExists(ctx context.Context, key string) (bool, error) 
 }
 
 func (s *stubStore) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.objects[key]; !ok {
+		return "", storage.ErrObjectNotFound
+	}
+	return "stub://" + key, nil
+}
+
+func (s *stubStore) PresignGetDownload(ctx context.Context, key string, ttl time.Duration, filename string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.objects[key]; !ok {
+		return "", storage.ErrObjectNotFound
+	}
+	if filename != "" {
+		return "stub://" + key + "?filename=" + filename, nil
+	}
 	return "stub://" + key, nil
 }
 
@@ -959,5 +976,146 @@ func TestService_Confirm_GeneratedPasswordsAreUnique(t *testing.T) {
 			t.Errorf("duplicate password hash for %s — RNG broken", u.Email)
 		}
 		seenHashes[u.PasswordHash] = struct{}{}
+	}
+}
+
+// --- DownloadCredentials tests (Task 2.D.5) ---
+
+// runConfirmHappy runs PreviewUpload + Confirm against the confirmEnv harness
+// and returns the completed ImportJob ID. Used by Download tests as setup.
+func runConfirmHappy(t *testing.T, svc *Service, adminID uuid.UUID, kr *stubKelasRepo) uuid.UUID {
+	t.Helper()
+	kr.byKode["KLS-1"] = &kelas.Kelas{ID: uuid.New(), Nama: "Kelas Satu", KodeInvite: "KLS-1"}
+	csv := []byte("nama,email,kode_kelas\nAndi,andi@a.id,KLS-1\nBudi,budi@a.id,\n")
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: csv,
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+	if _, err := svc.Confirm(context.Background(), uploaded.Job.ID, adminID); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	return uploaded.Job.ID
+}
+
+func TestService_DownloadCredentials_Happy(t *testing.T) {
+	svc, _, _, _, kr := confirmEnv(t)
+	adminID := uuid.New()
+	jobID := runConfirmHappy(t, svc, adminID, kr)
+
+	res, err := svc.DownloadCredentials(context.Background(), jobID, adminID)
+	if err != nil {
+		t.Fatalf("DownloadCredentials: %v", err)
+	}
+	if res.URL == "" || !strings.HasPrefix(res.URL, "stub://credentials/") {
+		t.Errorf("URL = %q, want stub://credentials/... prefix", res.URL)
+	}
+	wantFilename := "credentials-" + jobID.String() + ".csv"
+	if res.Filename != wantFilename {
+		t.Errorf("Filename = %q, want %q", res.Filename, wantFilename)
+	}
+	if !strings.Contains(res.URL, "filename="+wantFilename) {
+		t.Errorf("URL %q missing filename query param", res.URL)
+	}
+	if !strings.HasPrefix(res.ObjectKey, "credentials/") {
+		t.Errorf("ObjectKey = %q, want 'credentials/' prefix", res.ObjectKey)
+	}
+	if res.TTL != 15*time.Minute {
+		t.Errorf("TTL = %v, want 15m default", res.TTL)
+	}
+	// ExpiresAt = CompletedAt + 1h. CompletedAt = clock fn = 2026-05-20T12:00.
+	wantExpires := time.Date(2026, 5, 20, 13, 0, 0, 0, time.UTC)
+	if !res.ExpiresAt.Equal(wantExpires) {
+		t.Errorf("ExpiresAt = %v, want %v", res.ExpiresAt, wantExpires)
+	}
+}
+
+func TestService_DownloadCredentials_NotFound(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	_, err := svc.DownloadCredentials(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("err = %v, want ErrJobNotFound", err)
+	}
+}
+
+func TestService_DownloadCredentials_WrongAdmin(t *testing.T) {
+	svc, _, _, _, kr := confirmEnv(t)
+	owner := uuid.New()
+	jobID := runConfirmHappy(t, svc, owner, kr)
+
+	other := uuid.New()
+	_, err := svc.DownloadCredentials(context.Background(), jobID, other)
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("err = %v, want ErrJobNotFound (cross-admin scope)", err)
+	}
+}
+
+func TestService_DownloadCredentials_NotCompleted(t *testing.T) {
+	svc, _, _, _, _ := confirmEnv(t)
+	adminID := uuid.New()
+
+	// Upload but DO NOT confirm — status stays preview.
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	_, err = svc.DownloadCredentials(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrJobNotCompleted) {
+		t.Fatalf("err = %v, want ErrJobNotCompleted", err)
+	}
+}
+
+func TestService_DownloadCredentials_Expired(t *testing.T) {
+	svc, _, _, _, kr := confirmEnv(t)
+	adminID := uuid.New()
+	jobID := runConfirmHappy(t, svc, adminID, kr)
+
+	// Advance clock past CredentialsTTL (1h after CompletedAt).
+	svc.SetClock(func() time.Time {
+		return time.Date(2026, 5, 20, 13, 0, 1, 0, time.UTC)
+	})
+
+	_, err := svc.DownloadCredentials(context.Background(), jobID, adminID)
+	if !errors.Is(err, ErrCredentialsExpired) {
+		t.Fatalf("err = %v, want ErrCredentialsExpired", err)
+	}
+}
+
+func TestService_DownloadCredentials_Missing(t *testing.T) {
+	svc, store, repo, _, kr := confirmEnv(t)
+	adminID := uuid.New()
+	jobID := runConfirmHappy(t, svc, adminID, kr)
+
+	// Drop the credentials object from the stub store to simulate cron
+	// cleanup racing the download. Service should map ErrObjectNotFound
+	// to ErrCredentialsMissing.
+	for _, j := range repo.created {
+		if j.ID == jobID && j.CredentialsCSV != nil {
+			_ = store.DeleteObject(context.Background(), *j.CredentialsCSV)
+		}
+	}
+
+	_, err := svc.DownloadCredentials(context.Background(), jobID, adminID)
+	if !errors.Is(err, ErrCredentialsMissing) {
+		t.Fatalf("err = %v, want ErrCredentialsMissing", err)
+	}
+}
+
+func TestService_DownloadCredentials_PresignTTLOverride(t *testing.T) {
+	svc, _, _, _, kr := confirmEnv(t)
+	svc.SetPresignTTL(2 * time.Minute)
+	adminID := uuid.New()
+	jobID := runConfirmHappy(t, svc, adminID, kr)
+
+	res, err := svc.DownloadCredentials(context.Background(), jobID, adminID)
+	if err != nil {
+		t.Fatalf("DownloadCredentials: %v", err)
+	}
+	if res.TTL != 2*time.Minute {
+		t.Errorf("TTL = %v, want 2m (set via SetPresignTTL)", res.TTL)
 	}
 }

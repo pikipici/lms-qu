@@ -291,10 +291,12 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB, objectStore s
 	importHandler := importjob.NewHandler(importSvc, authRepo)
 	importSvc.SetUserCreator(authRepo)
 	importSvc.SetKelasRepo(kelasRepo)
+	importSvc.SetPresignTTL(time.Duration(cfg.Storage.R2.PresignTTLSec) * time.Second)
 	adminGroup.Post("/import-csv/upload", importHandler.PreviewUpload)
 	adminGroup.Get("/import-csv/:job_id", importHandler.GetPreview)
 	adminGroup.Post("/import-csv/:job_id/cancel", importHandler.Cancel)
 	adminGroup.Post("/import-csv/:job_id/confirm", importHandler.Confirm)
+	adminGroup.Get("/import-csv/:job_id/credentials.csv", importHandler.DownloadCredentials)
 	kelasGroup := api.Group("/kelas",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),

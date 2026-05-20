@@ -132,6 +132,17 @@ func (m *MockStorage) ObjectExists(ctx context.Context, key string) (bool, error
 // PresignGet implements Storage. Returns a stable mock URL whose query
 // "expires" timestamp is testable via SetNowFn.
 func (m *MockStorage) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	return m.presign(ctx, key, ttl, "")
+}
+
+// PresignGetDownload implements Storage. Embeds the requested filename in a
+// query parameter so tests can assert on it without parsing a real
+// Content-Disposition header.
+func (m *MockStorage) PresignGetDownload(ctx context.Context, key string, ttl time.Duration, filename string) (string, error) {
+	return m.presign(ctx, key, ttl, filename)
+}
+
+func (m *MockStorage) presign(ctx context.Context, key string, ttl time.Duration, filename string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -148,6 +159,9 @@ func (m *MockStorage) PresignGet(ctx context.Context, key string, ttl time.Durat
 	expires := now.Add(ttl).Unix()
 	q := url.Values{}
 	q.Set("expires", fmt.Sprintf("%d", expires))
+	if filename != "" {
+		q.Set("filename", filename)
+	}
 	return fmt.Sprintf("mock://storage/%s?%s", url.PathEscape(key), q.Encode()), nil
 }
 
