@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.0 — Storage strategy switched from local disk → **Cloudflare R2** (S3-compatible). **Fase 1 + Fase 2 FULL DONE (20/20)** 2026-05-21. Backend 2.D 6/6 (R2 client + readyz + CSV parser + upload/preview + resume/cancel + confirm with auto-enroll + credentials.csv R2 + presigned download w/ TTL + hourly cleanup cron). Frontend 2.E 3/3 (admin import-csv page: drag-drop upload + resume preview via ?job_id + cancel/confirm + success dialog with download credentials.csv). E2E live smoke 5/5 PASS. Berikutnya: Fase 3 (Bab & Materi + Pengumuman).
+> Status: v0.8.1 — **Fase 3 PLANNING DONE** 2026-05-21. 7 Fase 3 decisions locked (#63-#69 di Section 0): Materi 3-tipe (pdf/youtube/markdown — drop direct video upload), PDF max 20MB, YouTube strict video-id parse + nocookie embed, Pengumuman passive timestamp (no dismiss state), Bab reorder via bulk urutan, Bab progress Fase-3-partial = materi-only re-normalize, Materi hard-delete + compensating R2 cleanup. Section 18 expanded: Fase 3 = 17 task (3.A.1 … 3.F.3). Berikutnya: Task 3.A.1 (Bab model + migration + repo).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Fase 2 closed — Task 2.E.1+2.E.2+2.E.3 done in single commit `0f3772e`; 614-LOC import-csv page with state machine driven by ?job_id, drag-drop upload validating .csv + 5MB cap, preview table with row status pills, cancel/confirm CTAs, success dialog with per-row failure table + download credentials.csv via 302→R2 presigned URL opening in new tab. FE build 21 pages, /admin/import-csv = 12.4kB. Smoke E2E 5/5 PASS via curl flow upload→preview→confirm→download)
+> Last updated: 2026-05-21 (Fase 3 planning — 7 locked decisions appended Section 0 #63-#69; Section 4/6/7/10 propagated; Section 18 Fase 3 task-by-task expanded 17 tasks split 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman; estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding 3.A.1+3.A.2+3.C.1+3.C.2+3.F.1)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -27,7 +27,7 @@
 
 ---
 
-## 0. Locked Decisions (v0.8.0)
+## 0. Locked Decisions (v0.8.1)
 
 | # | Keputusan | Pilihan |
 |---|-----------|---------|
@@ -93,6 +93,13 @@
 | 60 | Frontend env strategy | `NEXT_PUBLIC_API_BASE` di-bake at build time (static export limit). **Production**: rebuild dengan `NEXT_PUBLIC_API_BASE=/api/v1` (same-origin). **Dev**: `.env.development.local` set `NEXT_PUBLIC_API_BASE=http://localhost:8200/api/v1`. Dokumentasikan di `docs/DEPLOY.md`: kalau base URL berubah, FE wajib rebuild. |
 | 61 | Storage backend — Cloudflare R2 | **Backend**: `aws-sdk-go-v2` (`config`, `credentials`, `service/s3`, `service/s3/types`, `feature/s3/manager`) pointing ke R2 endpoint `https://<account_id>.r2.cloudflarestorage.com` dengan `region="auto"` + path-style addressing (`UsePathStyle=true`). **Bucket strategy**: single bucket per environment — `lms-prod` (production) / `lms-dev` (workspace/staging). Object key format mengikuti #58. **Env vars** (semua di `.env`, jangan di-commit): `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (e.g. `lms-prod`), `R2_ENDPOINT` (auto-derive dari ACCOUNT_ID kalau kosong), `R2_PRESIGN_TTL_SECONDS` (default 900 = 15 menit). **Tidak ada public R2 dev URL / custom domain** di MVP — semua akses lewat presigned URL (lihat #62). **Health**: `/readyz` panggil `s3.HeadBucket(R2_BUCKET)` sekali on-startup + cache hasil 30 detik (jangan call tiap request). **Wrapper package**: `backend/internal/storage/r2.go` expose interface `Storage { PutObject, GetObject, HeadObject, DeleteObject, CopyObject, PresignGet, PresignPut }` supaya domain code (kelas/materi/tugas/...) gak depend langsung ke aws-sdk. **Test**: stub `Storage` interface di domain tests; integration test panggil R2 real cuma di task khusus (gated by env flag). |
 | 62 | Upload flow & access control | **Upload (MVP)**: client → `POST /api/v1/<scope>/upload` (multipart) → backend validate (mime sniff, size, role/ownership) → resize image kalau perlu → `s3.PutObject(bucket, <kategori>/<uuid>.<ext>)` → insert row dgn `ObjectKey` + `OriginalFilename` + `MimeType` + `SizeBytes` → return `{ object_key, original_filename, size_bytes }`. **Tidak ada direct browser→R2 upload** di MVP — bandwidth dobel diterima trade-off untuk simpel + auth langsung di backend. (Future v0.9+ bisa migrate ke `PresignPut` direct upload tanpa breaking FE contract karena FE cuma kirim multipart.) **Download/view**: client minta `GET /api/v1/files/:object_key/url` (atau endpoint scoped: `GET /api/v1/tugas/:id/file-url`) → backend cek auth + ownership/enrollment → `PresignGet(object_key, ttl=R2_PRESIGN_TTL_SECONDS)` → return `{ url, expires_at }` → client redirect / `<a href>` / `<img src>` ke URL itu. **Inline vs attachment**: presigned URL set `ResponseContentDisposition` ke `inline; filename="<original>"` untuk gambar (di-render langsung di `<img>`) dan `attachment; filename="<original>"` untuk PDF/doc/zip (force download). **Caching**: presigned URL gak boleh di-cache lebih lama dari TTL. FE TanStack Query: `staleTime = 10 * 60 * 1000` (10 menit, di bawah TTL 15) supaya selalu fresh URL sebelum expired. **Audit**: log presign issuance untuk file sensitif (submission, credentials.csv) — `action='file_url_issued'`, `target_id=<entity_id>`, `meta={object_key, ttl}`. |
+| 63 | Materi tipe (Fase 3) | **Lock 3 tipe saja**: `pdf` (upload ke R2 `materi/<uuid>.pdf`), `youtube` (link video, simpan video_id 11-char saja), `markdown` (text body inline di DB). **Drop direct video upload** dari Section 10 line 918 (bandwidth + cost R2 mahal untuk video; YouTube embed cukup untuk Fase 3). Field `Tipe enum('pdf','youtube','markdown')`. Untuk `pdf`: pakai `ObjectKey/OriginalFilename/MimeType/SizeBytes`. Untuk `youtube`: simpan video_id di `Konten` (text). Untuk `markdown`: simpan body markdown di `Konten` (text). Future v0.9 bisa tambah `audio`/`video` tipe kalau perlu. |
+| 64 | Materi PDF size cap | **Max 20MB per file** (e-book chapter, slide PDF cukup). Constant `MaxMateriBytes = 20 * 1024 * 1024` di `backend/internal/storage/r2.go` atau scoped per-domain. Mime allowlist: `application/pdf` only. Reject 413 `payload_too_large` kalau exceed. (CSV import tetap 5MB cap terpisah, tidak share constant.) |
+| 65 | YouTube URL validation | **Strict regex parse → simpan video_id 11-char saja**, embed via `https://www.youtube-nocookie.com/embed/<id>` (privacy-enhanced, no tracking cookie sampai user click play). Backend helper `parseYouTubeID(url string) (string, error)` di `backend/internal/materi/youtube.go`. Accept formats: `youtube.com/watch?v=`, `youtu.be/`, `youtube.com/shorts/`, `youtube.com/embed/`. Reject 400 `invalid_youtube_url` kalau tidak match (FE friendly error: "Tempel link YouTube standar — `youtube.com/watch?v=...` atau `youtu.be/...`"). FE simpan + display embed URL hasil reconstruct dari video_id. |
+| 66 | Pengumuman dismiss state | **Passive timestamp display** — no read receipt table, no dismiss state per siswa (jawaban Section 12 #2). Pengumuman muncul di list kelas + bab, sort `created_at DESC`. UI: badge "Baru" kalau `created_at` < 7 hari sejak now; badge hilang setelah > 7 hari. Per-siswa read state out-of-scope MVP (defer ke v0.9+ kalau perlu). Tidak ada `MateriRead`-equivalent untuk Pengumuman. |
+| 67 | Bab reorder UX | **Bulk update `urutan` field** via `POST /kelas/:id/bab/reorder` body `{order: [bab_id1, bab_id2, ...]}`. Backend: transaction loop `UpdateColumn("urutan", index)` per bab_id + cek `kelas_id=<:id>` ownership + cek `version` per row (tolak 409 kalau ada bab di-edit paralel). Lebih simpel dari before/after pivot pattern. FE: drag-and-drop list pakai `@dnd-kit/core` + optimistic update + invalidate on settled. |
+| 68 | Bab progress Fase 3 partial | **Fase 3 progress = materi-only**, re-normalize otomatis sesuai locked decision #48. `progress_persen = round(pct_materi × 100)` dimana `pct_materi = materi_dibaca / total_materi` (0 kalau bab kosong materi). Komponen latihan/ulangan/tugas masih 0/null di Fase 3 (belum implement) — auto-skip via re-normalize rule #48. Formula final lengkap aktif setelah Fase 4 + 5 + 6 ship. UI: progress bar + tooltip "Berdasarkan materi dibaca (N/M)". |
+| 69 | Materi cleanup strategy | **Hard delete on Materi.Delete** — DeleteObject R2 dipanggil di service.Delete (mirror Cancel pattern dari ImportJob 2.D.4). Compensating delete: kalau DB Delete fail setelah R2 DeleteObject, log `audit.materi_r2_orphan` + tetap return 500 (R2 orphan toleransi). Skip cron untuk Fase 3 — kalau ada race/orphan akumulasi, audit log + manual purge. Reuse Cleaner pattern (skill `go-cleanup-cron-ctx-bound`) di Fase 8 polish kalau orphan rate signifikan. Bab archive (Status=archived) tidak hapus materi — siswa cuma gak lihat lagi (filter via Bab.Status='published'). |
 
 **Open (perlu sesi terpisah):**
 - Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
@@ -196,7 +203,7 @@ Materi & Tugas punya field `BabID` nullable — kalau diisi, dia bagian dari bab
 - Dashboard: ringkasan, **activity feed** (polling 30s — submission masuk, ulangan selesai, siswa join), **pending counters** (badge tugas belum dinilai, ulangan belum di-review)
 - Kelas: CRUD + archive + **duplicate (copy ke tahun ajaran baru)**, kode invite, list/kick siswa, set bobot nilai bab (Soal vs Tugas)
 - Bab: CRUD + drag-and-drop urutan + **status (draft/published/archived)** + duplicate, per-bab tab (Materi / Soal / Tugas / Pengumuman / Pengaturan Ulangan Bab)
-- Materi: upload PDF, link YouTube, teks markdown — per bab atau kelas
+- Materi: upload PDF (max 20MB), link YouTube (parsed video_id), teks markdown — per bab atau kelas. **3 tipe lock di Fase 3 (locked #63)** — drop direct video upload, YouTube embed cukup.
 - Soal Bab: editor (form + bulk paste), set mode (latihan / ulangan), poin, gambar soal & gambar opsi (opsional)
 - Pengaturan Ulangan Bab per bab: durasi, jadwal, shuffle, **JumlahSoalRandom (random N dari pool)**, **IzinkanReviewSetelahSubmit + WaktuBukaReview**
 - Preview ulangan: render persis kayak siswa (mode read-only) sebelum publish
@@ -470,6 +477,7 @@ RefreshToken { ID, JTI(unique), UserID, IssuedAt, ExpiresAt, RevokedAt(*), Revok
 - **User**: `Status` tambah `locked` (akun di-lock karena terlalu banyak gagal login). `MustChangePassword` default `true` saat create — set `false` setelah user ganti password sendiri. `FailedLoginCount` di-increment per gagal login (per email). `LastFailedLoginAt` untuk window rate limit.
 - **Bab.Status**: `draft` (default, siswa gak lihat), `published` (siswa lihat), `archived` (siswa gak lihat lagi). Beda dari `ArchivedAt` — `Status=archived` adalah workflow guru, `ArchivedAt` adalah hard archive. Untuk konsistensi, **gabung jadi 1**: enum `Status(draft|published|archived)`, tanpa `ArchivedAt` di Bab. Kelas tetap pakai `ArchivedAt`.
 - **MateriRead**: dipakai untuk progress per bab di sisi siswa. Auto-insert pas siswa buka viewer materi.
+- **Materi.Tipe (locked #63)**: enum `pdf|youtube|markdown` (3 tipe lock di Fase 3, drop direct video upload). Untuk `pdf`: pakai `ObjectKey/OriginalFilename/MimeType/SizeBytes` (max 20MB, locked #64). Untuk `youtube`: simpan **video_id 11-char saja** di `Konten` text (parsed dari URL via `parseYouTubeID`, locked #65) — embed lewat `youtube-nocookie.com/embed/<id>`. Untuk `markdown`: simpan body markdown di `Konten` text. Hard delete + R2 cleanup compensating (locked #69).
 - **Tugas**: `IzinkanLate` default false. `PenaltyPersen` 0-100, jadi nilai max submission late = `MaxNilai × (100 - PenaltyPersen) / 100`.
 - **Submission**: `Version` increment tiap resubmit; baris terbaru saja yang dipake (atau pakai 1 row dengan overwrite). Default: **1 row, overwrite** — hemat storage. `IsLate` di-set saat submit, `NilaiSetelahPenalty` dihitung backend pas grading.
 - **SoalBab/Soal**: gambar disimpan di Cloudflare R2 — `ObjectKey` format `soal/<uuid>.<ext>` (lihat decision #58/#61), `OriginalFilename` + `MimeType` + `SizeBytes` di DB column terpisah. Gambar opsi opsional (untuk soal "pilih gambar").
@@ -914,20 +922,23 @@ lms/
 - Frontend siswa: dashboard, gabung kelas via kode
 
 ### Fase 3 — Bab & Materi + Pengumuman + Bab Status (3-4 hari)
-- Backend: Bab CRUD (guru) + reorder bulk endpoint + **status (draft/published/archived)** + **Version field** (optimistic concurrency) + duplicate (copy materi/soal/tugas)
-- Backend: Materi CRUD dengan field `bab_id` nullable (upload PDF, link YouTube, teks markdown) + **upload PDF/video → R2 `materi/<uuid>.<ext>`, ObjectKey + OriginalFilename + MimeType + SizeBytes di DB; akses lewat presigned GET URL endpoint scoped (`GET /materi/:id/file-url`)**
-- Backend: MateriRead endpoint (siswa mark-as-read)
-- Backend: endpoint siswa list bab (cuma published) + detail bab dengan progress (formula 6.4)
-- Backend: Pengumuman CRUD (per-kelas atau per-bab)
+
+> **Locked decisions Fase 3 (v0.8.1):** #63 Materi 3-tipe (pdf/youtube/markdown — drop video upload) | #64 PDF max 20MB | #65 YouTube strict video-id parse + nocookie embed | #66 Pengumuman passive timestamp (no dismiss state) | #67 Bab reorder bulk urutan | #68 Bab progress Fase-3-partial = materi-only re-normalize | #69 Materi hard-delete + compensating R2 cleanup.
+
+- Backend: Bab CRUD (guru) + reorder bulk endpoint (#67) + **status (draft/published/archived)** + **Version field** (optimistic concurrency) + duplicate (copy materi/pengumuman; soal/tugas masuk Fase 4-5)
+- Backend: Materi CRUD dengan field `bab_id` nullable, **3 tipe `pdf|youtube|markdown` (locked #63)** — `pdf` upload ke R2 `materi/<uuid>.pdf` (max 20MB, mime `application/pdf`, locked #64), `youtube` simpan video_id 11-char hasil `parseYouTubeID` (locked #65), `markdown` body inline di DB. PDF akses lewat presigned GET URL endpoint scoped (`GET /materi/:id/file-url`). Hard delete + R2 cleanup (locked #69).
+- Backend: MateriRead endpoint (siswa mark-as-read, idempotent)
+- Backend: endpoint siswa list bab (cuma published) + detail bab dengan progress Fase-3-partial = materi-only re-normalize (locked #68 + formula 6.4)
+- Backend: Pengumuman CRUD (per-kelas atau per-bab, sort `created_at DESC`, no dismiss state — locked #66)
 - Frontend guru:
-  - Tab "Bab" di kelas detail: list bab dengan status badge, drag-and-drop urutan, create/edit/delete/archive/publish/unpublish/duplicate, edit form pakai version (409 → "konten ke-update orang lain, refresh dulu")
-  - `/guru/kelas/[id]/bab/[bid]` shell dengan tabs (Materi / Soal placeholder / Tugas placeholder / Pengumuman / Pengaturan) + status badge di header
-  - Tab Materi di bab: upload PDF, tambah link YouTube, tulis markdown
-  - Tab Pengumuman per kelas + per bab
+  - Tab "Bab" di kelas detail: list bab dengan status badge, drag-and-drop urutan via `@dnd-kit/core` (locked #67), create/edit/delete/archive/publish/unpublish/duplicate, edit form pakai version (409 → "konten ke-update orang lain, refresh dulu")
+  - `/guru/kelas/detail/bab?id=&bid=` shell dengan tabs (Materi / Soal placeholder / Tugas placeholder / Pengumuman / Pengaturan) + status badge di header (static-export friendly query-param routing, mirip /guru/kelas/detail)
+  - Tab Materi di bab: create dialog dengan radio jenis (PDF upload / YouTube link / Markdown editor), list + edit/delete
+  - Tab Pengumuman per kelas + per bab: compose markdown, edit, delete; badge "Baru" kalau < 7 hari (locked #66)
 - Frontend siswa:
-  - `/siswa/kelas/[id]` list bab published (urut, judul, deskripsi, **progress bar dengan tooltip breakdown** sesuai formula 6.4) + section pengumuman
-  - `/siswa/kelas/[id]/bab/[bid]` detail bab dengan tab Materi (viewer + auto mark-read)
-  - Materi viewer: PDF iframe, YouTube embed, react-markdown
+  - `/siswa/kelas/detail?id=` list bab published (urut, judul, deskripsi, **progress bar dengan tooltip "Berdasarkan materi dibaca (N/M)"** — Fase-3-partial locked #68) + section pengumuman (read-only, sort newest first)
+  - `/siswa/kelas/detail/bab?id=&bid=` detail bab dengan tab Materi (viewer + auto mark-read on open) + section pengumuman bab
+  - Materi viewer: PDF iframe via presigned URL TTL 15m, YouTube embed `youtube-nocookie.com/embed/<id>` (locked #65), react-markdown
 
 > **Checkpoint:** Sebelum Fase 4, bedah notifikasi (v0.8).
 
@@ -1059,7 +1070,7 @@ lms/
 ## 12. Open Decisions Tersisa (v0.8.0)
 
 1. **Notifikasi**: bentuk apa, kapan trigger, polling/SSE/websocket — bedah di v0.8 setelah Fase 0-3 jalan.
-2. **Pengumuman dismiss state per siswa**: sekedar "udah dilihat" atau ada read receipt? — diputuskan saat Fase 3 implementasi.
+2. ~~**Pengumuman dismiss state per siswa**: sekedar "udah dilihat" atau ada read receipt? — diputuskan saat Fase 3 implementasi.~~ **RESOLVED v0.8.1 → locked #66** (passive timestamp display, no dismiss state, no read receipt table; badge "Baru" kalau < 7 hari).
 3. **Pending counters polling vs realtime**: MVP polling 30s, kalau kerasa lemot pertimbangin SSE di v0.8.
 4. **Bab unpublish dengan hasil existing**: tampil di /siswa/nilai sebagai "(bab tidak tersedia)" atau hide total. Default: tampil dengan label.
 5. **JWT storage strategy**: localStorage (current, gampang implement, gak ada CSRF risk) vs httpOnly cookie (lebih aman dari XSS, butuh CSRF token). MVP: localStorage. Re-evaluate di v0.8 kalau audit security minta.
@@ -1394,7 +1405,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ---
 
-## 18. Task-by-Task Implementation Plan (Fase 0-2)
+## 18. Task-by-Task Implementation Plan (Fase 0-3)
 
 > Living checklist. Status legend: `[ ]` pending, `[~]` in progress, `[x]` done, `[!]` blocked.
 > Setiap task = bite-sized 2-5 menit kerja, lengkap dengan path file, perintah verify, dan commit message.
@@ -1900,16 +1911,208 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ---
 
+### Fase 3 — Bab & Materi + Pengumuman + Bab Status (3-4 hari)
+
+> Locked decisions: #63 Materi 3-tipe (pdf/youtube/markdown) | #64 PDF max 20MB | #65 YouTube strict video-id parse | #66 Pengumuman passive timestamp | #67 Bab reorder bulk urutan | #68 Bab progress Fase-3-partial = materi-only re-normalize | #69 Materi hard-delete + R2 cleanup compensating.
+> Estimasi: 8-10 hari inline, 4-5 hari kalau delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
+> Konvensi sub-fase: 3.A Bab BE (4 task) | 3.B Bab FE Guru (2 task) | 3.C Materi BE (4 task) | 3.D Materi FE (2 task) | 3.E Bab Siswa + Progress (2 task) | 3.F Pengumuman (3 task) = **17 task total**.
+
+#### 3.A Bab Backend
+
+**Task 3.A.1 — Migration `000004_bab.up.sql` + Bab GORM model + repo dasar**
+- Files: `backend/migrations/000004_bab.up.sql` + `down.sql`, `backend/internal/bab/{model,repo}.go`
+- Schema (locked Section 6): `bab(id uuid pk, kelas_id uuid fk→kelas restrict, nomor int, judul text, deskripsi text, urutan int, status text default 'draft', version int default 1, created_at timestamptz, archived_at timestamptz null)`. Note: `archived_at` di-keep untuk tombstone hard archive — `Status='archived'` workflow guru tetap di kolom `status` (tunggal kolom enum, not bool). Cek catatan Section 6.1 line 478: gabung jadi 1 enum, **drop archived_at di Bab** (kelas tetap pakai). Update model + migration sesuai.
+- Indexes: `(kelas_id, urutan)` btree, `(kelas_id, status)` btree (filter siswa published-only).
+- Trigger `bab_set_updated_at` reuse `set_updated_at()` dari 000002 (kalau perlu `updated_at` — atau skip dan rely on `version` bump saja; Fase 2 kelas pattern → ada `updated_at`. **Decision: tambah `updated_at` di Bab juga**, konsistensi).
+- Repo: `Create`, `FindByID`, `ListByKelas(kelas_id, includeArchived bool, statusFilter *string) []Bab`, `UpdateBasic(id, version int, fields map)` dgn optimistic concurrency `WHERE id=? AND version=?` + reprobe → `ErrVersionConflict` vs `gorm.ErrRecordNotFound` (mirror `kelas.Repo.UpdateBasic`), `Archive(id, version)` (idempotent guard 409 already_archived), `UpdateStatus(id, version, status)` (transition guard: draft↔published↔archived).
+- Verify: `go build ./... && go test ./...` + `migrate up` di workspace → cek `\d bab` show schema + indexes.
+- Commit: `feat(migrations): 000004 bab + status enum + version`, `feat(bab): GORM model + repo + optimistic concurrency`
+
+**Task 3.A.2 — Bab CRUD service + handler (Create/List/Get/Patch/Archive)**
+- Files: `backend/internal/bab/{service,handler,handler_test}.go`. Wire di `cmd/server/main.go` group `/api/v1` dgn middleware order `BearerAuth → ForceChangePassword → RoleGuard(admin,guru) → kelasOwnershipGuard`.
+- Endpoints (Section 7):
+  - `POST /kelas/:id/bab` body `{nomor, judul, deskripsi}` (urutan auto = max+1, status default draft, version=1)
+  - `GET /kelas/:id/bab` — list, query `?status=draft|published|archived&include_archived=true`
+  - `GET /bab/:id` — detail
+  - `PATCH /bab/:id` body `{nomor?, judul?, deskripsi?, urutan?, status?, version}` partial pointer fields (mirror `kelas` Patch pattern dari 2.B.2). Status transition: draft↔published↔archived semua valid (no funnel constraint MVP).
+  - `POST /bab/:id/archive` (idempotent 409 already_archived; sets `status='archived'`, no separate `archived_at`)
+- Audit log: `bab_created/bab_updated/bab_status_changed/bab_archived` dgn `target_kelas_id` + `meta={bab_id, status_lama?, status_baru?}` (locked #59 prep).
+- Ownership guard: kelas dari URL `:id` (untuk POST/GET list) atau Bab.KelasID (untuk GET/PATCH/Archive by bab id) wajib `kelas.guru_id=current_user_id` (atau admin role).
+- Verify: build/vet/test + handler tests (happy path + version conflict 409 + ownership 403 + archived bab patch reject).
+- Commit: `feat(bab): CRUD service + handler + audit log`
+
+**Task 3.A.3 — Bab reorder bulk endpoint**
+- Files: `backend/internal/bab/reorder.go` (+ handler test)
+- Endpoint: `POST /kelas/:id/bab/reorder` body `{order: [bab_id1, bab_id2, ...], versions: {bab_id: version, ...}}`
+- Service: transaction loop `UpdateColumn("urutan", index)` per bab_id + cek `kelas_id=<:id>` ownership + cek `version=versions[bab_id]` per row + auto bump version. Kalau ANY row mismatch version → tx rollback + 409 `version_conflict` body `{conflicts: [{bab_id, current_version}, ...]}`.
+- Validate: `len(order)` harus = jumlah bab di kelas (no add/remove via reorder). Duplicate bab_id → 400 `duplicate_in_order`. Bab dari kelas lain di order → 400 `bab_not_in_kelas`.
+- Audit: 1 entry per call `bab_reordered` dgn `target_kelas_id` + `meta={order: [...]}`.
+- Verify: handler test mixed scenarios + race protection (version conflict mid-tx).
+- Commit: `feat(bab): bulk reorder endpoint with version guard`
+
+**Task 3.A.4 — Bab duplicate endpoint**
+- Files: `backend/internal/bab/duplicate.go`
+- Endpoint: `POST /bab/:id/duplicate` body `{judul_baru?}` → bikin bab baru status=`draft`, version=1, urutan=max+1, copy `nomor` (atau nomor+1?). Decision: **copy nomor as-is + judul tambah suffix " (Salinan)"** kalau `judul_baru` kosong.
+- Copy children: Materi (CopyObject ke uuid baru untuk PDF — lihat #58 storage convention), Pengumuman (copy isi, no created_at carry, set created_at=now). **Skip Soal/Tugas** — masuk Fase 4-5 saat infra-nya ada. Materi Read state TIDAK di-copy (siswa start fresh di bab baru).
+- Transaction: bab create → loop materi (DB row + R2 CopyObject untuk pdf tipe) → loop pengumuman → return new bab_id. Kalau R2 CopyObject fail mid-loop, rollback DB + DeleteObject yang udah ke-copy (compensating).
+- Audit: `bab_duplicated` dgn `meta={source_bab_id, target_bab_id, materi_count, pengumuman_count}`.
+- Verify: handler test happy path + cross-kelas forbidden + R2 mock for CopyObject failure rollback.
+- Commit: `feat(bab): duplicate endpoint with materi+pengumuman copy + R2 CopyObject`
+
+#### 3.B Bab Frontend Guru
+
+**Task 3.B.1 — Tab "Bab" di kelas detail page (list + DnD reorder + create/edit/archive/duplicate)**
+- Files: `frontend/lib/bab-api.ts` (typed client), `frontend/app/(authed)/guru/kelas/detail/page.tsx` (extend tab nav, sebelumnya placeholder dari 2.B.4), tambah komponen `frontend/components/bab/{BabList,BabCard,BabDialog,ReorderProvider}.tsx`.
+- Install `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` di frontend (locked #67).
+- UI: tab Bab di kelas detail. List bab dgn drag handle, status badge (`Draft/Published/Archived`), button create. Dialog create/edit pakai react-hook-form + zod (judul wajib, deskripsi opsional, status select). Edit form kirim `version`; 409 → toast + invalidate. Archive button konfirmasi destructive. Duplicate button → input judul_baru opsional → success router push ke detail bab baru (Task 3.B.2 page).
+- DnD reorder: optimistic update pakai `useMutation` + `onMutate` (urutan local re-sort) + `onError` rollback + `onSettled` invalidate. Versions map collected dari current state, dikirim ke `/reorder`.
+- Verify: typecheck + `npm run build` static export 19+ pages + manual click smoke.
+- Commit: `feat(fe-guru): tab bab di kelas detail + dnd reorder + crud dialogs`
+
+**Task 3.B.2 — `/guru/kelas/detail/bab` shell page (sub-tabs Materi/Pengumuman/Pengaturan, Soal+Tugas placeholder)**
+- File: `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` (static export friendly query-param routing — pakai `useSearchParams` dgn `?id=<kelas_id>&bid=<bab_id>` mirror 2.B.4 pattern).
+- Header: nama bab + status badge + breadcrumb (kelas → bab) + button Refresh/Edit/Archive/Duplicate (reuse dialog dari 3.B.1).
+- Tab nav: Materi (placeholder pointer ke 3.D) | Soal (placeholder Fase 5) | Tugas (placeholder Fase 4) | Pengumuman (placeholder pointer ke 3.F.2) | Pengaturan (form edit basic fields + status switch + delete button).
+- Pengaturan tab: form react-hook-form + zod, kirim PATCH dgn version, 409 handling sama spt 2.B.4.
+- Verify: typecheck + build static export + Fiber serve `/guru/kelas/detail/bab.html` → 200.
+- Commit: `feat(fe-guru): bab detail shell page + sub-tabs scaffold`
+
+#### 3.C Materi Backend
+
+**Task 3.C.1 — Migration `000005_materi.up.sql` + Materi GORM model + repo**
+- Files: `backend/migrations/000005_materi.up.sql` + `down.sql`, `backend/internal/materi/{model,repo}.go`
+- Schema: `materi(id uuid pk, kelas_id uuid fk→kelas restrict, bab_id uuid fk→bab set null, judul text, tipe text check in ('pdf','youtube','markdown'), konten text, object_key text null, original_filename text null, mime_type text null, size_bytes bigint null, urutan int, version int default 1, created_at timestamptz, updated_at timestamptz)`. Trigger `materi_set_updated_at`. Indexes: `(kelas_id, bab_id, urutan)`, `(kelas_id, tipe)`.
+- Tambah `materi_read(materi_id uuid fk cascade, siswa_id uuid fk cascade, read_at timestamptz, PK(materi_id, siswa_id))` di migration yang sama.
+- Repo: Create, FindByID, ListByKelas (filter `?bab_id=`), ListByBab, UpdateBasic dgn optimistic concurrency, Delete (hard, return ObjectKey untuk caller R2 cleanup), MarkRead (idempotent ON CONFLICT DO NOTHING), CountReadByBabSiswa(bab_id, siswa_id) → progress calc.
+- Verify: build/test + migrate up.
+- Commit: `feat(migrations): 000005 materi + materi_read`, `feat(materi): GORM model + repo`
+
+**Task 3.C.2 — Materi CRUD endpoints — youtube + markdown (no upload)**
+- Files: `backend/internal/materi/{service,handler,youtube,handler_test}.go`. Wire group `/api/v1`.
+- Helper `youtube.go`: `parseYouTubeID(url string) (string, error)` — regex match 4 format (`watch?v=`, `youtu.be/`, `shorts/`, `embed/`), validate 11-char alnum+`-_`, return id atau `ErrInvalidYouTubeURL`. Test 8+ kasus.
+- Endpoints:
+  - `POST /kelas/:id/materi` body `{bab_id?, judul, tipe in ('youtube','markdown'), konten}` — youtube validates URL → simpan video_id; markdown simpan body as-is (max 50KB body cap).
+  - `GET /kelas/:id/materi?bab_id=<uuid|null>` — list, ownership scoped.
+  - `GET /materi/:id` — detail.
+  - `PATCH /materi/:id` body `{judul?, konten?, urutan?, version}` partial pointer + version. Tipe TIDAK boleh berubah after create (immutable; create new + delete old kalau perlu).
+  - `DELETE /materi/:id` — hard delete (PDF tipe handled di 3.C.3 R2 cleanup; youtube/markdown cuma DB row).
+- Verify: handler tests + youtube parse tests.
+- Commit: `feat(materi): youtube+markdown CRUD + parseYouTubeID helper`
+
+**Task 3.C.3 — Materi PDF upload + presigned download**
+- Files: `backend/internal/materi/upload.go` (+ tests). Reuse `storage.R2Client` interface dari 2.D.0.
+- Endpoint upload: `POST /kelas/:id/materi/upload` (multipart) — fields: `bab_id?`, `judul`, file `pdf`. Pipeline:
+  1. Auth + ownership guard.
+  2. File header sniff via `http.DetectContentType` (lihat #46) → must be `application/pdf`. Reject 415 `unsupported_mime`.
+  3. Size cap 20MB (locked #64). Reject 413 `payload_too_large` kalau exceed.
+  4. Generate uuid → `object_key = "materi/<uuid>.pdf"`.
+  5. R2 PutObject. Kalau gagal, return 500 (no DB row yet — clean state).
+  6. Insert DB row dgn `tipe='pdf'`, `object_key`, `original_filename`, `mime_type`, `size_bytes`. Kalau insert gagal → R2 DeleteObject compensating + return 500 `materi_db_failed`.
+  7. Return `{materi_id, object_key, original_filename, size_bytes}`.
+- Endpoint presigned: `GET /materi/:id/file-url` (auth + ownership/enrollment guard) → call `R2Client.PresignGet(object_key, ttl=R2_PRESIGN_TTL_SECONDS)` dgn `ResponseContentDisposition='inline; filename="<original>"'` → return `{url, expires_at}`. Audit log `file_url_issued` dgn `meta={materi_id, object_key, ttl}`.
+- Endpoint delete (extend 3.C.2): kalau `tipe='pdf'`, panggil `R2Client.DeleteObject(object_key)` SETELAH DB delete sukses. Kalau R2 delete fail → log `audit.materi_r2_orphan` + return 200 (DB sudah gone, R2 orphan toleransi — consistent dgn locked #69).
+- Verify: handler tests dgn mock R2 (happy + mime mismatch 415 + oversize 413 + DB fail compensating + presigned URL gen + DELETE flow).
+- Commit: `feat(materi): pdf upload to R2 + presigned download + compensating delete`
+
+**Task 3.C.4 — MateriRead endpoint (siswa mark-as-read)**
+- Files: `backend/internal/materi/read.go` (+ test)
+- Endpoint: `POST /materi/:id/read` (siswa-only, role guard + enrollment guard untuk Materi.KelasID). Idempotent: `INSERT ... ON CONFLICT DO NOTHING` → return `{materi_id, read_at, was_new bool}`.
+- Audit: skip (terlalu chatty — siswa bisa baca puluhan materi). Cuma log via slog level=debug.
+- Verify: handler test idempotent + role guard 403 untuk guru + enrollment 403 untuk siswa di kelas lain.
+- Commit: `feat(materi): siswa mark-as-read endpoint idempotent`
+
+#### 3.D Materi Frontend
+
+**Task 3.D.1 — Tab Materi di bab detail (guru) — create dialog + list + edit/delete**
+- Files: `frontend/lib/materi-api.ts` (typed client + R2 upload helper), `frontend/components/materi/{MateriList,MateriCreateDialog,MateriEditDialog,YouTubeInput,MarkdownEditor,PdfUpload}.tsx`. Extend `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` Materi tab.
+- Create dialog: radio jenis (PDF / YouTube / Markdown). Per jenis:
+  - **PDF**: drag-drop file (.pdf cap 20MB FE-side validation locked #64), accept `application/pdf` only, show progress bar saat upload → backend `POST /kelas/:id/materi/upload`.
+  - **YouTube**: text input URL → live parse + preview embed via `youtube-nocookie.com/embed/<id>` (FE-side same regex — copy-paste dari backend `parseYouTubeID` ke `frontend/lib/youtube.ts`), error inline kalau invalid format.
+  - **Markdown**: textarea + preview live via react-markdown (install kalau belum ada). Char counter (cap 50KB).
+- List: card per materi dgn icon per tipe (FileText/Youtube/Code) + judul + tombol Edit/Delete. Edit dialog cuma untuk judul + konten (untuk youtube re-paste URL, markdown edit body — PDF tidak editable, cuma replace via delete+create).
+- Verify: typecheck + build + manual smoke.
+- Commit: `feat(fe-guru): materi tab — create dialog 3-tipe + list + edit/delete`
+
+**Task 3.D.2 — Siswa materi viewer (PDF iframe + YouTube embed + react-markdown) + auto mark-read**
+- Files: `frontend/components/materi/{MateriViewer,PdfViewer,YouTubeEmbed,MarkdownView}.tsx`. Dipakai di `/siswa/kelas/detail/bab` page (Task 3.E.2).
+- PdfViewer: fetch presigned URL via `GET /materi/:id/file-url` (TanStack Query staleTime 10min, locked #62) → `<iframe src={url}>`. Auto-call `POST /materi/:id/read` on mount (debounce 2s biar gak fire saat scroll-by).
+- YouTubeEmbed: `<iframe src="https://www.youtube-nocookie.com/embed/<id>" allow="encrypted-media" />`. Auto mark-read on mount (no debounce — view cheap).
+- MarkdownView: `<Markdown>{konten}</Markdown>` dgn safe renderer. Auto mark-read on mount.
+- Verify: typecheck + build + manual click flow di siswa role.
+- Commit: `feat(fe-siswa): materi viewer 3-tipe + auto mark-read`
+
+#### 3.E Bab Siswa + Progress
+
+**Task 3.E.1 — GET endpoints siswa bab list + bab detail dgn progress**
+- Files: `backend/internal/bab/student.go` (handler + service)
+- Endpoints:
+  - `GET /siswa/kelas/:id/bab` (siswa enrolled di kelas) → list bab WHERE `kelas_id=:id AND status='published'` ORDER BY urutan. Per bab: hitung `progress_persen` Fase-3-partial = `materi_read_count / materi_total` × 100 (locked #68 + formula 6.4 re-normalize). Kalau materi_total=0 → progress_persen=0 + flag `bab_kosong=true`. Response: `{bab: [{id, nomor, judul, deskripsi, progress: {persen, breakdown: {materi: {pct, w}}, bab_kosong}}]}`. **Komponen latihan/ulangan/tugas hide di Fase 3** (pct=null + w=0 di breakdown — FE skip render).
+  - `GET /siswa/bab/:id` → detail bab + materi list (ordered) + read state per materi (boolean `sudah_dibaca`). Return 404 kalau `status != 'published'` atau siswa not enrolled.
+- Service: 1 query batched untuk progress (subquery atau LEFT JOIN ke materi_read scoped siswa_id). Avoid N+1.
+- Verify: handler test + benchmark progress calc untuk 50 bab.
+- Commit: `feat(bab): siswa list bab + detail with progress fase-3-partial`
+
+**Task 3.E.2 — `/siswa/kelas/detail` (list bab + progress) + `/siswa/kelas/detail/bab` (materi viewer)**
+- Files: `frontend/app/(authed)/siswa/kelas/detail/page.tsx`, `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx`. Extend `frontend/lib/siswa-kelas-api.ts`.
+- `/siswa/kelas/detail?id=<kelas_id>`:
+  - Header kelas (nama + guru + bobot info read-only).
+  - Section "Bab" — list card per bab published, urut: nomor + judul + deskripsi snippet + **progress bar** dgn tooltip "Berdasarkan materi dibaca (N/M)" (Fase 3 progress only). Klik card → router push ke `/siswa/kelas/detail/bab?id=<kelas>&bid=<bab>`.
+  - Section "Pengumuman" — placeholder pointer ke 3.F.3.
+- `/siswa/kelas/detail/bab?id=<kelas>&bid=<bab>`:
+  - Header bab (nomor + judul + status + breadcrumb).
+  - Tab Materi: list materi (urut) + viewer expand-on-click pakai `MateriViewer` dari 3.D.2. Auto mark-read on viewer open.
+  - Tab Pengumuman: placeholder pointer ke 3.F.3.
+  - Tab Latihan/Tugas/Hasil: placeholder Fase 4-5.
+- Verify: typecheck + build static export + manual smoke.
+- Commit: `feat(fe-siswa): kelas detail list bab + bab detail materi tab`
+
+#### 3.F Pengumuman
+
+**Task 3.F.1 — Migration `000006_pengumuman.up.sql` + Pengumuman model + repo + CRUD endpoints**
+- Files: `backend/migrations/000006_pengumuman.up.sql` + `down.sql`, `backend/internal/pengumuman/{model,repo,service,handler,handler_test}.go`. Wire group `/api/v1`.
+- Schema: `pengumuman(id uuid pk, kelas_id uuid fk→kelas restrict, bab_id uuid fk→bab set null, judul text, isi text, created_by_id uuid fk→users restrict, status text default 'published' check in ('published','archived'), created_at timestamptz, updated_at timestamptz)`. Index `(kelas_id, created_at DESC)` (Section 6.3).
+- Endpoints:
+  - `POST /kelas/:id/pengumuman` (guru-only, kelas owner) body `{judul, isi, bab_id?}`
+  - `GET /kelas/:id/pengumuman?status=published&bab_id=<uuid|null>&limit=20` (guru + siswa enrolled, sort `created_at DESC`)
+  - `GET /pengumuman/:id`
+  - `PATCH /pengumuman/:id` body `{judul?, isi?, status?}` (guru pemilik / kelas owner / admin)
+  - `DELETE /pengumuman/:id` (hard delete + audit)
+- Audit: `pengumuman_created/updated/archived/deleted`.
+- Verify: handler tests.
+- Commit: `feat(migrations): 000006 pengumuman`, `feat(pengumuman): CRUD service + handler`
+
+**Task 3.F.2 — FE guru: tab Pengumuman di kelas detail + bab detail (compose + edit + archive)**
+- Files: `frontend/lib/pengumuman-api.ts`, `frontend/components/pengumuman/{PengumumanList,PengumumanComposer,PengumumanEditDialog}.tsx`. Extend kelas detail (3.B placeholder) + bab detail (3.B.2 placeholder).
+- Composer: judul + isi (markdown editor reuse dari 3.D.1). Bab detail tab → bab_id auto-fill. Kelas detail tab → bab_id null (announcement umum).
+- List: card per pengumuman, sort newest, badge "Baru" kalau `created_at` < 7 hari (locked #66, calc client-side dari now). Tombol Edit/Archive/Hapus untuk guru pemilik.
+- Verify: typecheck + build + manual smoke.
+- Commit: `feat(fe-guru): pengumuman compose + edit + archive di kelas+bab detail`
+
+**Task 3.F.3 — FE siswa: read-only pengumuman list di kelas detail + bab detail**
+- Files: `frontend/components/pengumuman/PengumumanReadList.tsx`. Extend `/siswa/kelas/detail` + `/siswa/kelas/detail/bab` (Task 3.E.2 sections).
+- UI: card list, sort newest, badge "Baru" kalau < 7 hari, render isi via react-markdown. No mark-read action (locked #66 passive timestamp). Empty state "Belum ada pengumuman".
+- Verify: typecheck + build + manual smoke.
+- Commit: `feat(fe-siswa): pengumuman read-only list di kelas+bab detail`
+
+---
+
 ### Current Next Step (Section 18)
 
-**FASE 2 CLOSED — 20/20 DONE 2026-05-21.** Task 2.E.1+2.E.2+2.E.3 selesai dalam commit `0f3772e` (614-LOC `/admin/import-csv` page + 232-LOC import-api.ts + sidebar nav + 2 file modified). FE build 21 pages OK, `/admin/import-csv = 12.4kB`. Live E2E smoke 5/5 PASS via curl flow (upload → resume preview → confirm → 302 redirect → R2 presigned URL → body verified). Cleanup smoke artifacts done (2 users + 4 audit + 1 import_job + 2 R2 objects).
+**FASE 3 PLANNING DONE — siap eksekusi 2026-05-21.** Section 0 lock 7 decisions baru (#63-#69), Section 4/6/10 propagated, Section 18 expanded 17 task (3.A.1 .. 3.F.3) split sub-fase 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman. Estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
 
-**Pilihan next:**
-1. **Pivot ke Fase 3 — Bab & Materi + Pengumuman** (rekomen) — domain full-stack baru: CRUD bab per kelas, upload materi PDF/video ke R2 (reusable Storage interface dari 2.D), pengumuman per kelas dengan notif. Estimasi: 6-10 task.
-2. **QA + tutup hari** — udah produktif: 12 task closed (2.C.4 + 2.D.0.a/b + 2.D.1-2.D.6 + 2.E.1-2.E.3). Bisa run E2E manual flow guru-siswa-import (Fase 2.F task 1+2) sebelum pivot.
-3. **Tuning + maintenance** — fix `lib/role-guard.tsx` warning useMemo, audit existing pages untuk konsistensi style, update test count di docs.
+**Eksekusi berikutnya: Task 3.A.1 — Migration `000004_bab.up.sql` + Bab GORM model + repo dasar.**
 
-Default rekomen gue: **opsi 1** (pivot Fase 3). Fase 2 closed clean, momentum bagus pivot ke domain baru. Bisa reuse banyak pattern: Storage interface untuk file upload, presigned download untuk akses materi, audit log conventions, R2 cleanup cron pattern (skill `go-cleanup-cron-ctx-bound`).
+Approach options:
+1. **Inline** — gua kerjain di chat: tulis migration SQL + Go model/repo + tests, push ke workspace, verify migrate up + go test, lalu commit. Best untuk task pertama ini biar pattern-nya bersih dan konsisten.
+2. **Delegasi codex** — pas untuk batch CRUD scaffolding (3.A.1 + 3.A.2 sekali jalan, atau 3.C.1+3.C.2+3.F.1). Catatan: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
+
+**Default rekomen gue: opsi 1 (inline) untuk 3.A.1**, karena schema decision-nya butuh nuance (e.g. archived_at vs Status='archived' decision di Section 6.1 line 478, updated_at column tambah, indexes, trigger). Setelah pattern Bab BE solid (3.A.1 + 3.A.2), batch 3.C.1+3.C.2+3.F.1 boleh delegasi codex.
+
+**Pilihan jawaban:**
+- "inline 3.A.1" → gua langsung kerjain Task 3.A.1.
+- "delegasi codex 3.A.1+3.A.2" → gua siapin prompt codex untuk batch.
+- "review plan dulu" → gua tampilin ringkasan 17 task untuk lu cek sebelum eksekusi.
+- "pause planning, start later" → gue tutup sesi, save state.
 
 > Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
