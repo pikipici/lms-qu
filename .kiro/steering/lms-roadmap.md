@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 + 2.B FULL DONE (kelas/enrollment/import_jobs schema + GORM repos + kode invite generator + CRUD endpoints + FE guru shell list/create/detail/edit/duplicate/archive). Berikut: Task 2.C.1 (enrollment join via kode invite — backend).
+> Status: v0.7.2 — Fase 1 in progress: 1.A + 1.B + 1.C + 1.D + 1.E + 1.F FULL + 1.G FULL + 1.H FULL DONE. Backend admin domain CLOSED. FE admin: auth stack + admin shell + /admin/pengguna list/create/detail + /admin/audit-log + /admin/login-attempts. Fase 2 in progress: 2.A.1 + 2.A.2 + 2.B FULL + 2.C.1 DONE (kelas/enrollment/import_jobs schema + GORM repos + kode invite generator + CRUD endpoints + FE guru shell list/create/detail/edit/duplicate/archive + siswa join via kode invite). Berikut: Task 2.C.2 (admin assign siswa ke kelas — bulk supported).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-20 (Section 18: Task 2.B.4 marked done; FE guru kelas detail + edit + duplicate + archive shipped, static export hijau, /guru/kelas/detail.html serve 200; Fase 2.B FULL DONE)
+> Last updated: 2026-05-20 (Section 18: Task 2.C.1 marked done; siswa join via kode invite shipped — service+handler+rate-limit+tests, E2E 10 scenario hijau termasuk role-guard 403 dan archived 409)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1649,11 +1649,11 @@ Setelah tools jadi, runbook deploy jadi:
 
 #### 2.C Enrollment
 
-**Task 2.C.1 — Siswa join via kode (rate limit 10/min)**
-- `POST /siswa/kelas/join` body `{kode_invite}`
-- Logic: rate limit per IP, find kelas by kode, insert enrollment (ignore conflict), JoinedVia=kode
-- Test
-- Commit: `feat(kelas): siswa join via kode`
+**Task 2.C.1 — Siswa join via kode (rate limit 10/min)** ✅ DONE 2026-05-20
+- Files: `backend/internal/kelas/enrollment_service.go` (+test), `backend/internal/kelas/enrollment_handler.go` (+test), `backend/internal/kelas/rate_limit.go`. Wire `cmd/server/main.go`.
+- Commit: `2d94288` (feat) + `0eaec1e` (lint fix unused import)
+- Shipped: `POST /api/v1/siswa/kelas/join` body `{kode_invite}`. Mounted under `/siswa` group dgn `BearerAuth → ForceChangePassword → RoleGuard(siswa)`. Rate-limit `JoinKodeRateLimit(10)` per (IP, user_id) per minute. Service flow: trim+UPPER kode (charset uppercase-only, tahan typo lowercase) → FindByKodeInvite → cek archived → cek prior removed enrollment (no silent re-activate, surface ErrEnrollmentRemoved) → repo.Enroll ON CONFLICT DO NOTHING → audit `siswa_joined_kelas` dgn `target_kelas_id` (locked decision #59 prep). Idempotent: pertama join 201 inserted=true, ulang 200 inserted=false. Sentinels: ErrKodeInviteEmpty/NotFound/KelasArchived/EnrollmentRemoved/AlreadyEnrolled. kelasRepo interface extended dgn Enroll + FindEnrollment; mockRepo + stubSvc updated.
+- Verified server: build/vet/test PASS; E2E smoke 10 scenario hijau (lowercase normalize/idempotent/wrong kode 404/empty 400/role-guard 403 untuk guru/archived 409/audit log siswa_joined_kelas + siswa_join_kelas_noop terisi/enrollment row active+kode di DB).
 
 **Task 2.C.2 — Admin assign siswa ke kelas (bulk supported)**
 - `POST /admin/kelas/:id/enroll` body `{siswa_ids: []}`
@@ -1732,7 +1732,7 @@ Setelah tools jadi, runbook deploy jadi:
 
 ### Current Next Step (Section 18)
 
-**Berikut: Task 2.C.1 — Backend siswa join via kode invite.** Fase 2.B FULL DONE: backend kelas CRUD (commits c14640d → 620594f) + FE guru shell (e0a84d3) + FE detail/edit/duplicate/archive (a0aac67 + 78e8832). Static export 18 pages, semua kelas-routes hidup di port 8200. Kode invite generator + ownership guard + optimistic concurrency + audit log siap. Task 2.C.1 spec: bikin handler `POST /api/v1/siswa/kelas/join` body `{kode_invite}` di `backend/internal/kelas/` (atau folder baru `backend/internal/enrollment/`). Logic: cek kode_invite valid (hindari case-sensitive issue — UPPER kedua sisi), rate-limit per IP+user_id (10/min, mirror `LoginRateLimit` di auth/handler.go). Repo `Enroll(ctx, kelasID, siswaID, JoinedVia=kode)` udah siap di kelas/repo.go (ON CONFLICT DO NOTHING). Audit log `siswa_joined_kelas` dgn `target_kelas_id`. Test: handler test (rate limit + ON CONFLICT idempotent + invalid kode → not_found). Commit: `feat(kelas): siswa join via kode invite`. Setelah ini Task 2.C.2 admin assign bulk, lalu 2.C.3 FE siswa dashboard. **Catatan**: middleware order `BearerAuth → ForceChangePassword → RoleGuard(siswa)` — beda dari /api/v1/kelas yang allow admin+guru.
+**Berikut: Task 2.C.2 — Admin assign siswa ke kelas (bulk supported).** Task 2.C.1 SELESAI: backend `POST /api/v1/siswa/kelas/join` hidup (commits `2d94288` + `0eaec1e`), E2E 10 scenario hijau, audit log `siswa_joined_kelas`/`siswa_join_kelas_noop` ke-record dgn `target_kelas_id`. Task 2.C.2 spec: `POST /api/v1/admin/kelas/:id/enroll` body `{siswa_ids: []}` di `backend/internal/admin/handler.go` (admin scope, bukan siswa). Logic: validate siswa_ids (max ~100 per request supaya gak request gigantis), batch repo.Enroll dgn JoinedViaAdmin, kumpulkan summary `{enrolled: [...], already_enrolled: [...], invalid: [...]}` (siswa_id tidak valid / role bukan siswa / kelas tidak ada). Audit log per-siswa atau satu summary entry — pilih per-siswa supaya konsisten dgn pattern admin. Test handler: ownership scope (admin global, bukan guru), partial success (some valid + some not), bulk size limit. Commit: `feat(admin): assign siswa ke kelas (bulk)`. Setelah ini Task 2.C.3 FE siswa dashboard + join form.
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang ada di catatan terdahulu (`ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`).
 
