@@ -142,6 +142,25 @@ func (h *Handler) ListUsers(c *fiber.Ctx) error {
 	})
 }
 
+// GetUser handles GET /api/v1/admin/users/:id.
+func (h *Handler) GetUser(c *fiber.Ctx) error {
+	targetID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return adminError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+
+	user, err := h.repo.FindUserByID(c.UserContext(), targetID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return adminError(c, fiber.StatusNotFound, "user not found", "user_not_found")
+	}
+	if err != nil {
+		slog.Error("admin find user failed", slog.String("err", err.Error()))
+		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"user": user})
+}
+
 // ListTargetSessions handles GET /api/v1/admin/users/:id/sessions.
 func (h *Handler) ListTargetSessions(c *fiber.Ctx) error {
 	targetID, err := uuid.Parse(c.Params("id"))

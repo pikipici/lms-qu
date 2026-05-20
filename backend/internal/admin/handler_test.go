@@ -1773,6 +1773,62 @@ func TestHandler_UnlockUser(t *testing.T) {
 	})
 }
 
+func TestHandler_GetUser(t *testing.T) {
+	t.Run("happy 200 returns user", func(t *testing.T) {
+		targetID := uuid.New()
+		repo := repoWithUsers(&auth.User{
+			ID:     targetID,
+			Name:   "Teacher",
+			Email:  "teacher@example.com",
+			Role:   auth.Guru,
+			Status: auth.Active,
+		})
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodGet, "/api/v1/admin/users/"+targetID.String(), "")
+		defer resp.Body.Close()
+
+		if resp.StatusCode != fiber.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusOK)
+		}
+		var body struct {
+			User *auth.User `json:"user"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if body.User == nil || body.User.ID != targetID || body.User.Email != "teacher@example.com" {
+			t.Fatalf("user = %+v, want id=%s email=teacher@example.com", body.User, targetID)
+		}
+		if repo.findIDCalls != 1 || repo.findID != targetID {
+			t.Fatalf("FindUserByID calls/id = %d/%s, want 1/%s", repo.findIDCalls, repo.findID, targetID)
+		}
+	})
+
+	t.Run("invalid_id -> 400", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodGet, "/api/v1/admin/users/not-a-uuid", "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusBadRequest, "invalid_id")
+		if repo.findIDCalls != 0 {
+			t.Fatalf("findIDCalls = %d, want 0", repo.findIDCalls)
+		}
+	})
+
+	t.Run("user_not_found -> 404", func(t *testing.T) {
+		repo := &stubRepo{}
+		app := testAdminApp(repo, uuid.New())
+
+		resp := doAdminRequest(t, app, http.MethodGet, "/api/v1/admin/users/"+uuid.NewString(), "")
+		defer resp.Body.Close()
+
+		assertErrorCode(t, resp, fiber.StatusNotFound, "user_not_found")
+	})
+}
+
 func repoWithUsers(users ...*auth.User) *stubRepo {
 	store := make(map[uuid.UUID]*auth.User, len(users))
 	for _, user := range users {
@@ -1864,6 +1920,7 @@ func testAdminAppWithVerifier(repo *stubRepo, adminID uuid.UUID, verifier passwo
 	}
 	app.Get("/api/v1/admin/users", h.ListUsers)
 	app.Post("/api/v1/admin/users", h.CreateUser)
+	app.Get("/api/v1/admin/users/:id", h.GetUser)
 	app.Patch("/api/v1/admin/users/:id", h.UpdateUser)
 	app.Delete("/api/v1/admin/users/:id", h.DeleteUser)
 	app.Post("/api/v1/admin/users/:id/reset-password", h.ResetUserPassword)

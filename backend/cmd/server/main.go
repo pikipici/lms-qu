@@ -213,6 +213,7 @@ func mountRoutes(app *fiber.App, cfg *config.Config, gdb *gorm.DB) {
 	adminUsers := adminGroup.Group("/users")
 	adminUsers.Get("/", adminHandler.ListUsers)
 	adminUsers.Post("/", adminHandler.CreateUser)
+	adminUsers.Get("/:id", adminHandler.GetUser)
 	adminUsers.Patch("/:id", adminHandler.UpdateUser)
 	adminUsers.Delete("/:id", adminHandler.DeleteUser)
 	adminUsers.Post("/:id/reset-password", adminHandler.ResetUserPassword)
