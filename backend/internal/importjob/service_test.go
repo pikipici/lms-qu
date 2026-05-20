@@ -78,9 +78,19 @@ func (nopCloser) Close() error { return nil }
 
 // stubRepo captures inserts so tests can assert state without touching GORM.
 type stubRepo struct {
-	mu      sync.Mutex
-	created []*ImportJob
+	mu        sync.Mutex
+	created   []*ImportJob
 	createErr error
+	// findFn is consulted by FindByIDForAdmin if non-nil; otherwise we look
+	// up `created` in-memory by id+admin_id.
+	findFn       func(ctx context.Context, id, adminID uuid.UUID) (*ImportJob, error)
+	setStatusErr error
+	statusCalls  []statusCall
+}
+
+type statusCall struct {
+	id     uuid.UUID
+	status Status
 }
 
 func (r *stubRepo) Create(ctx context.Context, j *ImportJob) error {
@@ -90,6 +100,35 @@ func (r *stubRepo) Create(ctx context.Context, j *ImportJob) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.created = append(r.created, j)
+	return nil
+}
+
+func (r *stubRepo) FindByIDForAdmin(ctx context.Context, id, adminID uuid.UUID) (*ImportJob, error) {
+	if r.findFn != nil {
+		return r.findFn(ctx, id, adminID)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, j := range r.created {
+		if j.ID == id && j.AdminID != nil && *j.AdminID == adminID {
+			return j, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
+func (r *stubRepo) SetStatus(ctx context.Context, id uuid.UUID, status Status, confirmedAt, completedAt *time.Time) error {
+	if r.setStatusErr != nil {
+		return r.setStatusErr
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.statusCalls = append(r.statusCalls, statusCall{id: id, status: status})
+	for _, j := range r.created {
+		if j.ID == id {
+			j.Status = status
+		}
+	}
 	return nil
 }
 
@@ -322,4 +361,208 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+// --- GetPreview tests (Task 2.D.3) ---
+
+func TestService_GetPreview_Happy(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	adminID := uuid.New()
+	csv := []byte("nama,email\nAndi,andi@a.id\nBudi,budi@a.id\n")
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: csv,
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	got, err := svc.GetPreview(context.Background(), uploaded.Job.ID, adminID)
+	if err != nil {
+		t.Fatalf("GetPreview: %v", err)
+	}
+	if got.Job.ID != uploaded.Job.ID {
+		t.Errorf("Job.ID = %v, want %v", got.Job.ID, uploaded.Job.ID)
+	}
+	if len(got.Rows) != 2 {
+		t.Errorf("Rows = %d, want 2", len(got.Rows))
+	}
+	if got.Rows[0].Email != "andi@a.id" {
+		t.Errorf("Rows[0].Email = %q, want andi@a.id", got.Rows[0].Email)
+	}
+}
+
+func TestService_GetPreview_NotFound(t *testing.T) {
+	svc := newSvc(newStubStore(), &stubRepo{})
+	_, err := svc.GetPreview(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("err = %v, want ErrJobNotFound", err)
+	}
+}
+
+func TestService_GetPreview_WrongAdmin(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	owner := uuid.New()
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: owner, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	other := uuid.New()
+	_, err = svc.GetPreview(context.Background(), uploaded.Job.ID, other)
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("err = %v, want ErrJobNotFound (cross-admin scope)", err)
+	}
+}
+
+func TestService_GetPreview_Expired(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	adminID := uuid.New()
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	// Advance clock past PreviewTTL.
+	svc.SetClock(func() time.Time {
+		return uploaded.Job.ExpiresAt.Add(time.Minute)
+	})
+
+	_, err = svc.GetPreview(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrJobExpired) {
+		t.Fatalf("err = %v, want ErrJobExpired", err)
+	}
+}
+
+func TestService_GetPreview_NotInPreview(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	adminID := uuid.New()
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+
+	// Simulate cancellation (or any non-preview state).
+	uploaded.Job.Status = StatusCancelled
+
+	_, err = svc.GetPreview(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrJobNotInPreview) {
+		t.Fatalf("err = %v, want ErrJobNotInPreview", err)
+	}
+}
+
+// --- Cancel tests (Task 2.D.3) ---
+
+func TestService_Cancel_Happy(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	adminID := uuid.New()
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+	objKey := *uploaded.Job.ObjectKey
+	if _, ok := store.objects[objKey]; !ok {
+		t.Fatalf("setup: object should be in store before cancel")
+	}
+
+	res, err := svc.Cancel(context.Background(), uploaded.Job.ID, adminID)
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if res.Job.Status != StatusCancelled {
+		t.Errorf("Status = %s, want cancelled", res.Job.Status)
+	}
+	if res.ObjectKey != objKey {
+		t.Errorf("ObjectKey = %q, want %q", res.ObjectKey, objKey)
+	}
+
+	// SetStatus called once with cancelled.
+	if len(repo.statusCalls) != 1 || repo.statusCalls[0].status != StatusCancelled {
+		t.Errorf("statusCalls = %+v", repo.statusCalls)
+	}
+	// R2 object deleted.
+	if _, ok := store.objects[objKey]; ok {
+		t.Errorf("R2 object %q not deleted", objKey)
+	}
+	if len(store.deleteCalls) != 1 || store.deleteCalls[0] != objKey {
+		t.Errorf("deleteCalls = %v, want [%q]", store.deleteCalls, objKey)
+	}
+}
+
+func TestService_Cancel_NotFound(t *testing.T) {
+	svc := newSvc(newStubStore(), &stubRepo{})
+	_, err := svc.Cancel(context.Background(), uuid.New(), uuid.New())
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("err = %v, want ErrJobNotFound", err)
+	}
+}
+
+func TestService_Cancel_AlreadyCancelled(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	adminID := uuid.New()
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+	uploaded.Job.Status = StatusCancelled
+
+	_, err = svc.Cancel(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrJobNotInPreview) {
+		t.Fatalf("err = %v, want ErrJobNotInPreview (idempotent guard)", err)
+	}
+	// Must NOT call DeleteObject on second cancel.
+	if len(store.deleteCalls) != 0 {
+		t.Errorf("deleteCalls = %v, want empty (no double-delete)", store.deleteCalls)
+	}
+}
+
+func TestService_Cancel_DBFailureSurfaces(t *testing.T) {
+	store := newStubStore()
+	repo := &stubRepo{}
+	svc := newSvc(store, repo)
+
+	adminID := uuid.New()
+	uploaded, err := svc.PreviewUpload(context.Background(), PreviewUploadInput{
+		AdminID: adminID, Filename: "x.csv", Body: []byte("nama,email\nAndi,a@a.id\n"),
+	})
+	if err != nil {
+		t.Fatalf("PreviewUpload: %v", err)
+	}
+	repo.setStatusErr = errors.New("db down")
+
+	_, err = svc.Cancel(context.Background(), uploaded.Job.ID, adminID)
+	if !errors.Is(err, ErrPersistFailed) {
+		t.Fatalf("err = %v, want wraps ErrPersistFailed", err)
+	}
+	// R2 object must NOT be deleted if DB update failed.
+	if _, ok := store.objects[*uploaded.Job.ObjectKey]; !ok {
+		t.Errorf("R2 object should still exist when DB update fails")
+	}
 }

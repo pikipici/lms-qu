@@ -26,6 +26,8 @@ const uploadMaxBytes = MaxCSVBytes
 // tests can stub it out without standing up real Storage / Repo.
 type uploadService interface {
 	PreviewUpload(ctx context.Context, in PreviewUploadInput) (*PreviewUploadResult, error)
+	GetPreview(ctx context.Context, id, adminID uuid.UUID) (*GetPreviewResult, error)
+	Cancel(ctx context.Context, id, adminID uuid.UUID) (*CancelResult, error)
 }
 
 // auditLogger captures the LogAudit slice of auth.Repo. Inlined so we don't
@@ -126,6 +128,75 @@ func (h *Handler) PreviewUpload(c *fiber.Ctx) error {
 	})
 }
 
+// GetPreview handles GET /api/v1/admin/import-csv/:job_id.
+//
+// Resume endpoint for an admin's preview tab. Scoped to the admin who
+// uploaded the job. Returns 200 with the same shape as PreviewUpload's
+// success response. Status codes:
+//   - 404 not_found       — job missing or owned by someone else
+//   - 409 not_in_preview  — job already cancelled / processing / completed
+//   - 410 preview_expired — preview TTL elapsed (FE drops cached tab)
+func (h *Handler) GetPreview(c *fiber.Ctx) error {
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return importError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	jobID, err := uuid.Parse(c.Params("job_id"))
+	if err != nil {
+		return importError(c, fiber.StatusBadRequest, "job_id bukan UUID valid", "invalid_job_id")
+	}
+
+	res, err := h.svc.GetPreview(c.UserContext(), jobID, adminID)
+	if err != nil {
+		status, code, msg := mapServiceError(err)
+		return importError(c, status, msg, code)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"job_id":        res.Job.ID,
+		"valid_count":   res.Job.ValidCount,
+		"invalid_count": res.Job.InvalidCount,
+		"total_rows":    res.Job.TotalRows,
+		"preview_rows":  res.Rows,
+		"expires_at":    res.Job.ExpiresAt.Format(time.RFC3339),
+		"filename":      res.Job.Filename,
+		"status":        res.Job.Status,
+	})
+}
+
+// Cancel handles POST /api/v1/admin/import-csv/:job_id/cancel.
+//
+// Flips a preview ImportJob to status=cancelled and best-effort deletes the
+// R2 raw CSV. Audit log: import_csv_cancelled. Status codes mirror
+// GetPreview (404/409/410). Success response is the cancelled job summary.
+func (h *Handler) Cancel(c *fiber.Ctx) error {
+	adminID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return importError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	jobID, err := uuid.Parse(c.Params("job_id"))
+	if err != nil {
+		return importError(c, fiber.StatusBadRequest, "job_id bukan UUID valid", "invalid_job_id")
+	}
+
+	res, err := h.svc.Cancel(c.UserContext(), jobID, adminID)
+	if err != nil {
+		status, code, msg := mapServiceError(err)
+		return importError(c, status, msg, code)
+	}
+
+	h.logAudit(c, adminID, res.Job.ID, "import_csv_cancelled", auditMeta(map[string]any{
+		"filename":   res.Job.Filename,
+		"object_key": res.ObjectKey,
+	}))
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"job_id":   res.Job.ID,
+		"status":   res.Job.Status,
+		"filename": res.Job.Filename,
+	})
+}
+
 // mapServiceError translates parser/service sentinel errors into stable HTTP
 // status + code pairs the FE can branch on.
 func mapServiceError(err error) (status int, code string, msg string) {
@@ -146,6 +217,12 @@ func mapServiceError(err error) (status int, code string, msg string) {
 		return fiber.StatusBadRequest, "invalid_utf8", "csv bukan utf-8 valid (re-save sebagai 'CSV UTF-8' di excel)"
 	case errors.Is(err, ErrUnsupportedMime):
 		return fiber.StatusUnsupportedMediaType, "unsupported_mime", "hanya csv yang diterima"
+	case errors.Is(err, ErrJobNotFound):
+		return fiber.StatusNotFound, "not_found", "import job tidak ditemukan"
+	case errors.Is(err, ErrJobExpired):
+		return fiber.StatusGone, "preview_expired", "preview kadaluarsa, upload ulang"
+	case errors.Is(err, ErrJobNotInPreview):
+		return fiber.StatusConflict, "not_in_preview", "import job sudah tidak dalam status preview"
 	case errors.Is(err, ErrPersistFailed):
 		return fiber.StatusInternalServerError, "persist_failed", "gagal menyimpan import job"
 	default:

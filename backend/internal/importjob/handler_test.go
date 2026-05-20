@@ -25,6 +25,17 @@ type stubUploadService struct {
 	gotIn  PreviewUploadInput
 	res    *PreviewUploadResult
 	err    error
+
+	// Resume / Cancel hooks (Task 2.D.3).
+	getRes    *GetPreviewResult
+	getErr    error
+	gotGetID  uuid.UUID
+	gotGetAdm uuid.UUID
+
+	cancelRes    *CancelResult
+	cancelErr    error
+	gotCancelID  uuid.UUID
+	gotCancelAdm uuid.UUID
 }
 
 func (s *stubUploadService) PreviewUpload(ctx context.Context, in PreviewUploadInput) (*PreviewUploadResult, error) {
@@ -34,6 +45,24 @@ func (s *stubUploadService) PreviewUpload(ctx context.Context, in PreviewUploadI
 		return nil, s.err
 	}
 	return s.res, nil
+}
+
+func (s *stubUploadService) GetPreview(ctx context.Context, id, adminID uuid.UUID) (*GetPreviewResult, error) {
+	s.gotGetID = id
+	s.gotGetAdm = adminID
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	return s.getRes, nil
+}
+
+func (s *stubUploadService) Cancel(ctx context.Context, id, adminID uuid.UUID) (*CancelResult, error) {
+	s.gotCancelID = id
+	s.gotCancelAdm = adminID
+	if s.cancelErr != nil {
+		return nil, s.cancelErr
+	}
+	return s.cancelRes, nil
 }
 
 // stubAudit captures LogAudit calls.
@@ -69,6 +98,8 @@ func testApp(t *testing.T, svc uploadService, audit auditLogger, adminID uuid.UU
 	})
 	h := NewHandler(svc, audit)
 	app.Post("/api/v1/admin/import-csv/upload", h.PreviewUpload)
+	app.Get("/api/v1/admin/import-csv/:job_id", h.GetPreview)
+	app.Post("/api/v1/admin/import-csv/:job_id/cancel", h.Cancel)
 	return app
 }
 
@@ -244,6 +275,181 @@ func TestHandler_PreviewUpload_AuditFailureNotFatal(t *testing.T) {
 	resp := do(t, app, "POST", "/api/v1/admin/import-csv/upload", body, ct)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (audit failure must not fail the request)", resp.StatusCode)
+	}
+}
+
+// --- GetPreview handler tests (Task 2.D.3) ---
+
+func TestHandler_GetPreview_Happy(t *testing.T) {
+	jobID := uuid.New()
+	objKey := "import/" + jobID.String() + ".csv"
+	expires := time.Date(2026, 5, 20, 13, 0, 0, 0, time.UTC)
+	svc := &stubUploadService{
+		getRes: &GetPreviewResult{
+			Job: &ImportJob{
+				ID:           jobID,
+				Filename:     "users.csv",
+				ObjectKey:    &objKey,
+				Status:       StatusPreview,
+				TotalRows:    3,
+				ValidCount:   2,
+				InvalidCount: 1,
+				ExpiresAt:    expires,
+			},
+			Rows: []Row{
+				{LineNo: 2, Nama: "Andi", Email: "andi@a.id", Status: RowValid},
+				{LineNo: 3, Nama: "Budi", Email: "budi@a.id", Status: RowValid},
+			},
+		},
+	}
+	adminID := uuid.New()
+	app := testApp(t, svc, &stubAudit{}, adminID)
+
+	resp := do(t, app, "GET", "/api/v1/admin/import-csv/"+jobID.String(), nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, mustBody(resp))
+	}
+	if svc.gotGetID != jobID {
+		t.Errorf("gotGetID = %v, want %v", svc.gotGetID, jobID)
+	}
+	if svc.gotGetAdm != adminID {
+		t.Errorf("gotGetAdm = %v, want %v", svc.gotGetAdm, adminID)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["job_id"] != jobID.String() {
+		t.Errorf("job_id = %v, want %s", got["job_id"], jobID)
+	}
+	if got["status"] != string(StatusPreview) {
+		t.Errorf("status = %v, want preview", got["status"])
+	}
+	if rows, _ := got["preview_rows"].([]any); len(rows) != 2 {
+		t.Errorf("preview_rows length = %d, want 2", len(rows))
+	}
+	if got["filename"] != "users.csv" {
+		t.Errorf("filename = %v, want users.csv", got["filename"])
+	}
+}
+
+func TestHandler_GetPreview_InvalidJobID(t *testing.T) {
+	svc := &stubUploadService{}
+	app := testApp(t, svc, &stubAudit{}, uuid.New())
+
+	resp := do(t, app, "GET", "/api/v1/admin/import-csv/not-a-uuid", nil, "")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if !strings.Contains(mustBody(resp), "invalid_job_id") {
+		t.Errorf("expected code invalid_job_id")
+	}
+}
+
+func TestHandler_GetPreview_ServiceErrorMapping(t *testing.T) {
+	cases := []struct {
+		name       string
+		serviceErr error
+		wantStatus int
+		wantCode   string
+	}{
+		{"not found", ErrJobNotFound, http.StatusNotFound, "not_found"},
+		{"expired", ErrJobExpired, http.StatusGone, "preview_expired"},
+		{"not in preview", ErrJobNotInPreview, http.StatusConflict, "not_in_preview"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &stubUploadService{getErr: tc.serviceErr}
+			app := testApp(t, svc, &stubAudit{}, uuid.New())
+			resp := do(t, app, "GET", "/api/v1/admin/import-csv/"+uuid.New().String(), nil, "")
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", resp.StatusCode, tc.wantStatus, mustBody(resp))
+			}
+			if !strings.Contains(mustBody(resp), `"`+tc.wantCode+`"`) {
+				t.Errorf("response missing code %q", tc.wantCode)
+			}
+		})
+	}
+}
+
+// --- Cancel handler tests (Task 2.D.3) ---
+
+func TestHandler_Cancel_Happy(t *testing.T) {
+	jobID := uuid.New()
+	objKey := "import/" + jobID.String() + ".csv"
+	svc := &stubUploadService{
+		cancelRes: &CancelResult{
+			Job: &ImportJob{
+				ID:        jobID,
+				Filename:  "users.csv",
+				ObjectKey: &objKey,
+				Status:    StatusCancelled,
+			},
+			ObjectKey: objKey,
+		},
+	}
+	audit := &stubAudit{}
+	adminID := uuid.New()
+	app := testApp(t, svc, audit, adminID)
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/"+jobID.String()+"/cancel", nil, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, mustBody(resp))
+	}
+	if svc.gotCancelID != jobID {
+		t.Errorf("gotCancelID = %v, want %v", svc.gotCancelID, jobID)
+	}
+	if svc.gotCancelAdm != adminID {
+		t.Errorf("gotCancelAdm = %v, want %v", svc.gotCancelAdm, adminID)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["status"] != string(StatusCancelled) {
+		t.Errorf("status = %v, want cancelled", got["status"])
+	}
+
+	// Audit recorded.
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(audit.entries))
+	}
+	if audit.entries[0].Action != "import_csv_cancelled" {
+		t.Errorf("audit action = %s, want import_csv_cancelled", audit.entries[0].Action)
+	}
+}
+
+func TestHandler_Cancel_AlreadyCancelled(t *testing.T) {
+	svc := &stubUploadService{cancelErr: ErrJobNotInPreview}
+	audit := &stubAudit{}
+	app := testApp(t, svc, audit, uuid.New())
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/"+uuid.New().String()+"/cancel", nil, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+	if !strings.Contains(mustBody(resp), "not_in_preview") {
+		t.Errorf("expected code not_in_preview")
+	}
+	// No audit log on conflict.
+	if len(audit.entries) != 0 {
+		t.Errorf("audit entries = %d, want 0 on failure", len(audit.entries))
+	}
+}
+
+func TestHandler_Cancel_NotFound(t *testing.T) {
+	svc := &stubUploadService{cancelErr: ErrJobNotFound}
+	app := testApp(t, svc, &stubAudit{}, uuid.New())
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/"+uuid.New().String()+"/cancel", nil, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	if !strings.Contains(mustBody(resp), "not_found") {
+		t.Errorf("expected code not_found")
 	}
 }
 

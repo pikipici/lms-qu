@@ -23,6 +23,8 @@ const (
 	StatusCompleted Status = "completed"
 	// StatusExpired means preview window elapsed without confirmation.
 	StatusExpired Status = "expired"
+	// StatusCancelled means admin actively cancelled before confirm (Task 2.D.3).
+	StatusCancelled Status = "cancelled"
 	// StatusFailed means processing aborted with errors_json populated.
 	StatusFailed Status = "failed"
 )
