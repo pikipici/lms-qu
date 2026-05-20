@@ -1,0 +1,266 @@
+package importjob
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/pikip/lms/backend/internal/auth"
+	"github.com/pikip/lms/backend/internal/middleware"
+)
+
+// stubUploadService satisfies uploadService for handler tests.
+type stubUploadService struct {
+	called bool
+	gotIn  PreviewUploadInput
+	res    *PreviewUploadResult
+	err    error
+}
+
+func (s *stubUploadService) PreviewUpload(ctx context.Context, in PreviewUploadInput) (*PreviewUploadResult, error) {
+	s.called = true
+	s.gotIn = in
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.res, nil
+}
+
+// stubAudit captures LogAudit calls.
+type stubAudit struct {
+	mu      stubAuditLock
+	entries []*auth.AuditLog
+	err     error
+}
+
+type stubAuditLock struct{}
+
+func (s *stubAudit) LogAudit(ctx context.Context, entry *auth.AuditLog) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.entries = append(s.entries, entry)
+	return nil
+}
+
+// testApp wires Handler under a Fiber app with adminID injected via locals.
+func testApp(t *testing.T, svc uploadService, audit auditLogger, adminID uuid.UUID) *fiber.App {
+	t.Helper()
+	app := fiber.New()
+	app.Use(middleware.RequestID())
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals(middleware.LocalsUserID, adminID)
+		c.Locals(middleware.LocalsUserRole, string(auth.Admin))
+		return c.Next()
+	})
+	h := NewHandler(svc, audit)
+	app.Post("/api/v1/admin/import-csv/upload", h.PreviewUpload)
+	return app
+}
+
+// buildMultipart returns the body + content-type for a single-file POST.
+func buildMultipart(t *testing.T, fieldName, filename string, body []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	w, err := mw.CreateFormFile(fieldName, filename)
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := w.Write(body); err != nil {
+		t.Fatalf("write part: %v", err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("close mw: %v", err)
+	}
+	return &buf, mw.FormDataContentType()
+}
+
+func TestHandler_PreviewUpload_Happy(t *testing.T) {
+	jobID := uuid.New()
+	objKey := "import/" + jobID.String() + ".csv"
+	expires := time.Date(2026, 5, 20, 13, 0, 0, 0, time.UTC)
+	svc := &stubUploadService{
+		res: &PreviewUploadResult{
+			Job: &ImportJob{
+				ID:        jobID,
+				ObjectKey: &objKey,
+				Filename:  "users.csv",
+				Status:    StatusPreview,
+				ExpiresAt: expires,
+			},
+			ParseStats: ParseStat{Total: 3, Valid: 3},
+			Rows: []Row{
+				{LineNo: 2, Nama: "Andi", Email: "andi@a.id", Status: RowValid},
+				{LineNo: 3, Nama: "Budi", Email: "budi@a.id", Status: RowValid},
+				{LineNo: 4, Nama: "Citra", Email: "citra@a.id", Status: RowValid},
+			},
+		},
+	}
+	audit := &stubAudit{}
+	app := testApp(t, svc, audit, uuid.New())
+
+	csv := []byte("nama,email\nAndi,andi@a.id\n")
+	body, ct := buildMultipart(t, "file", "users.csv", csv)
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/upload", body, ct)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", resp.StatusCode, mustBody(resp))
+	}
+	if !svc.called {
+		t.Fatal("service was not called")
+	}
+	if svc.gotIn.Filename != "users.csv" {
+		t.Errorf("filename forwarded = %q, want users.csv", svc.gotIn.Filename)
+	}
+	if !bytes.Equal(svc.gotIn.Body, csv) {
+		t.Errorf("body forwarded mismatch")
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["job_id"] != jobID.String() {
+		t.Errorf("job_id = %v, want %s", got["job_id"], jobID)
+	}
+	if got["valid_count"] != float64(3) {
+		t.Errorf("valid_count = %v, want 3", got["valid_count"])
+	}
+	if rows, _ := got["preview_rows"].([]any); len(rows) != 3 {
+		t.Errorf("preview_rows length = %d, want 3", len(rows))
+	}
+
+	// Audit recorded.
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(audit.entries))
+	}
+	if audit.entries[0].Action != "import_csv_uploaded" {
+		t.Errorf("audit action = %s", audit.entries[0].Action)
+	}
+}
+
+func TestHandler_PreviewUpload_MissingFile(t *testing.T) {
+	app := testApp(t, &stubUploadService{}, &stubAudit{}, uuid.New())
+
+	// Empty multipart with no file part.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("notfile", "foo")
+	mw.Close()
+
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/upload", &buf, mw.FormDataContentType())
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	body := mustBody(resp)
+	if !strings.Contains(body, "missing_file") {
+		t.Errorf("body = %s, want code missing_file", body)
+	}
+}
+
+func TestHandler_PreviewUpload_OversizeRejected(t *testing.T) {
+	app := testApp(t, &stubUploadService{}, &stubAudit{}, uuid.New())
+
+	// 5MB + 1 byte
+	big := bytes.Repeat([]byte("a"), MaxCSVBytes+1)
+	body, ct := buildMultipart(t, "file", "huge.csv", big)
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/upload", body, ct)
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", resp.StatusCode)
+	}
+	if !strings.Contains(mustBody(resp), "file_too_large") {
+		t.Errorf("expected code file_too_large")
+	}
+}
+
+func TestHandler_PreviewUpload_ServiceErrorMapping(t *testing.T) {
+	cases := []struct {
+		name       string
+		serviceErr error
+		wantStatus int
+		wantCode   string
+	}{
+		{"empty csv", ErrEmptyCSV, http.StatusBadRequest, "empty_csv"},
+		{"missing nama", ErrMissingNamaColumn, http.StatusBadRequest, "missing_nama_column"},
+		{"missing email", ErrMissingEmailColumn, http.StatusBadRequest, "missing_email_column"},
+		{"too many rows", ErrTooManyRows, http.StatusBadRequest, "too_many_rows"},
+		{"too large parser", ErrCSVTooLarge, http.StatusRequestEntityTooLarge, "csv_too_large"},
+		{"invalid utf8", ErrInvalidUTF8, http.StatusBadRequest, "invalid_utf8"},
+		{"unsupported mime", ErrUnsupportedMime, http.StatusUnsupportedMediaType, "unsupported_mime"},
+		{"persist failed", ErrPersistFailed, http.StatusInternalServerError, "persist_failed"},
+		{"unknown", errors.New("anything"), http.StatusInternalServerError, "internal"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &stubUploadService{err: tc.serviceErr}
+			app := testApp(t, svc, &stubAudit{}, uuid.New())
+			body, ct := buildMultipart(t, "file", "x.csv", []byte("nama,email\nAndi,andi@a.id\n"))
+			resp := do(t, app, "POST", "/api/v1/admin/import-csv/upload", body, ct)
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", resp.StatusCode, tc.wantStatus, mustBody(resp))
+			}
+			if !strings.Contains(mustBody(resp), `"`+tc.wantCode+`"`) {
+				t.Errorf("response missing code %q", tc.wantCode)
+			}
+		})
+	}
+}
+
+func TestHandler_PreviewUpload_AuditFailureNotFatal(t *testing.T) {
+	jobID := uuid.New()
+	objKey := "import/" + jobID.String() + ".csv"
+	svc := &stubUploadService{
+		res: &PreviewUploadResult{
+			Job: &ImportJob{
+				ID:        jobID,
+				ObjectKey: &objKey,
+				Filename:  "x.csv",
+				Status:    StatusPreview,
+				ExpiresAt: time.Now().Add(time.Hour),
+			},
+			ParseStats: ParseStat{Total: 1, Valid: 1},
+		},
+	}
+	audit := &stubAudit{err: errors.New("audit table down")}
+	app := testApp(t, svc, audit, uuid.New())
+
+	body, ct := buildMultipart(t, "file", "x.csv", []byte("nama,email\nAndi,andi@a.id\n"))
+	resp := do(t, app, "POST", "/api/v1/admin/import-csv/upload", body, ct)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (audit failure must not fail the request)", resp.StatusCode)
+	}
+}
+
+// --- helpers ---
+
+func do(t *testing.T, app *fiber.App, method, path string, body io.Reader, contentType string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(method, path, body)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	req.RemoteAddr = "203.0.113.55:1234"
+	resp, err := app.Test(req, 5000)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	return resp
+}
+
+func mustBody(resp *http.Response) string {
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	return string(b)
+}
