@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.4 — **Task 3.E.1 ✅ DONE** 2026-05-21 (commit `c0d795a`; server `go vet`/`go build`/`go test ./...` all PASS, siswabab pkg 16 new test cases hijau di 0.013s, materi pkg re-test 0.056s). Siswa bab list + detail + progress fase-3-partial shipped. New endpoints: `GET /api/v1/siswa/kelas/:id/bab` + `GET /api/v1/siswa/bab/:id` mounted under siswaGroup BearerAuth+ForceChangePassword+RoleGuard(siswa). Progress = `materi_read_count / materi_total × 100` (locked #68 + Section 6.4); breakdown `{materi: {pct, w:1.0}}` di Fase 3 — komponen Fase 4-7 land pct=null+w=0 nanti. Files baru: `backend/internal/siswabab/{student,student_test}.go` (paket terpisah karena materi sudah depend ke bab — siswa flow yang butuh dua-duanya tidak bisa hidup di paket bab tanpa import cycle). Repo extension `backend/internal/materi/repo.go`: `CountByBabBatch` + `CountReadByBabBatch` (zero-fill missing groups via pre-allocated map) + `ListReadIDsByBabSiswa`. Authorization defensive: kelas missing → ErrForbidden (no info leak), bab non-published → ErrNotFound (hindari leak draft/archived). **Sub-fase 3.E 1/2 (BE done, FE 3.E.2 berikutnya). Fase 3 overall 13/17 task (76%).**
+> Status: v0.9.5 — **Task 3.E.2 ✅ DONE** 2026-05-21 (commit `3a69ddb`; server `npx tsc --noEmit` PASS, `npm run build` PASS — **24 static routes** generated, dua route baru `/siswa/kelas/detail` 2.65 kB + `/siswa/kelas/detail/bab` 8.6 kB First Load 169 kB). Siswa bab pages shipped — list bab dgn progress bar + bab detail dgn tab materi pakai `<MateriViewer>` 3.D.2. Mark-read auto-fired oleh viewer subcomponents; setelah 3s open, parent invalidate detail (read-state) + parent list (progress) supaya UI catch-up. **Sub-fase 3.E 2/2 CLOSED. Fase 3 overall 14/17 task (82%).**
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.E.1 shipped — siswa bab list + detail + progress fase-3-partial)
+> Last updated: 2026-05-21 (Task 3.E.2 shipped — siswa kelas + bab detail pages)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2099,19 +2099,22 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Migration: tidak ada migration baru (re-pakai materi_read table dari 000006_materi).
 - Commit: `c0d795a feat(bab): siswa list bab + detail with progress fase-3-partial`
 
-**Task 3.E.2 — `/siswa/kelas/detail` (list bab + progress) + `/siswa/kelas/detail/bab` (materi viewer)**
-- Files: `frontend/app/(authed)/siswa/kelas/detail/page.tsx`, `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx`. Extend `frontend/lib/siswa-kelas-api.ts`.
-- `/siswa/kelas/detail?id=<kelas_id>`:
-  - Header kelas (nama + guru + bobot info read-only).
-  - Section "Bab" — list card per bab published, urut: nomor + judul + deskripsi snippet + **progress bar** dgn tooltip "Berdasarkan materi dibaca (N/M)" (Fase 3 progress only). Klik card → router push ke `/siswa/kelas/detail/bab?id=<kelas>&bid=<bab>`.
-  - Section "Pengumuman" — placeholder pointer ke 3.F.3.
-- `/siswa/kelas/detail/bab?id=<kelas>&bid=<bab>`:
-  - Header bab (nomor + judul + status + breadcrumb).
-  - Tab Materi: list materi (urut) + viewer expand-on-click pakai `MateriViewer` dari 3.D.2. Auto mark-read on viewer open.
-  - Tab Pengumuman: placeholder pointer ke 3.F.3.
-  - Tab Latihan/Tugas/Hasil: placeholder Fase 4-5.
-- Verify: typecheck + build static export + manual smoke.
-- Commit: `feat(fe-siswa): kelas detail list bab + bab detail materi tab`
+**Task 3.E.2 — `/siswa/kelas/detail` (list bab + progress) + `/siswa/kelas/detail/bab` (materi viewer)** ✅ DONE 2026-05-21 (commit `3a69ddb`; server `npx tsc --noEmit` PASS, `npm run build` PASS — 24 static routes generated, dua route baru `/siswa/kelas/detail` 2.65 kB + `/siswa/kelas/detail/bab` 8.6 kB First Load 169 kB).
+- Files baru:
+  - `frontend/lib/siswa-bab-api.ts` — typed client untuk endpoint Task 3.E.1: `listSiswaBab(kelasID)` (GET `/siswa/kelas/:id/bab`) + `getSiswaBab(babID)` (GET `/siswa/bab/:id`). Types mirror BE: `SiswaBabItem`, `SiswaBabProgress` (persen + breakdown + bab_kosong + materi_read/total), `SiswaMateriCard` (strip guru-only fields), `SiswaBabBreakdownItem` (pct nullable + w).
+  - `frontend/components/siswa/SiswaBabProgressBar.tsx` — inline Tailwind progress bar (no shadcn Progress yet). Color tier: muted (kosong/0%), primary (1-99%), emerald (100%). Native title tooltip "X dari Y materi sudah dibaca (Z%)". role=progressbar + aria-valuenow untuk a11y. Size variant `sm` (list) + `md` (header detail).
+  - `frontend/components/siswa/siswaCardToMateri.ts` — adapter `SiswaMateriCard` (strip guru fields) → `Materi` shape lengkap. Field missing diisi safe defaults (null/0/''). Dipakai sebelum pass ke `<MateriViewer hideHeader>`.
+  - `frontend/app/(authed)/siswa/kelas/detail/page.tsx` — kelas detail page (`?id=:kelasID`). Static-export friendly via query string (mirror pola `/guru/kelas/detail`). Hydrate kelas info dari `listMyKelas` (cari id di items) — tidak ada `GET /siswa/kelas/:id` dedicated. Bab list pakai `listSiswaBab` — handle 403 forbidden (gak enroll) + empty state ramah. BabCard click → push ke `/siswa/kelas/detail/bab?id=&bid=`.
+  - `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx` — bab detail page (`?id=:kelasID&bid=:babID`). Header: nomor + judul + breadcrumb + progress bar md size. Tab Materi default — list expandable card (klik buka `<MateriViewer hideHeader>` sebagai body). Mark-read auto-fired oleh viewer subcomponents (mount/debounced 2s untuk PDF). Setelah 3s open, parent invalidate query detail (read state) + parent list (progress per bab). Tab Soal/Tugas/Pengumuman placeholder pointer ke Fase 4-5 + Task 3.F (mirror GuruBabDetail pattern).
+- Files diubah:
+  - `frontend/app/(authed)/siswa/page.tsx` — enable tombol "Buka" di list kelas (sebelumnya disabled span). Sekarang asChild Link ke `/siswa/kelas/detail?id=:id`.
+- Read-state UX:
+  - Card tampilkan badge "✓ Dibaca" kalau `sudah_dibaca=true`.
+  - PDF mark-read debounce 2s + parent refetch 3s setelah open → cukup buffer.
+  - YouTube + Markdown fire-on-mount langsung (load iframe / render markdown udah cukup signal).
+- Static export safety: pakai query string (`?id=&bid=`) bukan dynamic route segments, konsisten dengan `/guru/kelas/detail` (Task 2.B.4) + `/admin/pengguna/detail`.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (24 static routes, +2 dari sebelumnya). Bundle `/siswa/kelas/detail/bab` 8.6 kB / 169 kB First Load (vs guru `/guru/kelas/detail/bab` 11 kB / 251 kB — siswa view lebih ringan karena gak include MateriCreate/Edit dialogs). Local skip karena no runtime deps.
+- Commit: `3a69ddb feat(fe-siswa): kelas detail + bab detail pages with progress + materi viewer`
 
 #### 3.F Pengumuman
 
@@ -2145,32 +2148,33 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.E.1 ✅ DONE** 2026-05-21. Siswa bab list + detail + progress fase-3-partial shipped (commit `c0d795a`). Server `go vet`/`go build`/`go test ./...` all PASS — siswabab pkg 16 new test cases hijau di 0.013s. **Sub-fase 3.E 1/2 (BE done; FE 3.E.2 berikutnya). Fase 3 overall 13/17 task (76%).**
+**Task 3.E.2 ✅ DONE** 2026-05-21. Siswa kelas + bab detail pages shipped (commit `3a69ddb`). Server `npx tsc --noEmit` + `npm run build` PASS — 24 static routes generated. **Sub-fase 3.E 2/2 CLOSED. Fase 3 overall 14/17 task (82%).**
 
 **Sub-fase progress recap:**
 - 3.A Bab BE 4/4 ✅ CLOSED
 - 3.B Bab FE Guru 2/2 ✅ CLOSED
 - 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
 - 3.D Materi FE 2/2 ✅ CLOSED (commits `eeca652` + `d08df3f`)
-- 3.E Bab Siswa + Progress 1/2 (3.E.1 commit `c0d795a`)
+- 3.E Bab Siswa + Progress 2/2 ✅ CLOSED (commits `c0d795a` + `3a69ddb`)
 - 3.F Pengumuman 0/3
 
-**Eksekusi berikutnya: Task 3.E.2 (FE siswa pages) dan/atau Sub-fase 3.F (Pengumuman). Default rekomendasi: 3.E.2 dulu — itu yang menghidupkan komponen viewer 3.D.2 yg udah ship + endpoint 3.E.1 yg baru saja.**
+**Eksekusi berikutnya: Sub-fase 3.F (Pengumuman) — 3 task tersisa untuk close Fase 3.**
 
 Pilihan opsi:
-- **gas 3.E.2 inline** — FE page `/siswa/kelas/detail` (list bab + progress bar per bab pakai `<Progress>` indicator + tooltip `materi_read/materi_total`) + `/siswa/kelas/detail/bab` (Tab Materi pakai `<MateriViewer>` 3.D.2). Files: `frontend/app/(authed)/siswa/kelas/detail/page.tsx` + `bab/page.tsx`, plus extend `frontend/lib/` API client untuk `listSiswaBab` + `getSiswaBab`. Effort medium-besar.
-- **gas 3.F.1 inline (lompat)** — Migration `000007_pengumuman` + Pengumuman model + repo + CRUD endpoints. Bisa di-attach ke kelas atau bab. Independen dari sub-fase 3.E.
-- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE + 3.E.1 BE bener-bener hidup. Backlog server tree udah cukup banyak (3 task BE + 2 task FE) tapi binary belum di-restart. Sesi ini build BUILD_OK tapi systemctl restart blocked dua kali.
-- **stop dulu** — save state. Sesi ini udah ship 3.D.1 + 3.D.2 + 3.E.1 (3 task) + 3 docs commits dalam 1 sesi.
+- **gas 3.F.1 inline** — Migration `000007_pengumuman` + Pengumuman model + repo + CRUD endpoints. Schema: `pengumuman(id, kelas_id, bab_id?, judul, isi, created_by_id, status, created_at, updated_at)`. Endpoints: POST/GET/PATCH/DELETE di kelas + bab scope. Audit log. Effort medium.
+- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE + 3.E.1 BE + 3.E.2 FE bener-bener hidup. Backlog server tree udah cukup banyak (3 BE + 3 FE) tapi binary belum di-restart. Sesi ini build BUILD_OK tapi systemctl restart blocked dua kali sebelumnya — user perlu trigger manual.
+- **stop dulu** — save state. Sesi ini udah ship 3.D.1 + 3.D.2 + 3.E.1 + 3.E.2 (4 task) + 4 docs commits dalam 1 sesi.
 
 **Live deploy command** (kapan lu mau):
 ```
 ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
 ```
-Server tree udah di commit `c0d795a` post fetch+reset. Frontend `.next` static export dir udah di-build via `npm run build` di session ini, tapi binary `lms-api` belum di-restart untuk pick up perubahan. Re-run command di atas akan rebuild Go binary + restart systemd; FE static dir di-serve oleh binary yang sama.
+Server tree udah di commit `3a69ddb` post fetch+reset. Frontend `.next` static export dir udah di-build via `npm run build` di session ini, tapi binary `lms-api` belum di-restart untuk pick up perubahan. Re-run command di atas akan rebuild Go binary + restart systemd; FE static dir di-serve oleh binary yang sama.
 
-> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `c0d795a`, tapi binary belum di-restart.
+> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `3a69ddb`, tapi binary belum di-restart.
 
 > Catatan paket layout: siswa flow yang butuh `bab` + `materi` bareng tidak bisa hidup di paket `bab` karena `materi` udah depend ke `bab` (untuk `bab.Bab` di Service.duplicate childCopier). Solusi: paket baru `backend/internal/siswabab/`. Pola yang sama bisa dipakai untuk Fase 4 (tugas) + Fase 5 (soal) kalau hadirnya butuh akses cross-domain.
+
+> Catatan FE pattern Task 3.E.2: siswa endpoint sengaja strip guru-only fields (object_key, mime_type, size_bytes, version, kelas_id, timestamps) — siswa download PDF lewat presigned URL endpoint, jadi metadata file gak perlu di-leak. FE adapter `siswaCardToMateri` isi field missing dengan safe defaults (null/0/'') sebelum pass ke `<MateriViewer>` yang shape-nya butuh `Materi` lengkap. Pakai `hideHeader` flag biar parent component yang render judul + tipe + status badge.
 
 > Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
