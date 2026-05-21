@@ -11,9 +11,11 @@ package soalbab
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Repo provides GORM-backed persistence for soal_bab + ulangan_bab_setting +
@@ -421,11 +423,110 @@ func (r *Repo) ListHasilByBab(ctx context.Context, babID uuid.UUID, f HasilListF
 // JawabanBab persistence
 // ---------------------------------------------------------------------------
 
-// UpsertJawaban inserts or updates the answer for (hasil_id, soal_id).
-// To be implemented by Task 5.C.2.
+// UpsertJawaban inserts or updates a JawabanBab row using ON CONFLICT
+// (hasil_id, soal_id) DO UPDATE so autosave + re-answer overwrite is
+// idempotent (Task 5.C.2 latihan + Task 5.D.2 ulangan).
+//
+// Caller pre-resolves IsBenar + PoinDapat (latihan: graded immediately;
+// ulangan: pass IsBenar=nil + PoinDapat=0 — we default the column when
+// updating). Jawaban field is required and non-nil on every call.
+//
+// AnsweredAt is forced to now() so updates re-stamp the timestamp,
+// keeping the autosave audit trail honest.
 func (r *Repo) UpsertJawaban(ctx context.Context, j *JawabanBab) error {
-	return errNotImplemented
+	if j == nil || j.HasilID == uuid.Nil || j.SoalID == uuid.Nil {
+		return errors.New("soalbab: jawaban + hasil_id + soal_id required")
+	}
+	// GORM's OnConflict needs a known unique target. The migration has
+	// UNIQUE (hasil_id, soal_id); use both columns explicitly.
+	cols := []string{"jawaban", "is_benar", "poin_dapat", "answered_at"}
+	return r.db.WithContext(ctx).
+		Clauses(clausesOnConflictHasilSoal(cols)).
+		Create(j).Error
 }
+
+// clausesOnConflictHasilSoal returns a GORM ON CONFLICT clause keyed on
+// (hasil_id, soal_id) updating the supplied columns. Lives as helper to
+// keep UpsertJawaban readable.
+func clausesOnConflictHasilSoal(updateCols []string) clause.OnConflict {
+	cols := make([]clause.Column, 0, 2)
+	cols = append(cols, clause.Column{Name: "hasil_id"}, clause.Column{Name: "soal_id"})
+	doUpdate := make([]string, len(updateCols))
+	copy(doUpdate, updateCols)
+	return clause.OnConflict{
+		Columns:   cols,
+		DoUpdates: clause.AssignmentColumns(doUpdate),
+	}
+}
+
+// FindJawabanByHasilSoal returns a single jawaban row for (hasil, soal).
+// Used by Latihan answer endpoint to compute is_benar after upsert.
+func (r *Repo) FindJawabanByHasilSoal(ctx context.Context, hasilID, soalID uuid.UUID) (*JawabanBab, error) {
+	var j JawabanBab
+	if err := r.db.WithContext(ctx).
+		Where("hasil_id = ? AND soal_id = ?", hasilID, soalID).
+		First(&j).Error; err != nil {
+		return nil, err
+	}
+	return &j, nil
+}
+
+// UpdateHasilStatus transitions a hasil row to a new status with optional
+// finishing fields (selesai_at, nilai_total, jawaban_benar_count,
+// jawaban_total). Latihan finish: pass nilai/benar/total all-nil (we set
+// selesai_at + status only). Ulangan submit (Task 5.D): pass full set.
+//
+// Returns gorm.ErrRecordNotFound when the row no longer exists or is
+// already cancelled.
+func (r *Repo) UpdateHasilStatus(ctx context.Context, hasilID uuid.UUID, status HasilStatus, selesaiAt *time.Time, nilaiTotal *float64, benar, total *int16) error {
+	updates := map[string]any{
+		"status":     status,
+		"updated_at": gorm.Expr("now()"),
+	}
+	if selesaiAt != nil {
+		updates["selesai_at"] = *selesaiAt
+	}
+	if nilaiTotal != nil {
+		updates["nilai_total"] = *nilaiTotal
+	}
+	if benar != nil {
+		updates["jawaban_benar_count"] = *benar
+	}
+	if total != nil {
+		updates["jawaban_total"] = *total
+	}
+	res := r.db.WithContext(ctx).
+		Model(&HasilSoalBab{}).
+		Where("id = ?", hasilID).
+		UpdateColumns(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// ListSoalByIDs returns soal_bab rows for the given id list, in arbitrary
+// order. Caller (latihan/ulangan) typically resorts to the snapshot id
+// order. Empty input → empty slice.
+func (r *Repo) ListSoalByIDs(ctx context.Context, ids []uuid.UUID) ([]SoalBab, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []SoalBab
+	if err := r.db.WithContext(ctx).
+		Where("id IN ?", ids).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// UpsertJawaban (legacy stub removed above) — placeholder kept so search
+// for "Task 5.C.2" jumps to the implementation.
+var _ = "task-5.C.2-jawaban-upsert"
 
 // ListJawabanByHasil returns all jawaban rows for an attempt. Used by
 // submit grading + review endpoints.

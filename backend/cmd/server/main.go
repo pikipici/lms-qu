@@ -431,6 +431,17 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// returns SiswaLobbyView when caller is siswa.
 	siswaGroup.Get("/bab/:id/ulangan-setting", soalbabSettingHandler.Get)
 
+	// Task 5.C.2 — Latihan flow (formative, no nilai persist). Siswa
+	// enrolled mengerjakan soal mode IN ('latihan','keduanya') tanpa
+	// timer + tanpa nilai persist. Tiap answer balikin is_benar +
+	// jawaban_benar untuk feedback langsung. Re-attempt unlimited per
+	// locked #81 (resume otomatis kalau sudah ada attempt berlangsung).
+	soalbabLatihanSvc := soalbab.NewLatihanService(soalbabRepo, babRepo, kelasRepo)
+	soalbabLatihanHandler := soalbab.NewLatihanHandler(soalbabLatihanSvc)
+	siswaGroup.Post("/bab/:id/latihan/start", soalbabLatihanHandler.Start)
+	siswaGroup.Post("/hasil-soal-bab/:id/answer", soalbabLatihanHandler.Answer)
+	siswaGroup.Post("/hasil-soal-bab/:id/finish", soalbabLatihanHandler.Finish)
+
 	// Pengumuman (Task 3.F.1): announcement CRUD per kelas. BabID nullable
 	// — bisa kelas-wide atau bab-scoped. Status enum published|archived
 	// (locked #66 passive timestamp). Kelas-scope routes (POST/GET) under
