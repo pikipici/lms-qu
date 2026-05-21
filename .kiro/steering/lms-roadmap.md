@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.4 — **Fase 5.C 2/2 ✅ DONE** + 5.B 3/3 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.5 — **Fase 5.D 1/4** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 5.C.2 ✅ DONE — Latihan flow BE start+answer+finish, commit `d6c808d`; Fase 5 progress 5/15; sub-fase 5.C closed 2/2)
+> Last updated: 2026-05-21 (Task 5.D.1 ✅ DONE — Ulangan Bab start deterministic seed + advisory lock, commits `0346609`+`32f63ae`+`d822d46`; Fase 5 progress 6/15)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2439,14 +2439,17 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 5.D Ulangan Bab Flow + Auto-Grade Cron
 
-**Task 5.D.1 — Ulangan Bab start (random pool deterministic seed)** ⏳
-- Endpoint: `POST /api/v1/bab/:id/ulangan/start` — siswa enrolled.
-  - BEGIN tx → cek aktif `(bab, siswa, ulangan, status='berlangsung')` → kalau ada return existing (resume) → kalau tidak: hitung `attempt_no = COUNT(hasil WHERE mode='ulangan') + 1`. Cek `attempt_no ≤ Setting.BatasAttempt` → 403 `batas_attempt_exceeded` kalau exceed.
-  - Build pool: `mulai_at = now()`, `seed = sha256(mulai_at.UnixMicro() bytes || siswa_id_bytes || bab_id_bytes)[:8]` → uint64 LE → `rand.New(rand.NewSource(int64))` → ambil semua soal mode IN ('ulangan','keduanya'), shuffle, take Setting.JumlahSoal. Cek pool ≥ JumlahSoal → 400 `jumlah_soal_exceeds_pool` kalau tidak.
-  - Insert `HasilSoalBab(mode='ulangan', mulai_at, deadline_at = mulai_at + Setting.DurasiMenit minutes, soal_ids_json=pool, attempt_no)`.
-  - Audit `ulangan_bab_started`. Return `{hasil_id, soal_ids, deadline_at, durasi_detik}`.
-- Verify: test (deterministic seed reproducible + batas_attempt + concurrent start race-safe via tx).
-- Commit: `feat(ulanganbab): start endpoint + deterministic random pool`
+**Task 5.D.1 — Ulangan Bab start (random pool deterministic seed)** ✅ DONE 2026-05-21 commits `0346609` + `32f63ae` + `d822d46`
+- Endpoint: `POST /api/v1/siswa/bab/:id/ulangan/start` — siswa enrolled + bab `status=published`. Locked #79: `seed = sha256(mulai_at_unix_micro_LE_bytes ‖ siswa_id_bytes ‖ bab_id_bytes)[:8]` LE → int64 → `math/rand.NewSource` → Fisher-Yates shuffle pool ordered by id ASC → take `Setting.JumlahSoal`. Snapshot frozen di `hasil.SoalIDsJSON` — refresh resume bawa pool yang sama persis (anti-cheat: refresh tidak shuffle ulang).
+- Race-safe: BEGIN tx → `pg_advisory_xact_lock(bigint)` keyed on `sha256(bab||siswa)[:8]` LE int64 (NB: 2-arg form requires int4 yang gak muat untuk sha256 hash — pakai single-arg bigint form). Auto-release on tx commit/rollback.
+- attempt_no = `COUNT(hasil mode=ulangan AND status<>'dibatalkan')+1` — soft-cancel (remedial) tidak count terhadap batas (locked #76). Cek `attempt_no ≤ Setting.BatasAttempt` → 403 `batas_attempt_exceeded`.
+- Resume detection: re-check `(bab, siswa, mode=ulangan, status=berlangsung)` di dalam tx setelah lock. Kalau ada → return existing dengan `Resume=true` + 200 OK + soal_ids identical. Kalau tidak ada → insert new dengan `deadline_at = mulai_at + DurasiMenit*minute` + 201 Created.
+- Setting missing (guru belum PUT) → 409 `ulangan_setting_missing`. Pool soal mode IN ('ulangan','keduanya') < `JumlahSoal` (guru hapus soal setelah PUT setting valid) → 409 `ulangan_pool_insufficient`.
+- Audit `ulangan_bab_started` (hasil_id, bab_id, attempt_no, durasi_min, jumlah_soal, deadline_at) + EventBab `ulangan_bab_started`.
+- Sentinels: `invalid_id` 400, `ulangan_setting_missing` 409, `batas_attempt_exceeded` 403, `ulangan_pool_insufficient` 409, `forbidden` 403, `not_found` 404, `internal` 500.
+- Smoke E2E hijau (15 cases): setting_missing 409 + seed 5 soal ulangan-eligible (3 ulangan + 2 keduanya) + PUT setting jumlah=3 durasi=2min batas=2 + start happy 201 (total=3, attempt_no=1) + start lagi 200 resume (HID + soal_ids identical) + SQL probe (deadline=2min, pool_n=3, EventBab) + cancel via SQL + start lagi 201 (attempt_no=1 — dibatalkan tidak count, soal_ids berbeda — seed berbeda karena mulai_at berbeda) + finish via SQL + start (attempt_no=2) + finish + start ke-3 (403 batas_attempt_exceeded) + guru 403 (role guard) + siswa2 not-enrolled 403 + draft bab 404 + invalid uuid 400 + bab2 dengan pool=2 vs setting jumlah=3 (409 ulangan_pool_insufficient).
+- Bug fix selama implementasi: pgx infer args sebagai int4 → cast `?::bigint`. 2-arg `pg_advisory_xact_lock(int4,int4)` overload gak ada untuk bigint — gunakan single-arg form.
+- Commits: `0346609 feat(soalbab): Ulangan Bab start (Task 5.D.1)` + `32f63ae fix(soalbab): cast advisory_lock keys to bigint` + `d822d46 fix(soalbab): use single-arg pg_advisory_xact_lock(bigint)`
 
 **Task 5.D.2 — Ulangan Bab answer save (autosave 5s, no immediate feedback)** ⏳
 - Endpoint: `POST /api/v1/hasil-soal-bab/:id/answer` (shared dengan latihan task 5.C.2 — branch by mode). Untuk mode='ulangan': UPSERT JawabanBab dengan `is_benar=null, poin_dapat=0` (delay grading sampai submit). Cek `now() ≤ deadline_at` → 410 `timer_expired` kalau lewat (cron belum keburu). Append `EventBab('answer_save')`. Return `{ok: true}` only (tidak leak is_benar).
