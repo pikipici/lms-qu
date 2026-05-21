@@ -39,6 +39,7 @@ import (
 	"github.com/pikip/lms/backend/internal/pengumuman"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/storage"
+	"github.com/pikip/lms/backend/internal/submission"
 	"github.com/pikip/lms/backend/internal/tugas"
 	"gorm.io/gorm"
 )
@@ -446,6 +447,40 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 
 	// Siswa-scope read alias mirror pengumuman pattern.
 	siswaGroup.Get("/kelas/:id/tugas", tugasHandler.ListByKelas)
+
+	// Submission (Task 4.C.2-4.C.4): siswa submit + guru grade. Single-row
+	// per (tugas, siswa) with version bump on resubmit (locked #70). Late
+	// submission gating via tugas.IzinkanLate + penalty calc on grade
+	// (locked #71). Attachment policy mirror tugas: 0..N optional, cap 5×20MB
+	// (locked #72). Submit + grade pakai SELECT FOR UPDATE + idempotent guard
+	// (locked #73).
+	submissionRepo := submission.NewRepo(gdb)
+	submissionSvc := submission.NewService(submissionRepo, tugasRepo, kelasRepo, kelasRepo, authRepo, objectStore)
+	submissionHandler := submission.NewHandler(submissionSvc)
+
+	// Siswa: submit + view own + tugas info pre-fill.
+	siswaGroup.Post("/tugas/:id/submit", submissionHandler.Submit)
+	siswaGroup.Get("/tugas/:id/submission", submissionHandler.GetMySubmission)
+
+	// Guru/admin: rekap submission per tugas (status filter optional).
+	tugasGroup.Get("/:id/submissions", submissionHandler.ListByTugas)
+
+	// Submission flat group — guru/admin owner OR siswa pemilik untuk
+	// GET (service branches by role); grade restricted ke guru/admin.
+	submissionAllRolesGroup := api.Group("/submission",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru), string(auth.Siswa)),
+	)
+	submissionAllRolesGroup.Get("/:id", submissionHandler.Get)
+	submissionAllRolesGroup.Get("/:id/attachments/:attID/url", submissionHandler.AttachmentURL)
+
+	submissionStaffGroup := api.Group("/submission",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	submissionStaffGroup.Post("/:id/grade", submissionHandler.Grade)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
