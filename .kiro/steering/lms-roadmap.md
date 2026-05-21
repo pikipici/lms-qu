@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.1 — **Task 3.C.4 ✅ DONE** 2026-05-21 (commit `caad20a`; server vet + build + tests PASS, materi pkg 11 new test cases ship green incl. idempotency + enrollment guard coverage). Materi siswa mark-as-read shipped — closes sub-fase 3.C Materi BE 4/4 full. New endpoint: `POST /api/v1/siswa/materi/:id/read` (siswa-only via BearerAuth + ForceChangePassword + RoleGuard(siswa)). Service guard chain: role (siswa-only defensive) → materi find → enrollment via `kelas.Repo.FindEnrollment(kelasID, siswaID)` (missing/removed → ErrForbidden) → idempotent `Repo.MarkRead` ON CONFLICT DO NOTHING. Returns `{materi_id, read_at, was_new}` — first call was_new=true, subsequent calls was_new=false (read_at preserved). Audit skipped per design (chatty); slog Debug records per-call. `NewService` signature now 6-arg dgn `enrollmentLookup` (kelas.Repo satisfies via FindEnrollment). **Sub-fase 3.C 4/4 CLOSED (59% Fase 3 overall: 10/17).** Berikutnya: Sub-fase 3.D (Materi FE Guru) atau 3.E (Materi FE Siswa) — pivot ke FE.
+> Status: v0.9.2 — **Task 3.D.1 ✅ DONE** 2026-05-21 (commit `eeca652`; server typecheck + `next build` PASS, 22 static routes generated, /guru/kelas/detail/bab page bundle 54.3 kB). Tab Materi guru shipped — create dialog 3-tipe (PDF drag-drop / YouTube URL parse + nocookie embed preview / Markdown split write+preview) + list per-bab + dropdown actions (Edit/Hapus, Buka PDF utk tipe pdf) + delete confirm. Files: `frontend/lib/youtube.ts` (port `parseYouTubeID` mirror locked #65 4 formats), `frontend/lib/materi-api.ts` (typed client + multipart upload + presign + friendly errors), `frontend/components/materi/{MarkdownEditor,YouTubeInput,PdfUpload,MateriCreateDialog,MateriEditDialog,MateriList}.tsx`. Wiring: `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` Materi tab swap PlaceholderTab → `<MateriList kelasID babID contextLabel disabled={archived} />`. Tipe immutable di Edit dialog (locked #63) — pdf konten read-only, ganti file = delete+create. PDF FE-side preflight (.pdf+20MB, locked #46/#64); server tetap re-validate via mime sniff. **Sub-fase 3.D 1/2 (Materi FE Guru DONE; siswa viewer 3.D.2 berikutnya). Fase 3 overall 11/17 task (65%).**
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.C.4 shipped — siswa mark-as-read idempotent + enrollment guard, sub-fase 3.C CLOSED 4/4)
+> Last updated: 2026-05-21 (Task 3.D.1 shipped — Materi FE Guru full CRUD UI)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2059,15 +2059,15 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.D Materi Frontend
 
-**Task 3.D.1 — Tab Materi di bab detail (guru) — create dialog + list + edit/delete**
-- Files: `frontend/lib/materi-api.ts` (typed client + R2 upload helper), `frontend/components/materi/{MateriList,MateriCreateDialog,MateriEditDialog,YouTubeInput,MarkdownEditor,PdfUpload}.tsx`. Extend `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` Materi tab.
-- Create dialog: radio jenis (PDF / YouTube / Markdown). Per jenis:
-  - **PDF**: drag-drop file (.pdf cap 20MB FE-side validation locked #64), accept `application/pdf` only, show progress bar saat upload → backend `POST /kelas/:id/materi/upload`.
-  - **YouTube**: text input URL → live parse + preview embed via `youtube-nocookie.com/embed/<id>` (FE-side same regex — copy-paste dari backend `parseYouTubeID` ke `frontend/lib/youtube.ts`), error inline kalau invalid format.
-  - **Markdown**: textarea + preview live via react-markdown (install kalau belum ada). Char counter (cap 50KB).
-- List: card per materi dgn icon per tipe (FileText/Youtube/Code) + judul + tombol Edit/Delete. Edit dialog cuma untuk judul + konten (untuk youtube re-paste URL, markdown edit body — PDF tidak editable, cuma replace via delete+create).
-- Verify: typecheck + build + manual smoke.
-- Commit: `feat(fe-guru): materi tab — create dialog 3-tipe + list + edit/delete`
+**Task 3.D.1 — Tab Materi di bab detail (guru) — create dialog + list + edit/delete** ✅ DONE 2026-05-21 (commit `eeca652`; server typecheck + `next build` PASS, /guru/kelas/detail/bab page bundle 54.3 kB).
+- Files shipped: `frontend/lib/youtube.ts` (port `parseYouTubeID` mirror locked #65 4 formats: youtu.be, youtube.com/watch, /shorts, /embed; tryParseYouTubeID + youtubeEmbedURL + youtubeWatchURL), `frontend/lib/materi-api.ts` (typed client: listMateri, getMateri, createMateri, updateMateri, deleteMateri, getMateriFileURL, uploadMateriPDF multipart hand-rolled fetch + bearer; friendlyMateriError), `frontend/components/materi/{MarkdownEditor,YouTubeInput,PdfUpload,MateriCreateDialog,MateriEditDialog,MateriList}.tsx`.
+- Wiring: `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` Materi tab swap PlaceholderTab → `<MateriList kelasID babID contextLabel disabled={archived} />`. PlaceholderTab tetap idle untuk soal/tugas/pengumuman.
+- Create dialog: radio cards 3-tipe (PDF/YouTube/Markdown). Per-tipe field — pdf=`<PdfUpload>` drag-drop (.pdf+20MB FE preflight, locked #46/#64), youtube=`<YouTubeInput>` URL → live tryParseYouTubeID + youtube-nocookie iframe preview (locked #65), markdown=`<MarkdownEditor>` split write/preview pakai react-markdown + remark-gfm + char counter cap 50KB locked #63. Submit pdf → multipart `/kelas/:id/materi/upload`, yt+md → JSON `/kelas/:id/materi`. Tipe lock di state — tidak bisa swap mid-create.
+- Edit dialog: tipe IMMUTABLE (locked #63, server reject `tipe_immutable`). Hanya judul + konten editable. Untuk youtube: rebuild watch URL dari video_id (`youtubeWatchURL`) supaya user lihat URL aslinya, server re-parse via `parseYouTubeID`. Untuk pdf: konten read-only, ganti file = delete+create. Optimistic concurrency `version` di body (locked #56); 409 → toast + invalidate untuk refetch + form re-sync via React.useEffect.
+- List: TanStack Query `['guru','materi','list',kelasID,babID??'free']` staleTime 15s. Card per materi dengan icon (`FileText`/`Youtube`/`Type`) + judul + tipe-badge + meta (urutan, version, size_bytes utk pdf, video_id utk yt). DropdownMenu `<MoreVertical>` align=end: Buka PDF (tipe pdf only, presigned URL via `getMateriFileURL` → `window.open` no-opener) → Edit → Hapus. Delete confirm dialog separate; PDF response `pending_r2_cleanup` → toast note "akan dibersihkan oleh sweeper".
+- FE-side validation: PDF mime check (application/pdf atau filename `.pdf`) + size cap 20MB pre-upload (server tetap re-validate via `http.DetectContentType` locked #46). Markdown TextEncoder bytes cap 50KB. YouTube live regex 11-char [A-Za-z0-9_-] (mirror backend `videoIDRe`). Server tetap final authority — FE cuma UX guard.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (22 static routes generated, 1 ESLint warning di lib/role-guard.tsx pre-existing — not from this task). Local skip karena no runtime deps. Live deploy belum (FE static export auto-served oleh `lms-api` binary; binary perlu rebuild + restart untuk pick up `frontend/.next` dir baru — blocked oleh user di sesi ini).
+- Commit: `eeca652 feat(fe-guru): materi tab — create dialog 3-tipe + list + edit/delete`
 
 **Task 3.D.2 — Siswa materi viewer (PDF iframe + YouTube embed + react-markdown) + auto mark-read**
 - Files: `frontend/components/materi/{MateriViewer,PdfViewer,YouTubeEmbed,MarkdownView}.tsx`. Dipakai di `/siswa/kelas/detail/bab` page (Task 3.E.2).
@@ -2134,32 +2134,30 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.C.4 ✅ DONE** 2026-05-21. Materi siswa mark-as-read shipped (commit `caad20a`). Server vet + build + tests PASS (11 new test cases). **Sub-fase 3.C CLOSED 4/4 — Materi BE 100%. Fase 3 overall 10/17 task (59%).**
+**Task 3.D.1 ✅ DONE** 2026-05-21. Tab Materi guru shipped (commit `eeca652`). Server typecheck + `next build` PASS — 22 static routes generated, /guru/kelas/detail/bab bundle 54.3 kB. **Sub-fase 3.D 1/2 (Materi FE Guru DONE; siswa viewer 3.D.2 berikutnya). Fase 3 overall 11/17 task (65%).**
 
-**Sub-fase 3.C summary (4/4 CLOSED):**
-- 3.C.1 (commit `7772f63`) — migration 000006 + model + repo (Materi + Read tables, CHECK constraint, MarkRead idempotent)
-- 3.C.2 (commit `6e76b4c`) — youtube + markdown CRUD service+handler, parseYouTubeID 4 formats
-- 3.C.3 (commit `8c2b495`) — PDF upload to R2 + presigned download + compensating delete (locked #69)
-- 3.C.4 (commit `caad20a`) — siswa MarkRead idempotent + enrollment guard
+**Sub-fase progress recap:**
+- 3.A Bab BE 4/4 ✅ CLOSED
+- 3.B Bab FE Guru 2/2 ✅ CLOSED
+- 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
+- 3.D Materi FE 1/2 (3.D.1 commit `eeca652`)
+- 3.E Bab Siswa + Progress 0/2
+- 3.F Pengumuman 0/3
 
-**Eksekusi berikutnya: pivot ke FE — Sub-fase 3.D (Materi FE Guru) atau 3.E (Materi FE Siswa).**
+**Eksekusi berikutnya: lanjut sub-fase 3.D.2 (Materi FE Siswa viewer) atau lompat ke 3.E.1 (BE siswa bab list + progress) dulu.**
 
 Pilihan opsi:
-- **gas 3.D.1 inline** — Tab Materi di bab detail (guru): create dialog 3-tipe (PDF drag-drop / YouTube URL parse + embed preview / Markdown textarea + react-markdown live preview) + list + edit/delete. Files: `frontend/lib/materi-api.ts` + 6 components. Effort medium-besar (~400-600 LOC, react-markdown install kalau belum ada). Pasti perlu dgn typecheck + build + manual smoke setelah deploy live.
-- **gas 3.E.1 inline** — Siswa kelas list/detail page (kalau belum lengkap dari Fase 2.C). Pre-req sebelum 3.E.2 viewer. Lebih ringan dari 3.D.1.
-- **gas 3.D + 3.E parallel via delegasi (codex/claude-code)** — kalau auth codex udah balik, bisa dispatch dua sub-agent paralel untuk FE materi.
-- **stop dulu** — save state. Sesi ini udah heroik banget: 4 task BE back-to-back (3.C.1, 3.C.2, 3.C.3, 3.C.4) + 4 docs commits = total 10 commits dual-pushed dalam 1 sesi. Sub-fase 3.C BE FULL CLOSED.
+- **gas 3.D.2 inline** — Siswa materi viewer (PdfViewer iframe + YouTubeEmbed + MarkdownView) + auto mark-read on mount. Components-only, dipakai nanti di Task 3.E.2 page. Ringan: 4 component files, no new endpoint, semua API call udah ready (`getMateriFileURL` + `POST /siswa/materi/:id/read`).
+- **gas 3.E.1 inline** — BE GET endpoints siswa bab list + bab detail dgn progress (formula fase-3-partial: materi_read/materi_total). Files: `backend/internal/bab/student.go`. Effort sedang (handler+service+test). Ini blocker untuk 3.E.2 page yang link siswa flow.
+- **gas 3.D.2 + 3.E.1 paralel via codex/claude-code subagent** — kalau auth balik, bisa dispatch dua workstream paralel.
+- **stop dulu** — save state. Sesi ini udah ship 1 task FE besar (1912 LOC, 9 files).
 
-**Live deploy command** (kapan lu mau):
+**Live deploy command** (kapan lu mau — restart binary supaya `.next` static dir di-serve update):
 ```
 ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
 ```
-Migration 000006_materi udah applied di server (di Task 3.C.1). Server tree udah di commit `caad20a` after fetch+reset.
+Note: 3.C BE binary udah `BUILD_OK` di sesi ini (server side udah commit `eeca652` post fetch+reset), tapi systemctl restart blocked. Re-run command di atas akan restart binary + serve FE static export terbaru sekaligus.
 
-> Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
-
-QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang: `ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`.
-
-> Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat, bisa delegasi ke `codex` atau `claude-code` per task. **Live restart blocked di sesi ini** — perubahan udah di-commit + di-push ke server git tree, tapi binary `lms-api` belum rebuilt + restart.
+> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree fetch+reset ke `eeca652`, tapi binary belum di-restart.
 
 > Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
