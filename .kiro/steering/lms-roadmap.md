@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.7 — **Tasks 3.F.2 + 3.F.3 ✅ DONE** 2026-05-21 (commits `1ab48f7` + `6958676` + `6d3cc6f`; server `npx tsc --noEmit` PASS, `npm run build` PASS — 22 static routes, no lint warnings dari files baru). FE pengumuman shipped end-to-end: guru CRUD (list+filter+compose+edit+archive+delete) + siswa read-only (kelas-wide + bab-scoped). **Fase 3 17/17 = 100% complete.**
+> Status: v0.9.8 — **Fase 4 ✅ DONE 14/14 = 100% complete** 2026-05-21. 4.A.4 tugas duplicate `3600188` (R2 CopyObject + status reset draft); 4.D.2 siswa dashboard riwayat — BE `5d160b6`+`9d5eda2` (ListMine cross-kelas JOIN) + FE `6f49e14` (/siswa/tugas page + sidebar nav); 4.E.2 pending counter — BE `a4f14a4` (GET /guru/pending-counts cumulative across guru-owned kelas) + FE `34aff41` (sidebar badge polled 30s + dashboard card). Activity feed full di-defer Fase 7 (locked #39 cursor pagination).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Fase 3 closed — pengumuman FE guru + siswa shipped)
+> Last updated: 2026-05-21 (Fase 4 closed — duplicate + riwayat siswa + pending counter shipped)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2212,14 +2212,15 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: server `go vet` clean, `go build ./...` PASS, 23/23 tests PASS dalam 0.015s, full repo `go test ./...` PASS.
 - Caveats: integration test untuk R2 PutObject path butuh real R2 atau mock — tests yang aktif sekarang cover service logic (sentinel errors + audit log) tapi gak end-to-end PutObject. Real upload smoke ditunda ke saat 4.B.1 FE guru udah bisa hit endpoint dari browser.
 
-**Task 4.A.4 — Tugas duplicate endpoint** ⏳ PENDING (optional, defer kalau time-tight)
-- Files: `backend/internal/tugas/duplicate.go` (+ handler test).
-- Endpoint: `POST /tugas/:id/duplicate` body `{judul?}` → bikin tugas baru status=`draft`, version=1, copy semua field source + copy attachment (R2 CopyObject ke uuid baru per #58). Default judul = `<source_judul> (Salinan)`.
-- Guards: source 404, kelas archived 409, source archived 409 `already_archived`, non-owner 403.
-- Compensating: kalau DB INSERT fail mid-tx, R2 DeleteObject untuk semua copied object keys + audit log.
-- Audit `tugas_duplicated` w/ meta `{source_tugas_id, new_tugas_id, attachment_count}`.
-- Verify: handler tests mirror Task 3.A.4 pattern (duplicate Bab) — happy + 404 + 403 + 409 + R2 cleanup on rollback.
-- Commit: `feat(tugas): duplicate endpoint (Task 4.A.4)`
+**Task 4.A.4 — Tugas duplicate endpoint** ✅ DONE (commit `3600188`)
+- Files: `backend/internal/tugas/duplicate.go` (NEW), `backend/internal/storage/{storage,r2,mock}.go` (CopyObject method).
+- Endpoint: `POST /tugas/:id/duplicate` body `{judul?}` → 201 + `{tugas: <new>}`. Default judul = `<source_judul> (Salinan)`. Status reset ke `draft`, version=1, semua field source (deskripsi, deadline, izinkan_late, penalty_persen, wajib_attachment, bab_id) ikut.
+- Storage: tambah `Storage.CopyObject(srcKey, dstKey)` ke interface — R2Client pakai `s3.CopyObject` server-side (no body transfer), MockStorage deep-copies bytes. R2 attachment di-copy ke `tugas/<uuid_baru>.<ext>` per source attachment.
+- Compensating: R2 CopyObject FIRST → DB tx (tugas + attachment rows) → kalau tx fail, DeleteObject untuk semua copied keys. Pre-flight uniqueness via UUID, no race.
+- Guards: source 404 (`not_found`), kelas archived 409 (`kelas_archived`), source archived 400 (`invalid_input`), non-owner 403 (`forbidden`), R2 unavailable 503 (`r2_unavailable`).
+- Audit: `tugas_duplicated` w/ meta `{source_tugas_id, new_tugas_id, new_judul, attachment_count}`.
+- Verify: server `go vet` clean, `go build` PASS, smoke E2E live: ORIGINAL published+v=1 → DUPLICATE draft+v=1 + auto-suffix `(Salinan)` ✅; non-owner guru2 → 403; missing id → 404; custom judul accept ✅.
+- Commit: `feat(tugas): duplicate endpoint w/ R2 CopyObject (Task 4.A.4)`
 
 #### 4.B Tugas Frontend Guru
 
@@ -2309,11 +2310,17 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: server build + lint clean. Bundle impact OK.
 - Commit: `feat(fe-submission): siswa tugas list + submit page w/ late banner (Task 4.D.1)`
 
-**Task 4.D.2 — Riwayat submission siswa di dashboard** ⏳ PENDING (defer kalau time-tight)
-- Files: `frontend/app/(authed)/siswa/tugas/page.tsx` — list semua submission siswa lintas kelas, group by kelas, filter status (all/submitted/graded). Card show nilai_asli + penalty + nilai_final + feedback (kalau graded). Reuse `SiswaTugasCard` adapted.
-- Sidebar siswa: tambah link "Tugas saya" (badge count tugas yg belum submit + deadline < 24h).
-- Verify: server build + bundle.
-- Commit: `feat(fe-submission): riwayat tugas siswa di dashboard (Task 4.D.2)`
+**Task 4.D.2 — Riwayat submission siswa di dashboard** ✅ DONE (commits `5d160b6` + `9d5eda2` + `6f49e14`)
+- BE: `backend/internal/submission/{repo.go,mine.go,handler.go}` + route wire di `cmd/server/main.go`.
+  - `Repo.ListBySiswaWithTugas(siswaID, limit)` — JOIN submission + tugas snapshot dalam single roundtrip (cegah N+1 di FE).
+  - `Service.ListMine(siswaID, limit)` — mapping ke flat `MySubmissionItem` DTO untuk FE.
+  - Endpoint: `GET /api/v1/siswa/submissions?limit=` (RoleGuard siswa, default 100, cap 500).
+- FE: `frontend/lib/submission-api.ts` (`MySubmissionItem` types + `listMySubmissions`), `frontend/app/(authed)/siswa/tugas/page.tsx` (NEW, 380 LOC).
+  - Page features: 3 stat cards (total/menunggu/graded), status filter tabs (all/submitted/graded), group by kelas dengan link buka kelas detail, per-row card menampilkan judul tugas + status badge + late badge + nilai (kalau graded, dengan penalty preview) + feedback + deadline.
+  - Deep link ke `/siswa/kelas/detail/tugas?id=&tid=` untuk buka tugas.
+- Sidebar: `frontend/app/(authed)/siswa/layout.tsx` — tambah nav item "Tugas saya" (ClipboardList icon) di antara Dashboard dan Gabung Kelas.
+- Verify: server `go vet` + `go build` PASS, `npx tsc --noEmit` PASS, `npm run build` PASS (22 static routes, /siswa/tugas 3.54 kB), HTTP 200 verified. Smoke E2E live: siswa1 has 1 graded submission ✅ render dengan nilai 87.5.
+- Commits: `feat(submission): ListMine cross-kelas + GET /siswa/submissions (Task 4.D.2 BE)` + `fix(submission): add time import in repo.go` + `feat(fe-submission): /siswa/tugas page + sidebar nav (Task 4.D.2 FE)`
 
 #### 4.E Submission Review Frontend Guru
 
@@ -2327,13 +2334,17 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: server build + lint clean.
 - Commit: `feat(fe-submission): guru review + grading dialog (Task 4.E.1)`
 
-**Task 4.E.2 — Pending counter + activity feed integration** ⏳ PENDING (defer kalau time-tight, link ke locked #40 + #39)
-- Backend: extend `GET /guru/pending-counts` (locked #40) tambah `ungraded_submissions` counter — hitung `submission.Status='submitted'` di kelas guru.
-- Backend: extend `GET /guru/feed` (locked #39 + #55) tambah event type `submission_submitted` (siswa submit baru) + `tugas_graded` (guru lain grade — kalau team teaching).
-- Frontend guru sidebar: badge counter "Tugas perlu dinilai" (cumulative cross-kelas).
-- Frontend guru dashboard: feed tab tampil event submission_submitted + tugas_graded.
-- Verify: build + lint + integration test pending counter accurate.
-- Commit: `feat(submission): pending counter + activity feed integration (Task 4.E.2)`
+**Task 4.E.2 — Pending counter (partial; activity feed defer Fase 7)** ✅ DONE (commits `a4f14a4` + `34aff41`)
+- BE: `backend/internal/submission/pending.go` (NEW) + `backend/internal/kelas/repo.go` (`ListIDsByGuru`) + handler wire di `cmd/server/main.go`.
+  - `kelas.Repo.ListIDsByGuru(guruID)` — Pluck kelas IDs (active+archived) untuk aggregate scope.
+  - `submission.PendingCounter` — single SQL aggregate `COUNT(*) FROM submission s JOIN tugas t WHERE s.status='submitted' AND t.kelas_id IN (...)`. Guru: scope to owned kelas; admin: all kelas.
+  - Endpoint: `GET /api/v1/guru/pending-counts` → `{ungraded_submissions: int}`. Forward-compat shape — `pending_review_ulangan_bab/harian` akan tambah di Fase 5/7.
+- FE: `frontend/lib/guru-api.ts` (NEW, `getPendingCounts` typed client) + `frontend/app/(authed)/guru/{layout,page}.tsx`.
+  - Layout sidebar: nav item Dashboard kasih `badgeKey: 'ungraded'` → render rose pill dengan count saat >0. Polling `useQuery` refetchInterval 30s + staleTime 15s. Mobile compact nav juga punya badge.
+  - Dashboard `/guru` page: tambah stat card "Tugas perlu dinilai" (ClipboardCheck icon, rose accent kalau >0) dengan refetch 30s.
+- Defer Fase 7: GET `/guru/feed` cursor pagination + event ledger (locked #39 + #55) — itu scope Fase 7 Activity Feed. 4.E.2 sini hanya counter.
+- Verify: server `go vet` + `go build` PASS, FE `npx tsc --noEmit` PASS, `npm run build` PASS. Smoke E2E: 0 → siswa2 submit → counter 1 → grade akan turun 0.
+- Commits: `feat(submission): pending-counts endpoint for guru sidebar (Task 4.E.2 BE)` + `feat(fe-submission): pending counter badge guru sidebar + dashboard card (Task 4.E.2 FE)`
 
 ---
 
