@@ -2317,7 +2317,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 4.E Submission Review Frontend Guru
 
-**Task 4.E.1 — Halaman review submission per tugas (list + grading dialog)** ⏳ PENDING
+**Task 4.E.1 — Halaman review submission per tugas (list + grading dialog)** ✅ DONE (commit `0775ead`)
 - Files baru:
   - `frontend/lib/submission-guru-api.ts` — typed client (listTugasSubmissions, getSubmission, gradeSubmission, getSubmissionAttachmentURL).
   - `frontend/components/tugas/SubmissionReviewList.tsx` — list per tugas, status filter tabs (all/submitted/graded), badge LATE merah kalau is_late, sort by submitted_at DESC. Action button "Beri Nilai" buka dialog grading.
