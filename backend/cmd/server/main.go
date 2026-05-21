@@ -462,6 +462,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// Siswa: submit + view own + tugas info pre-fill.
 	siswaGroup.Post("/tugas/:id/submit", submissionHandler.Submit)
 	siswaGroup.Get("/tugas/:id/submission", submissionHandler.GetMySubmission)
+	siswaGroup.Get("/submissions", submissionHandler.ListMine)
 
 	// Guru/admin: rekap submission per tugas (status filter optional).
 	tugasGroup.Get("/:id/submissions", submissionHandler.ListByTugas)

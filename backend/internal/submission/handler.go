@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -253,6 +254,36 @@ func (h *Handler) AttachmentURL(c *fiber.Ctx) error {
 		"original_filename": res.OriginalFilename,
 		"mime_type":         res.MimeType,
 	})
+}
+
+// ListMineResponse mirrors the list shape of other endpoints.
+type ListMineResponse struct {
+	Items []MySubmissionItem `json:"items"`
+	Total int                `json:"total"`
+}
+
+// ListMine handles GET /api/v1/siswa/submissions?limit=.
+//
+// Returns ALL submissions of the calling siswa lintas kelas, JOIN-ed dengan
+// tugas snapshot. Used by the "Tugas Saya" dashboard page (Task 4.D.2).
+func (h *Handler) ListMine(c *fiber.Ctx) error {
+	siswaID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	limit := 0
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		n, perr := strconv.Atoi(raw)
+		if perr != nil || n <= 0 {
+			return errResp(c, fiber.StatusBadRequest, "limit must be a positive integer", "invalid_input")
+		}
+		limit = n
+	}
+	rows, err := h.svc.ListMine(c.UserContext(), siswaID, limit)
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(ListMineResponse{Items: rows, Total: len(rows)})
 }
 
 // GradeRequest is the JSON body for POST /submission/:id/grade.

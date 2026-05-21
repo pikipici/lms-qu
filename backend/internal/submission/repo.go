@@ -150,6 +150,107 @@ func (r *Repo) ListBySiswa(ctx context.Context, siswaID uuid.UUID, limit int) ([
 	return rows, nil
 }
 
+// SubmissionWithTugas joins submission + tugas snapshot for the siswa
+// "Tugas Saya" cross-kelas list (Task 4.D.2). One DB roundtrip via JOIN
+// supaya FE gak perlu fetch tugas per row.
+type SubmissionWithTugas struct {
+	Submission Submission
+	TugasID    uuid.UUID
+	KelasID    uuid.UUID
+	BabID      *uuid.UUID
+	Judul      string
+	Deadline   *time.Time
+	IzinkanLate    bool
+	PenaltyPersen  int16
+}
+
+// ListBySiswaWithTugas returns ALL submissions for a siswa joined with
+// tugas snapshot. Ordered by submitted_at DESC. Limit caps result count
+// (<=0 → no cap).
+//
+// Statuses included: all (siswa wants to see submitted + graded). Caller
+// (handler) bisa pilih untuk filter status di FE.
+func (r *Repo) ListBySiswaWithTugas(ctx context.Context, siswaID uuid.UUID, limit int) ([]SubmissionWithTugas, error) {
+	type row struct {
+		// Submission columns.
+		ID                    uuid.UUID
+		TugasID               uuid.UUID
+		SiswaID               uuid.UUID
+		Catatan               string
+		Status                Status
+		IsLate                bool
+		NilaiAsli             *float64
+		PenaltyPersenApplied  *int16
+		NilaiSetelahPenalty   *float64
+		Feedback              string
+		GradedByID            *uuid.UUID
+		GradedAt              *time.Time
+		Version               int
+		SubmittedAt           time.Time
+		UpdatedAt             time.Time
+		// Tugas columns (aliased).
+		TKelasID       uuid.UUID  `gorm:"column:t_kelas_id"`
+		TBabID         *uuid.UUID `gorm:"column:t_bab_id"`
+		TJudul         string     `gorm:"column:t_judul"`
+		TDeadline      *time.Time `gorm:"column:t_deadline"`
+		TIzinkanLate   bool       `gorm:"column:t_izinkan_late"`
+		TPenaltyPersen int16      `gorm:"column:t_penalty_persen"`
+	}
+
+	q := r.db.WithContext(ctx).
+		Table("submission s").
+		Select(`
+			s.id, s.tugas_id, s.siswa_id, s.catatan, s.status, s.is_late,
+			s.nilai_asli, s.penalty_persen_applied, s.nilai_setelah_penalty,
+			s.feedback, s.graded_by_id, s.graded_at, s.version,
+			s.submitted_at, s.updated_at,
+			t.kelas_id AS t_kelas_id, t.bab_id AS t_bab_id, t.judul AS t_judul,
+			t.deadline AS t_deadline, t.izinkan_late AS t_izinkan_late,
+			t.penalty_persen AS t_penalty_persen
+		`).
+		Joins("JOIN tugas t ON t.id = s.tugas_id").
+		Where("s.siswa_id = ?", siswaID).
+		Order("s.submitted_at DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	var raw []row
+	if err := q.Scan(&raw).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]SubmissionWithTugas, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, SubmissionWithTugas{
+			Submission: Submission{
+				ID:                   r.ID,
+				TugasID:              r.TugasID,
+				SiswaID:              r.SiswaID,
+				Catatan:              r.Catatan,
+				Status:               r.Status,
+				IsLate:               r.IsLate,
+				NilaiAsli:            r.NilaiAsli,
+				PenaltyPersenApplied: r.PenaltyPersenApplied,
+				NilaiSetelahPenalty:  r.NilaiSetelahPenalty,
+				Feedback:             r.Feedback,
+				GradedByID:           r.GradedByID,
+				GradedAt:             r.GradedAt,
+				Version:              r.Version,
+				SubmittedAt:          r.SubmittedAt,
+				UpdatedAt:            r.UpdatedAt,
+			},
+			TugasID:       r.TugasID,
+			KelasID:       r.TKelasID,
+			BabID:         r.TBabID,
+			Judul:         r.TJudul,
+			Deadline:      r.TDeadline,
+			IzinkanLate:   r.TIzinkanLate,
+			PenaltyPersen: r.TPenaltyPersen,
+		})
+	}
+	return out, nil
+}
+
 // UpdateOnResubmit applies an optimistic-concurrency patch on resubmit:
 // overwrite catatan + is_late, bump version + submitted_at. Caller telah
 // LockForUpdate + classified attachment swap. Used in Submit endpoint flow.

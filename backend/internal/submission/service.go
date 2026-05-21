@@ -78,6 +78,7 @@ type repoAPI interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*Submission, error)
 	FindByTugasSiswa(ctx context.Context, tugasID, siswaID uuid.UUID) (*Submission, error)
 	ListByTugas(ctx context.Context, tugasID uuid.UUID, f StatusFilter) ([]Submission, error)
+	ListBySiswaWithTugas(ctx context.Context, siswaID uuid.UUID, limit int) ([]SubmissionWithTugas, error)
 	UpdateOnResubmit(ctx context.Context, tx *gorm.DB, id uuid.UUID, expectedVersion int, catatan string, isLate bool) error
 	GradeUpdate(ctx context.Context, tx *gorm.DB, id uuid.UUID, expectedVersion int, fields map[string]any) error
 	AddAttachment(ctx context.Context, tx *gorm.DB, a *Attachment) error
