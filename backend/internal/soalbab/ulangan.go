@@ -134,7 +134,11 @@ func (s *UlanganService) Start(ctx context.Context, babID, siswaID uuid.UUID, ip
 		}
 	}()
 
-	if err := tx.Exec("SELECT pg_advisory_xact_lock(?::bigint, ?::bigint)", k1, k2).Error; err != nil {
+	// Single-arg pg_advisory_xact_lock(bigint) — postgres' 2-arg form
+	// takes (int4, int4) which can't fit a sha256-derived key. Use the
+	// single int64 form with k1 (k2 ignored, kept for sanity).
+	_ = k2
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(?::bigint)", k1).Error; err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("soalbab ulangan advisory lock: %w", err)
 	}
