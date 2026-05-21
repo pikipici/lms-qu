@@ -66,6 +66,7 @@ import { cn } from '@/lib/utils';
 import { MateriViewer } from '@/components/materi/MateriViewer';
 import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
 import { siswaCardToMateri } from '@/components/siswa/siswaCardToMateri';
+import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
 
 // ---------- Sub-tab definition ----------
 
@@ -453,12 +454,21 @@ function SiswaBabDetailContent({
       )}
 
       {tab === 'pengumuman' && (
-        <PlaceholderTab
-          Icon={Megaphone}
-          title="Pengumuman"
-          body="Pengumuman dari guru terkait bab ini."
-          taskRef="Task 3.F (Pengumuman)"
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pengumuman bab</CardTitle>
+            <CardDescription>
+              Pengumuman dari guru terkait bab ini.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PengumumanReadList
+              kelasID={kelasID}
+              babID={babID}
+              emptyState="Belum ada pengumuman untuk bab ini."
+            />
+          </CardContent>
+        </Card>
       )}
     </div>
   );

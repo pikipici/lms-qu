@@ -87,6 +87,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { BabListSection } from '@/components/bab/BabListSection';
+import { PengumumanList } from '@/components/pengumuman/PengumumanList';
 
 // ---------- Schema & helpers ----------
 
@@ -980,11 +981,11 @@ function GuruKelasDetailContent({ id }: { id: string }) {
       {tab === 'siswa' && <SiswaTab kelasID={kelas.id} />}
 
       {tab === 'pengumuman' && (
-        <PlaceholderTab
-          Icon={Megaphone}
-          title="Pengumuman"
-          body="Pengumuman ke seluruh siswa kelas. Akan dikaitkan ke Bab/Materi (Fase 3)."
-          taskRef="Fase 3 (Materi & Pengumuman)"
+        <PengumumanList
+          kelasID={kelas.id}
+          babID={null}
+          contextLabel={`Pengumuman ke seluruh siswa kelas ${kelas.nama}.`}
+          disabled={archived}
         />
       )}
 

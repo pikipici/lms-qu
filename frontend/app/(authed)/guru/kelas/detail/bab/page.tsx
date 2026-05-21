@@ -16,7 +16,7 @@
  *   - Materi    → Task 3.D.1 (FE Materi guru)
  *   - Soal      → Fase 5 (Soal Bab)
  *   - Tugas     → Fase 4 (Tugas)
- *   - Pengumuman→ Task 3.F.2 (FE Pengumuman guru)
+ *   - Pengumuman→ tab Pengumuman (Task 3.F.2)
  *   - Pengaturan→ aktif sekarang: form basic edit (judul/nomor/deskripsi/status)
  *                  pakai mutation langsung (mini-version dari BabFormDialog body)
  *
@@ -81,6 +81,7 @@ import { BabFormDialog } from '@/components/bab/BabFormDialog';
 import { ArchiveBabDialog } from '@/components/bab/ArchiveBabDialog';
 import { DuplicateBabDialog } from '@/components/bab/DuplicateBabDialog';
 import { MateriList } from '@/components/materi/MateriList';
+import { PengumumanList } from '@/components/pengumuman/PengumumanList';
 
 // ---------- Helpers ----------
 
@@ -580,11 +581,11 @@ function GuruBabDetailContent({
         />
       )}
       {tab === 'pengumuman' && (
-        <PlaceholderTab
-          Icon={Megaphone}
-          title="Pengumuman"
-          body="Pengumuman tertaut bab. Siswa lihat di list bab dan kelas detail."
-          taskRef="Task 3.F.2 (FE Pengumuman guru)"
+        <PengumumanList
+          kelasID={kelasID}
+          babID={babID}
+          contextLabel={`Pengumuman untuk Bab ${bab.nomor} — ${bab.judul}.`}
+          disabled={archived}
         />
       )}
       {tab === 'pengaturan' && (
