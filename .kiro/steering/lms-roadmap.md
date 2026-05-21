@@ -27,7 +27,7 @@
 
 ---
 
-## 0. Locked Decisions (v0.8.1)
+## 0. Locked Decisions (v0.9.0)
 
 | # | Keputusan | Pilihan |
 |---|-----------|---------|
@@ -100,6 +100,11 @@
 | 67 | Bab reorder UX | **Bulk update `urutan` field** via `POST /kelas/:id/bab/reorder` body `{order: [bab_id1, bab_id2, ...]}`. Backend: transaction loop `UpdateColumn("urutan", index)` per bab_id + cek `kelas_id=<:id>` ownership + cek `version` per row (tolak 409 kalau ada bab di-edit paralel). Lebih simpel dari before/after pivot pattern. FE: drag-and-drop list pakai `@dnd-kit/core` + optimistic update + invalidate on settled. |
 | 68 | Bab progress Fase 3 partial | **Fase 3 progress = materi-only**, re-normalize otomatis sesuai locked decision #48. `progress_persen = round(pct_materi × 100)` dimana `pct_materi = materi_dibaca / total_materi` (0 kalau bab kosong materi). Komponen latihan/ulangan/tugas masih 0/null di Fase 3 (belum implement) — auto-skip via re-normalize rule #48. Formula final lengkap aktif setelah Fase 4 + 5 + 6 ship. UI: progress bar + tooltip "Berdasarkan materi dibaca (N/M)". |
 | 69 | Materi cleanup strategy | **Hard delete on Materi.Delete** — DeleteObject R2 dipanggil di service.Delete (mirror Cancel pattern dari ImportJob 2.D.4). Compensating delete: kalau DB Delete fail setelah R2 DeleteObject, log `audit.materi_r2_orphan` + tetap return 500 (R2 orphan toleransi). Skip cron untuk Fase 3 — kalau ada race/orphan akumulasi, audit log + manual purge. Reuse Cleaner pattern (skill `go-cleanup-cron-ctx-bound`) di Fase 8 polish kalau orphan rate signifikan. Bab archive (Status=archived) tidak hapus materi — siswa cuma gak lihat lagi (filter via Bab.Status='published'). |
+| 70 | Submission resubmit strategy | **Single-row + version bump** — 1 row Submission per `(TugasID, SiswaID)` UNIQUE constraint. Resubmit overwrite konten + bump `Version` field (locked #56 pattern). History per-attempt out-of-scope MVP — audit trail di `AuditLog` cukup (action `submission_submitted`/`submission_resubmitted` w/ meta `{old_object_keys, new_object_keys}`). Compensating R2 delete buat attachment lama (locked #69 pattern) saat resubmit. Future v1: kalau perlu multi-attempt history, bikin tabel `SubmissionAttempt` dgn FK ke `Submission`. |
+| 71 | Late submission gating | **Hard-block kalau `IzinkanLate=false`** — backend reject 403 `deadline_passed` di Submit endpoint kalau `now > Tugas.Deadline AND Tugas.IzinkanLate=false`. Kalau `IzinkanLate=true`, accept submission + set `Submission.IsLate=true` + audit `submission_late`. FE siswa tampilkan banner "Late penalty xx%" sebelum submit kalau lewat deadline + IzinkanLate=true; disable submit button kalau IzinkanLate=false (defensive — backend tetap source of truth). Penalty calc di grading: `NilaiSetelahPenalty = round(NilaiAsli × (1 - PenaltyPersen/100), 2)`. Penalty 0% = gak ada potongan (allow late tapi free). Audit `tugas_graded` capture `nilai_asli`/`penalty_persen`/`is_late`/`nilai_setelah_penalty`. |
+| 72 | Submission attachment policy | **Optional by default** — Submission boleh punya 0..N attachment, masing-masing object di R2 `submission/<uuid>.<ext>`. Per-tugas guru bisa set `WajibAttachment bool default false` — kalau true, Submit reject 400 `attachment_required` kalau `len(attachments)==0`. Allowlist mime ikut locked #46 (submission: pdf, docx, jpg, png, zip). Cap size 20MB per file (mirror materi PDF locked #64). Cap count: max 5 attachment per submission (anti-abuse). Konten teks (`Catatan`) optional, max 50KB (mirror pengumuman/materi markdown). Resubmit: replace seluruh attachment set (DELETE old object keys + INSERT new dalam tx). |
+| 73 | Submit transition concurrency | **Pakai `SELECT ... FOR UPDATE` di tx + idempotent guard** mirror locked #43. Submit endpoint: BEGIN → SELECT submission FOR UPDATE → cek `Status NOT IN ('graded','returned')` (kalau graded → 409 `already_graded`, return existing) → cek deadline + IzinkanLate (locked #71) → UPSERT submission row + R2 PutObject attachments + bump Version → audit log → COMMIT. Compensating R2 cleanup di defer kalau tx rollback. Grade endpoint juga pakai `FOR UPDATE` + cek `Status='submitted'` sebelum update ke `graded`. Status enum: `draft` (siswa save draft, optional MVP) | `submitted` (siswa submit, awaiting grade) | `graded` (guru kasih nilai) | `returned` (guru return for revision, optional MVP — defer). |
+| 74 | Tugas attachment policy | **Lampiran soal/instruksi guru** — Tugas optional punya 0..N attachment di R2 `tugas/<uuid>.<ext>`. Allowlist mime ikut locked #46 (tugas: pdf, docx, jpg, png, zip). Cap size 20MB per file. Cap count: max 5 attachment per tugas. Hard delete on Tugas.Delete dgn compensating R2 cleanup (locked #69 pattern). Kalau Tugas di-archive (status=archived, similar bab), attachment tetap ada di R2 — siswa enrolled tetap bisa download via presigned URL untuk submission yg udah grade history. Future cleanup: archive + 1 tahun → hard delete (locked #51 retention). |
 
 **Open (perlu sesi terpisah):**
 - Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
@@ -2166,31 +2171,182 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ---
 
+### Fase 4 — Tugas + Submission + Late + Resubmit (3-4 hari)
+
+> Locked decisions: #70 Submission single-row + version bump | #71 Late hard-block kalau `IzinkanLate=false` + penalty calc `NilaiAsli × (1 - PenaltyPersen/100)` | #72 Submission attachment optional + per-tugas `WajibAttachment` + cap 5 file × 20MB | #73 Submit `SELECT FOR UPDATE` tx + idempotent + 409 `already_graded` | #74 Tugas attachment cap 5 file × 20MB + R2 prefix `tugas/`.
+> Estimasi: 18-22 task. Konvensi sub-fase: 4.A Tugas BE (4 task) | 4.B Tugas FE Guru (2 task) | 4.C Submission BE (4 task) | 4.D Submission FE Siswa (2 task) | 4.E Submission Review FE Guru (2 task) = **14 task total**.
+
+#### 4.A Tugas Backend
+
+**Task 4.A.1 — Migration `000008_tugas.up.sql` + Tugas GORM model + repo dasar** ⏳ NEXT
+- Files: `backend/migrations/000008_tugas.up.sql` + `down.sql`, `backend/internal/tugas/{model,repo}.go`.
+- Schema: `tugas(id uuid pk, kelas_id uuid fk→kelas RESTRICT, bab_id uuid? fk→bab SET NULL nullable, judul text, deskripsi text default '', deadline timestamptz null, izinkan_late bool default false, penalty_persen smallint default 0 check (penalty_persen between 0 and 100), wajib_attachment bool default false, status text default 'draft' check (status in ('draft','published','archived')), version int default 1, created_by_id uuid fk→users RESTRICT, created_at, updated_at timestamptz)`. Note: `bab_id nullable` per locked #20; `deadline nullable` (tugas tanpa deadline = always-open).
+- `tugas_attachment(id uuid pk, tugas_id uuid fk→tugas CASCADE, object_key text not null, original_filename text not null, mime_type text not null, size_bytes bigint not null, created_at timestamptz)` — locked #74. Index `(tugas_id)` btree.
+- Indexes: `(kelas_id, status, created_at DESC)` btree (siswa published-only filter), `(bab_id, status) WHERE bab_id IS NOT NULL` partial bab-scoped, `(kelas_id, deadline)` btree (sort by deadline + due-soon query future).
+- Trigger `tugas_set_updated_at` reuse `set_updated_at()` dari 000002.
+- Repo: `Create(ctx, t)`, `FindByID(id)` w/ Preload Attachments, `ListByKelas(kelasID, babFilter, statusFilter, limit)`, `ListByBab(babID, statusFilter, limit)`, `CountByKelas(kelasID)`, `CountByBab(babID)`, `UpdateBasic(id, version, fields)` optimistic concurrency #56, `Delete(id)` returns deleted ObjectKeys for compensating R2 cleanup, `AddAttachment(tx, att)`, `DeleteAttachmentsByTugas(tx, tugasID)` returns ObjectKeys, `schema_meta` update to `'000008_tugas'`.
+- Verify: server `go vet`, `go build ./...`, `go test ./...` PASS, migrate up applied to dev DB → `\d tugas` show schema + indexes, `\d tugas_attachment` confirm FK CASCADE.
+- Commit: `feat(migrations): 000008 tugas + attachment + indexes`, `feat(tugas): GORM model + repo + optimistic concurrency`
+
+**Task 4.A.2 — Tugas CRUD service + handler (Create/List/Get/Patch/Delete)** ⏳ PENDING
+- Files: `backend/internal/tugas/{service,handler,handler_test}.go`. Wire di `cmd/server/main.go` group `/api/v1` dgn middleware order `BearerAuth → ForceChangePassword → RoleGuard(admin,guru) → kelasOwnershipGuard`.
+- Endpoints (Section 7 + locked #58/#62):
+  - `POST /kelas/:id/tugas` body `{judul, deskripsi?, bab_id?, deadline?, izinkan_late?, penalty_persen?, wajib_attachment?, status?}` (defaults: status=draft, version=1, izinkan_late=false, penalty_persen=0, wajib_attachment=false). Validate: penalty_persen 0-100, deadline boleh null tapi kalau set wajib > now (warn 400 `deadline_in_past` kalau gak), bab_id (kalau set) wajib `kelas_id=<:id>` (400 `bab_not_in_kelas`).
+  - `GET /kelas/:id/tugas?bab_id=<uuid|null>&status=<draft|published|archived>&limit=<int>` — guru/admin full visibility, siswa enrolled force `status=published` (mirror pengumuman 3.F.1 pattern).
+  - `GET /tugas/:id` — guru/admin owner full; siswa enrolled + status=published only (archived/draft → 404, no info leak).
+  - `PATCH /tugas/:id` body `{version, judul?, deskripsi?, bab_id?, deadline?, izinkan_late?, penalty_persen?, wajib_attachment?, status?}` partial pointer fields (mirror `kelas.Patch`). Optimistic concurrency #56. Status transition: draft↔published↔archived. Bab_id mutable (boleh pindah bab, atau ke null = kelas-wide).
+  - `DELETE /tugas/:id` hard delete + compensating R2 cleanup untuk semua tugas_attachment ObjectKeys + cascade delete submission + submission_attachment via FK. Audit `tugas_deleted` w/ meta `{tugas_id, attachment_count, submission_count}`. **Note**: kalau ada submission graded, tetap allow delete tapi audit log capture pre-delete count untuk transparansi (locked #59 guru audit scope).
+- Audit log: `tugas_created/tugas_updated/tugas_status_changed/tugas_deleted` dgn `target_kelas_id` + meta lengkap.
+- Ownership guard: kelas dari URL `:id` (POST/list) atau `Tugas.KelasID` (GET/PATCH/DELETE by tugas id) wajib `kelas.guru_id=current_user_id` atau admin.
+- Verify: build/vet/test + handler tests (happy + version conflict 409 + ownership 403 + archived kelas reject + deadline_in_past warning + penalty_persen out of range).
+- Commit: `feat(tugas): CRUD service + handler + audit log (Task 4.A.2)`
+
+**Task 4.A.3 — Tugas attachment upload endpoint (multipart)** ⏳ PENDING
+- Files: `backend/internal/tugas/attachment_handler.go` (+ handler_test).
+- Endpoint: `POST /tugas/:id/attachments` (multipart form, field `file`) — guru/admin owner. Validate via locked #46 (mime sniff via `http.DetectContentType` 512 byte, allowlist `pdf, docx, jpg, png, zip`), cap size 20MB per file (locked #74), cap count 5 per tugas (cek `len(existing)+1 <= 5` else 400 `attachment_limit_reached`), filename sanitize (locked #58). Object key `tugas/<uuid>.<ext>`.
+- Flow: BEGIN tx → cek tugas exists + ownership + count attachment → R2 PutObject (atomic, before DB insert) → INSERT tugas_attachment → COMMIT. Kalau DB INSERT fail post-PutObject → defer `s3.DeleteObject` compensating cleanup + audit `tugas_attachment_orphan`.
+- `DELETE /tugas/:id/attachments/:attID` — guru/admin owner. Hard delete + R2 DeleteObject compensating. Audit `tugas_attachment_deleted` w/ meta `{tugas_id, object_key}`.
+- `GET /tugas/:id/attachments/:attID/url` — guru/admin owner OR siswa enrolled + tugas published. Presigned GET TTL `R2_PRESIGN_TTL_SECONDS` (15m default), `ResponseContentDisposition='attachment; filename="<original>"'`. Audit `file_url_issued` (locked #62) untuk file sensitif.
+- Verify: handler tests (mime allowlist + size cap + count cap + ownership 403 + presigned URL TTL + R2 orphan compensating).
+- Commit: `feat(tugas): attachment upload + presigned download (Task 4.A.3)`
+
+**Task 4.A.4 — Tugas duplicate endpoint** ⏳ PENDING (optional, defer kalau time-tight)
+- Files: `backend/internal/tugas/duplicate.go` (+ handler test).
+- Endpoint: `POST /tugas/:id/duplicate` body `{judul?}` → bikin tugas baru status=`draft`, version=1, copy semua field source + copy attachment (R2 CopyObject ke uuid baru per #58). Default judul = `<source_judul> (Salinan)`.
+- Guards: source 404, kelas archived 409, source archived 409 `already_archived`, non-owner 403.
+- Compensating: kalau DB INSERT fail mid-tx, R2 DeleteObject untuk semua copied object keys + audit log.
+- Audit `tugas_duplicated` w/ meta `{source_tugas_id, new_tugas_id, attachment_count}`.
+- Verify: handler tests mirror Task 3.A.4 pattern (duplicate Bab) — happy + 404 + 403 + 409 + R2 cleanup on rollback.
+- Commit: `feat(tugas): duplicate endpoint (Task 4.A.4)`
+
+#### 4.B Tugas Frontend Guru
+
+**Task 4.B.1 — Tab "Tugas" di kelas detail page (list + filter status + create/edit/archive)** ⏳ PENDING
+- Files baru:
+  - `frontend/lib/tugas-api.ts` — typed client (listTugas, getTugas, createTugas, updateTugas, deleteTugas, listTugasAttachments, uploadTugasAttachment, deleteTugasAttachment, getTugasAttachmentURL) + `friendlyTugasError(err, action)` Indonesian copy mapping.
+  - `frontend/components/tugas/TugasFormDialog.tsx` — Create+Edit dialog, Zod schema (judul max 200, deskripsi max 5000, deadline ISO datetime nullable, izinkan_late bool, penalty_persen int 0-100, wajib_attachment bool, status enum draft|published).
+  - `frontend/components/tugas/TugasCard.tsx` — list card (judul + deadline relative + status badge + late penalty badge kalau izinkan_late).
+  - `frontend/components/tugas/TugasAttachmentPanel.tsx` — upload + list + delete attachments (drag-drop or click-pick, progress bar, mime hint).
+  - `frontend/components/tugas/ArchiveTugasDialog.tsx` — destructive confirm.
+  - `frontend/components/tugas/TugasListSection.tsx` — orchestrator. useQuery key `['guru','kelas','tugas', kelasID, statusFilter]` staleTime 15s, status filter tabs (all/draft/published/archived), wires dialogs.
+- Files diubah: `frontend/app/(authed)/guru/kelas/detail/page.tsx` — TabKey extended `'tugas'`, TABS array tambah Tugas (urutan: Bab → Tugas → Pengaturan → Siswa → Pengumuman), default tab tetap Bab.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (24+ static routes).
+- Caveats: form deadline pakai `<input type="datetime-local">` (browser native) → convert ke ISO UTC saat submit. Penalty slider/input 0-100 step=5.
+- Commit: `feat(fe-tugas): tab tugas di kelas detail + crud dialogs (Task 4.B.1)`
+
+**Task 4.B.2 — Tab "Tugas" di bab detail page** ⏳ PENDING
+- Reuse komponen Task 4.B.1 dgn prop `babID`. Files diubah: `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` — sub-tab Tugas placeholder diganti `<TugasListSection kelasID={kelasID} babID={babID} disabled={archived} />`.
+- Filter UX: kalau `babID` set, query default cuma show tugas yg `bab_id=<babID>`. Tombol "Buat tugas baru" auto-prefill `bab_id` dari prop.
+- Verify: server build + lint clean.
+- Commit: `feat(fe-tugas): tab tugas di bab detail (Task 4.B.2)`
+
+#### 4.C Submission Backend
+
+**Task 4.C.1 — Migration `000009_submission.up.sql` + Submission GORM model + repo** ⏳ PENDING
+- Files: `backend/migrations/000009_submission.up.sql` + `down.sql`, `backend/internal/submission/{model,repo}.go`.
+- Schema: `submission(id uuid pk, tugas_id uuid fk→tugas CASCADE, siswa_id uuid fk→users RESTRICT, catatan text default '', status text default 'submitted' check (status in ('submitted','graded','returned')), is_late bool default false, nilai_asli numeric(5,2) null, penalty_persen_applied smallint null, nilai_setelah_penalty numeric(5,2) null, feedback text default '', graded_by_id uuid? fk→users SET NULL, graded_at timestamptz null, version int default 1, submitted_at timestamptz default now(), updated_at timestamptz default now(), unique(tugas_id, siswa_id))`.
+- `submission_attachment(id uuid pk, submission_id uuid fk→submission CASCADE, object_key text not null, original_filename text not null, mime_type text not null, size_bytes bigint not null, created_at timestamptz)` — locked #72.
+- Indexes: `(tugas_id, status)` (rekap guru filter graded vs ungraded), `(siswa_id, submitted_at DESC)` (history per siswa), `(graded_by_id, graded_at DESC) WHERE graded_by_id IS NOT NULL` partial (audit guru grading).
+- Trigger `submission_set_updated_at` reuse `set_updated_at()`.
+- Repo: `Upsert(tx, sub)` (SELECT FOR UPDATE atau INSERT ON CONFLICT (tugas_id, siswa_id) DO UPDATE), `FindByTugasSiswa(tugasID, siswaID)` w/ Preload Attachments, `FindByID(id)` w/ Preload, `ListByTugas(tugasID, statusFilter, limit)` (rekap guru), `ListBySiswa(siswaID, kelasID, limit)` (siswa view history), `UpdateGrade(tx, id, version, nilai, penalty, nilai_final, feedback, graded_by, graded_at)` optimistic concurrency, `DeleteAttachmentsBySubmission(tx, submissionID)` returns ObjectKeys, `AddAttachment(tx, att)`, `LockForUpdate(tx, tugasID, siswaID)` raw `SELECT ... FOR UPDATE`. `schema_meta` update to `'000009_submission'`.
+- Verify: migrate up applied dev DB → `\d submission` + `\d submission_attachment` confirm UNIQUE constraint + FK CASCADE.
+- Commit: `feat(migrations): 000009 submission + attachment`, `feat(submission): GORM model + repo + FOR UPDATE`
+
+**Task 4.C.2 — Submission Submit endpoint (siswa upload + late detection)** ⏳ PENDING
+- Files: `backend/internal/submission/{service,handler,handler_test}.go`. Wire di `cmd/server/main.go` group `/api/v1/siswa`.
+- Endpoint: `POST /siswa/tugas/:id/submit` (multipart form, fields `catatan`, `files[]`) — RoleGuard(siswa) + EnrollmentGuard(via tugas.KelasID).
+- Flow (locked #73):
+  - BEGIN tx → SELECT tugas + (lock submission row if exists FOR UPDATE) → guards:
+    - tugas.Status != 'published' → 404 `not_found`
+    - tugas.Deadline set + now > Deadline + tugas.IzinkanLate=false → 403 `deadline_passed` (locked #71)
+    - existing submission.Status IN ('graded','returned') → 409 `already_graded`
+    - tugas.WajibAttachment=true + len(files)==0 → 400 `attachment_required`
+    - len(files) > 5 → 400 `attachment_limit_reached`
+  - per file: mime sniff + size cap (locked #46/#72) → reject 400 `invalid_attachment` early
+  - kalau resubmit (existing row): collect old ObjectKeys → DELETE submission_attachment rows → defer R2 DeleteObject di goroutine post-commit
+  - per new file: R2 PutObject → INSERT submission_attachment
+  - is_late = (tugas.Deadline != null && now > Deadline)
+  - UPSERT submission (status='submitted', is_late, version+1, submitted_at=now)
+  - Audit `submission_submitted` (atau `submission_resubmitted` kalau version > 1) w/ meta `{tugas_id, attachment_count, is_late, old_object_keys (kalau resubmit)}` — locked #71 audit `submission_late` if is_late=true
+  - COMMIT.
+- Compensating R2 cleanup: defer cancel-style — kalau tx rollback, R2 DeleteObject untuk semua newly-PutObject keys.
+- Verify: handler tests (happy + late accept w/ flag + late hard-block + already_graded + wajib_attachment + attachment cap + resubmit version bump + R2 compensating on rollback).
+- Commit: `feat(submission): submit endpoint w/ late + idempotent + FOR UPDATE (Task 4.C.2)`
+
+**Task 4.C.3 — Submission Get/List + presigned attachment URL** ⏳ PENDING
+- Endpoints:
+  - `GET /siswa/tugas/:id/submission` — siswa, return own submission (kalau ada) atau 404 + tugas info (deadline, izinkan_late, penalty_persen) untuk pre-fill UI.
+  - `GET /tugas/:id/submissions?status=` — guru/admin owner, list submission per tugas (rekap untuk grading).
+  - `GET /submission/:id` — guru/admin owner OR siswa pemilik. Preload attachments + grade fields.
+  - `GET /submission/:id/attachments/:attID/url` — guru/admin owner OR siswa pemilik. Presigned GET TTL 15m, `attachment` disposition. Audit `file_url_issued`.
+- Caveats: siswa GET own submission HARUS pakai endpoint `/siswa/tugas/:id/submission` (auto-derive submission via tugas+siswa), bukan `/submission/:id` direct (yg butuh ownership lookup ekstra).
+- Verify: handler tests (siswa hanya lihat own + guru lihat semua di kelas + cross-kelas 403 + 404 untuk submission yg gak ada).
+- Commit: `feat(submission): get + list + presigned URL (Task 4.C.3)`
+
+**Task 4.C.4 — Submission Grade endpoint (guru kasih nilai + penalty calc)** ⏳ PENDING
+- Endpoint: `POST /submission/:id/grade` — guru/admin owner. Body `{nilai_asli (0-100, decimal-2), feedback?, version}`.
+- Flow (locked #71/#73):
+  - BEGIN tx → SELECT submission FOR UPDATE → cek `Status='submitted'` (kalau `graded` → 409 `already_graded`, kalau `returned` → 400 `cannot_grade_returned` defer MVP) + version match
+  - Penalty calc: kalau `is_late && tugas.PenaltyPersen > 0` → `nilai_setelah_penalty = round(nilai_asli * (1 - PenaltyPersen/100), 2)` else `nilai_setelah_penalty = nilai_asli`. `penalty_persen_applied = is_late ? tugas.PenaltyPersen : 0`.
+  - UPDATE submission (status='graded', nilai_asli, penalty_persen_applied, nilai_setelah_penalty, feedback, graded_by_id, graded_at=now, version+1)
+  - Audit `tugas_graded` w/ meta `{submission_id, tugas_id, siswa_id, nilai_asli, penalty_persen_applied, nilai_setelah_penalty, is_late}`
+  - COMMIT.
+- Defer MVP: regrade endpoint (`PATCH /submission/:id/grade`) + return-for-revision flow (`status='returned'`). Kalau guru salah grade, hapus + siswa resubmit untuk MVP.
+- Verify: handler tests (happy w/ late penalty, happy w/o late, version conflict 409, already_graded 409, ownership 403, validation nilai out of range).
+- Commit: `feat(submission): grade endpoint w/ penalty calc (Task 4.C.4)`
+
+#### 4.D Submission Frontend Siswa
+
+**Task 4.D.1 — Tab "Tugas" di siswa bab detail (list tugas published) + halaman submit** ⏳ PENDING
+- Files baru:
+  - `frontend/lib/submission-api.ts` — typed client (getMySubmission, submitTugas multipart, getMySubmissionAttachmentURL).
+  - `frontend/components/siswa/SiswaTugasCard.tsx` — list card (judul + deadline + status badge: belum-submit/submitted/graded + nilai kalau graded + late badge).
+  - `frontend/components/siswa/SiswaTugasList.tsx` — list section di tab Tugas, useQuery `listTugas` w/ status=published filter.
+  - `frontend/app/(authed)/siswa/kelas/detail/tugas/page.tsx` — submit page `?id=:kelasID&tid=:tugasID`. Pre-fill kalau udah pernah submit (catatan + attachment list w/ download). Banner "Late submission akan kena penalty xx%" kalau lewat deadline + izinkan_late=true. Disable submit kalau lewat deadline + izinkan_late=false. Form: textarea catatan + multi-file picker (max 5 × 20MB, mime hint). Submit progress + invalidate on success.
+- Files diubah:
+  - `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx` — tab Tugas placeholder diganti `<SiswaTugasList kelasID babID />`.
+  - `frontend/app/(authed)/siswa/kelas/detail/page.tsx` — opt: tambah tab Tugas kelas-wide (bab_id=null) atau skip kalau prefer bab-scoped only MVP.
+- Verify: server build + lint clean. Bundle impact OK.
+- Commit: `feat(fe-submission): siswa tugas list + submit page w/ late banner (Task 4.D.1)`
+
+**Task 4.D.2 — Riwayat submission siswa di dashboard** ⏳ PENDING (defer kalau time-tight)
+- Files: `frontend/app/(authed)/siswa/tugas/page.tsx` — list semua submission siswa lintas kelas, group by kelas, filter status (all/submitted/graded). Card show nilai_asli + penalty + nilai_final + feedback (kalau graded). Reuse `SiswaTugasCard` adapted.
+- Sidebar siswa: tambah link "Tugas saya" (badge count tugas yg belum submit + deadline < 24h).
+- Verify: server build + bundle.
+- Commit: `feat(fe-submission): riwayat tugas siswa di dashboard (Task 4.D.2)`
+
+#### 4.E Submission Review Frontend Guru
+
+**Task 4.E.1 — Halaman review submission per tugas (list + grading dialog)** ⏳ PENDING
+- Files baru:
+  - `frontend/lib/submission-guru-api.ts` — typed client (listTugasSubmissions, getSubmission, gradeSubmission, getSubmissionAttachmentURL).
+  - `frontend/components/tugas/SubmissionReviewList.tsx` — list per tugas, status filter tabs (all/submitted/graded), badge LATE merah kalau is_late, sort by submitted_at DESC. Action button "Beri Nilai" buka dialog grading.
+  - `frontend/components/tugas/GradeSubmissionDialog.tsx` — dialog grading, Zod schema `nilai_asli` 0-100 decimal-2 + `feedback` max 5000 + `version`. Display: catatan siswa + attachment list (download presigned). Penalty preview kalau is_late: "Nilai akan jadi `nilai * (1 - PenaltyPersen/100)`". Submit → POST `/submission/:id/grade` → invalidate list + close.
+  - `frontend/app/(authed)/guru/kelas/detail/tugas/page.tsx` — review page `?id=:kelasID&tid=:tugasID`. Header: tugas info + tombol Edit/Hapus. Body: `<SubmissionReviewList />`.
+- Files diubah: `TugasCard.tsx` (Task 4.B.1) tombol "Lihat Submission" → router.push ke review page.
+- Verify: server build + lint clean.
+- Commit: `feat(fe-submission): guru review + grading dialog (Task 4.E.1)`
+
+**Task 4.E.2 — Pending counter + activity feed integration** ⏳ PENDING (defer kalau time-tight, link ke locked #40 + #39)
+- Backend: extend `GET /guru/pending-counts` (locked #40) tambah `ungraded_submissions` counter — hitung `submission.Status='submitted'` di kelas guru.
+- Backend: extend `GET /guru/feed` (locked #39 + #55) tambah event type `submission_submitted` (siswa submit baru) + `tugas_graded` (guru lain grade — kalau team teaching).
+- Frontend guru sidebar: badge counter "Tugas perlu dinilai" (cumulative cross-kelas).
+- Frontend guru dashboard: feed tab tampil event submission_submitted + tugas_graded.
+- Verify: build + lint + integration test pending counter accurate.
+- Commit: `feat(submission): pending counter + activity feed integration (Task 4.E.2)`
+
+---
+
 ### Current Next Step (Section 18)
 
-**Tasks 3.F.2 + 3.F.3 ✅ DONE** 2026-05-21 (commits `1ab48f7` + `6958676` + `6d3cc6f`). FE pengumuman shipped end-to-end. Server `npx tsc --noEmit` PASS, `npm run build` PASS — 22 static routes, no lint warnings dari files pengumuman. **Sub-fase 3.F 3/3 ✅ CLOSED. Fase 3 overall 17/17 = 100% complete.**
+**Fase 3 ✅ CLOSED 17/17.** Live deploy verified 2026-05-21 (commit `aca38e4`, lms-api PID 1749012, healthz/readyz 200, 3 endpoints smoke 401 = handlers active, migration version 7).
 
-**Sub-fase final recap:**
-- 3.A Bab BE 4/4 ✅ CLOSED
-- 3.B Bab FE Guru 2/2 ✅ CLOSED
-- 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
-- 3.D Materi FE 2/2 ✅ CLOSED (commits `eeca652` + `d08df3f`)
-- 3.E Bab Siswa + Progress 2/2 ✅ CLOSED (commits `c0d795a` + `3a69ddb`)
-- 3.F Pengumuman 3/3 ✅ CLOSED (commits `cf8c5bc` BE + `1ab48f7` FE)
+**Fase 4 plan ✅ DECOMPOSED 14 task** — sub-fase 4.A (BE 4) + 4.B (FE Guru 2) + 4.C (Submission BE 4) + 4.D (FE Siswa 2) + 4.E (Review FE Guru 2). Locked decisions baru #70-#74 (resubmit single-row, late hard-block, attachment policy, FOR UPDATE concurrency, tugas attachment policy). Roadmap version → v0.9.0.
 
-**Eksekusi berikutnya: pilih satu**
-- **gas Fase 4 (Tugas)** — sub-fase planning belum dibuat. Butuh decompose dulu: A. Tugas BE (CRUD + deadline + late penalty + R2 attachment), B. Tugas FE Guru, C. Submission BE (siswa upload + grade workflow), D. Submission FE Siswa, E. Submission Review FE Guru. Estimasi rough 18-22 task. Lock decisions tersisa: open #5 JWT storage, #1 notifikasi (defer ke v0.8), tidak relevan untuk Fase 4. Tugas independent secara DB schema (FK ke Bab + Kelas + User).
-- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE (Materi) + 3.D.1+3.D.2 FE + 3.E.1 BE + 3.E.2 FE + 3.F.1 BE + 3.F.2+3.F.3 FE bener-bener hidup. Backlog cumulative: 5 BE + 4 FE belum hidup di binary live. Migration 000007 sudah applied ke dev DB tapi binary lama gak query pengumuman/materi/siswabab — restart pickup endpoint baru.
-- **stop dulu** — save state, sesi udah ship 7 task (3.D.1 + 3.D.2 + 3.E.1 + 3.E.2 + 3.F.1 + 3.F.2 + 3.F.3) + roadmap docs commits.
-
-**Live deploy command** (kapan lu mau):
-```
-ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
-```
-Server tree udah di commit `6d3cc6f` post fetch+reset. Migration 000007 sudah applied (versi 7) — DB siap. Binary `lms-api` belum di-restart untuk pickup endpoint pengumuman + materi + siswabab. Re-run command di atas akan rebuild Go binary + restart systemd. **FE static export sudah di-rebuild** server-side via `npm run build` — siap di-serve via Go binary baru.
-
-> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `6d3cc6f`, tapi binary belum di-restart.
-
-> Catatan FE pattern Task 3.F.2: tab Pengumuman pakai status filter tabs (all/published/archived) + invalidate ALL 3 filter variants pas mutation. Filter all → server `status` undefined (return all). Card expandable supaya hemat space + body markdown rendered via react-markdown + remark-gfm (sama deps materi 3.D.1, no extra bundle cost). Badge "Baru" pakai `dataUpdatedAt` di useMemo deps supaya re-eval pas refetch (avoid stale "Baru" indicator setelah 7 hari ke-trigger via background refetch).
+**Eksekusi berikutnya: Task 4.A.1 (migration 000008_tugas + GORM model + repo dasar)**
+- Pattern proven: mirror Task 3.A.1 (bab) + 3.C.1 (materi) — schema + indexes + repo dgn optimistic concurrency.
+- Build/test gate: server `go vet`, `go build ./...`, `go test ./internal/tugas/... -v` PASS, migrate up dev DB → `\d tugas` confirm.
+- Deliverable: 4 files (`migrations/000008_*.sql` × 2, `internal/tugas/{model,repo}.go`).
+- Estimated: 30-45 menit (scaffolding straightforward, no service/handler logic yet).
 
 > Catatan FE pattern Task 3.F.3: siswa pakai endpoint `/siswa/kelas/:id/pengumuman` (BE force status=published + enrollment guard). FE gak perlu cek role atau filter status — server-side enforced. `expandFirst` prop di /siswa/kelas/detail buat auto-expand pengumuman terbaru supaya siswa langsung lihat update tanpa klik. Badge "Baru" 7-day client-side (locked #66 passive timestamp — no per-siswa read receipt).
