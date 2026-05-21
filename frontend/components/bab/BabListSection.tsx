@@ -67,7 +67,7 @@ export function BabListSection({ kelasID, archived }: BabListSectionProps) {
     [kelasID],
   );
 
-  const items = query.data?.items ?? [];
+  const items = React.useMemo(() => query.data?.items ?? [], [query.data]);
   const total = query.data?.total ?? 0;
 
   const nextNomor = React.useMemo(() => {
