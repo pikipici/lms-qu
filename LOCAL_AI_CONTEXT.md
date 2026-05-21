@@ -38,7 +38,7 @@
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
 - [x] Fase 1 — Auth & Admin Panel (DONE: 1.A-1.H + 1.I, backend admin domain CLOSED, FE auth/admin shell/pengguna/audit-log/login-attempts shipped)
 - [x] Fase 2 — Kelas, Enrollment, Bulk Import (DONE 20/20: 2.A.1, 2.A.2, 2.B FULL, 2.C FULL, 2.D FULL 6/6, 2.E FULL FE Admin Import 3/3 DONE 2026-05-21 commit `0f3772e`)
-- [ ] Fase 3 — Bab & Materi + Pengumuman (in progress 9/17 = 53%; 3.A backend 4/4 DONE, 3.B FE Guru 2/2 DONE 2026-05-21 commits `97d7b28` + `5282cad`, 3.C Materi BE 3/4 DONE 2026-05-21: 3.C.1 commit `7772f63` migration 000006 + GORM model + repo, 3.C.2 commit `6e76b4c` youtube+markdown CRUD + parseYouTubeID, 3.C.3 commit `8c2b495` PDF upload + presigned + compensating R2 cleanup)
+- [ ] Fase 3 — Bab & Materi + Pengumuman (in progress 10/17 = 59%; 3.A backend 4/4 DONE, 3.B FE Guru 2/2 DONE 2026-05-21 commits `97d7b28` + `5282cad`, 3.C Materi BE 4/4 CLOSED 2026-05-21: 3.C.1 commit `7772f63` migration 000006 + GORM model + repo, 3.C.2 commit `6e76b4c` youtube+markdown CRUD + parseYouTubeID, 3.C.3 commit `8c2b495` PDF upload + presigned + compensating R2 cleanup, 3.C.4 commit `caad20a` siswa MarkRead idempotent + enrollment guard)
 - [ ] Fase 4 — Tugas
 - [ ] Fase 5 — Soal Bab
 - [ ] Fase 6 — Ulangan Harian

@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.0 — **Task 3.C.3 ✅ DONE** 2026-05-21 (commit `8c2b495`; server vet + build + tests PASS, materi pkg 16 new test cases ship green incl. compensating R2 delete coverage). Materi PDF upload + presigned download shipped. New endpoints: `POST /kelas/:id/materi/upload` (multipart `file`+`judul`+`bab_id?`) — pipeline: 20MB cap → mime sniff `application/pdf` only via `http.DetectContentType` (#46/#64) → uuid `materi/<uuid>.pdf` (#58/#61) → R2 PutObject → DB insert; on DB fail → compensating `R2.DeleteObject` + `materi_r2_orphan` audit log if cleanup itself fails. `GET /materi/:id/file-url` — `PresignGetDownload(key, ttl=15m, original_filename)` for inline disposition (#62), audit `materi_file_url_issued`. `Service.Delete` extended: tipe=pdf now triggers compensating `R2.DeleteObject` after DB delete; on R2 fail logs `materi_r2_orphan` + sets `r2_orphan:true` flag in `materi_deleted` audit meta (locked #69 — DB+R2 drift toleransi). `NewService` signature now takes `storage.Storage` as 5th arg (passed `objectStore` di main.go). Error mapping: `unsupported_mime` 415, `payload_too_large` 413, `r2_put_failed` 500, `r2_unavailable` 503, `tipe_unsupported` 400 untuk presigned non-pdf. **Sub-fase 3.C 3/4 (53% Fase 3 overall: 9/17).** Berikutnya: Task 3.C.4 (MateriRead siswa endpoint).
+> Status: v0.9.1 — **Task 3.C.4 ✅ DONE** 2026-05-21 (commit `caad20a`; server vet + build + tests PASS, materi pkg 11 new test cases ship green incl. idempotency + enrollment guard coverage). Materi siswa mark-as-read shipped — closes sub-fase 3.C Materi BE 4/4 full. New endpoint: `POST /api/v1/siswa/materi/:id/read` (siswa-only via BearerAuth + ForceChangePassword + RoleGuard(siswa)). Service guard chain: role (siswa-only defensive) → materi find → enrollment via `kelas.Repo.FindEnrollment(kelasID, siswaID)` (missing/removed → ErrForbidden) → idempotent `Repo.MarkRead` ON CONFLICT DO NOTHING. Returns `{materi_id, read_at, was_new}` — first call was_new=true, subsequent calls was_new=false (read_at preserved). Audit skipped per design (chatty); slog Debug records per-call. `NewService` signature now 6-arg dgn `enrollmentLookup` (kelas.Repo satisfies via FindEnrollment). **Sub-fase 3.C 4/4 CLOSED (59% Fase 3 overall: 10/17).** Berikutnya: Sub-fase 3.D (Materi FE Guru) atau 3.E (Materi FE Siswa) — pivot ke FE.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.C.3 shipped — materi PDF upload + presigned download + compensating R2 cleanup)
+> Last updated: 2026-05-21 (Task 3.C.4 shipped — siswa mark-as-read idempotent + enrollment guard, sub-fase 3.C CLOSED 4/4)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2047,12 +2047,15 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
   - Handler.FileURL: happy, non-pdf 400 `tipe_unsupported`.
 - Verify: server `go vet ./...`, `go build ./...`, `go test ./...` all PASS — live restart skip per user policy (lihat catatan deploy di Current Next Step).
 
-**Task 3.C.4 — MateriRead endpoint (siswa mark-as-read)**
-- Files: `backend/internal/materi/read.go` (+ test)
-- Endpoint: `POST /materi/:id/read` (siswa-only, role guard + enrollment guard untuk Materi.KelasID). Idempotent: `INSERT ... ON CONFLICT DO NOTHING` → return `{materi_id, read_at, was_new bool}`.
-- Audit: skip (terlalu chatty — siswa bisa baca puluhan materi). Cuma log via slog level=debug.
-- Verify: handler test idempotent + role guard 403 untuk guru + enrollment 403 untuk siswa di kelas lain.
-- Commit: `feat(materi): siswa mark-as-read endpoint idempotent`
+**Task 3.C.4 — MateriRead endpoint (siswa mark-as-read)** ✅ DONE 2026-05-21 (commit `caad20a`; server vet + build + tests PASS).
+- Files: `backend/internal/materi/read.go` (3997 bytes) + `backend/internal/materi/read_test.go` (8536 bytes — 11 test cases). Wiring: `service.go` (enrollmentLookup interface + 6th NewService arg), `handler.go` (materiService interface +MarkRead), `cmd/server/main.go` (mount + pass kelasRepo as enrollmentLookup), `upload_test.go`/`handler_test.go` (fixtures extended).
+- Endpoint: `POST /api/v1/siswa/materi/:id/read` (siswa-only via existing siswaGroup BearerAuth + ForceChangePassword + RoleGuard(siswa)). Returns `{materi_id, read_at, was_new}` on 200; 403 untuk guru/admin + non-enrolled siswa + removed-enrollment siswa; 404 untuk materi missing; 400 untuk invalid uuid.
+- Idempotent: `Repo.MarkRead` `INSERT ... ON CONFLICT DO NOTHING` returns `wasNew bool`. First call → was_new=true, subsequent calls → was_new=false (read_at preserved dari original timestamp).
+- Service guard chain: role check (siswa-only defensive) → materi find (ErrNotFound mapped) → enrollment lookup `kelas.Repo.FindEnrollment(kelasID, siswaID)` (missing → ErrForbidden, status≠active → ErrForbidden) → repo MarkRead idempotent.
+- Audit: skipped per design (read events too chatty). slog level=Debug records per-call: `materi_id`, `siswa_id`, `was_new` for ops introspection only.
+- 11 test cases shipped: Service.MarkRead happy/idempotent/guru-rejected/admin-rejected/materi-not-found/no-enrollment/removed-enrollment/enroll-nil-disabled (8) + Handler.MarkRead happy 200 with payload assertion / forwards-Forbidden 403 / invalid-uuid 400 (3).
+- Verify: local `go build ./...` PASS, `go vet ./...` PASS, `go test ./internal/materi/...` PASS 1.107s, `go test ./...` PASS. Server `go vet ./...` + `go build ./...` + `go test ./...` PASS, materi pkg 0.022s.
+- Commit: `caad20a feat(materi): siswa MarkRead idempotent endpoint + enrollment guard`
 
 #### 3.D Materi Frontend
 
@@ -2131,22 +2134,32 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.C.3 ✅ DONE** 2026-05-21. Materi PDF upload + presigned download + compensating R2 cleanup shipped (commit `8c2b495`). Server vet + build + tests PASS (16 new test cases). **Sub-fase 3.C 3/4 (53% Fase 3 overall: 9/17).**
+**Task 3.C.4 ✅ DONE** 2026-05-21. Materi siswa mark-as-read shipped (commit `caad20a`). Server vet + build + tests PASS (11 new test cases). **Sub-fase 3.C CLOSED 4/4 — Materi BE 100%. Fase 3 overall 10/17 task (59%).**
 
-**Eksekusi berikutnya: Task 3.C.4 — MateriRead endpoint (siswa mark-as-read).**
+**Sub-fase 3.C summary (4/4 CLOSED):**
+- 3.C.1 (commit `7772f63`) — migration 000006 + model + repo (Materi + Read tables, CHECK constraint, MarkRead idempotent)
+- 3.C.2 (commit `6e76b4c`) — youtube + markdown CRUD service+handler, parseYouTubeID 4 formats
+- 3.C.3 (commit `8c2b495`) — PDF upload to R2 + presigned download + compensating delete (locked #69)
+- 3.C.4 (commit `caad20a`) — siswa MarkRead idempotent + enrollment guard
 
-Sub-fase 3.C (Materi Backend) hampir CLOSED 3/4 — task terakhir. Fase 3 overall 9/17 task (53%).
+**Eksekusi berikutnya: pivot ke FE — Sub-fase 3.D (Materi FE Guru) atau 3.E (Materi FE Siswa).**
 
-Task 3.C.4 scope: `backend/internal/materi/read.go` (+ test). Endpoint `POST /materi/:id/read` (siswa-only, role guard + enrollment guard untuk Materi.KelasID). Idempotent: Repo.MarkRead udah implementasi `INSERT ... ON CONFLICT DO NOTHING` dgn return `wasNew bool`, jadi handler tinggal call dan return `{materi_id, read_at, was_new}`. Audit skip (terlalu chatty), pakai slog level=debug. Verify: handler test idempotent + role guard 403 untuk guru + enrollment 403 untuk siswa di kelas lain. Pure backend Go, **kecil** (~150-250 LOC, 1 endpoint + 4-5 test cases).
+Pilihan opsi:
+- **gas 3.D.1 inline** — Tab Materi di bab detail (guru): create dialog 3-tipe (PDF drag-drop / YouTube URL parse + embed preview / Markdown textarea + react-markdown live preview) + list + edit/delete. Files: `frontend/lib/materi-api.ts` + 6 components. Effort medium-besar (~400-600 LOC, react-markdown install kalau belum ada). Pasti perlu dgn typecheck + build + manual smoke setelah deploy live.
+- **gas 3.E.1 inline** — Siswa kelas list/detail page (kalau belum lengkap dari Fase 2.C). Pre-req sebelum 3.E.2 viewer. Lebih ringan dari 3.D.1.
+- **gas 3.D + 3.E parallel via delegasi (codex/claude-code)** — kalau auth codex udah balik, bisa dispatch dua sub-agent paralel untuk FE materi.
+- **stop dulu** — save state. Sesi ini udah heroik banget: 4 task BE back-to-back (3.C.1, 3.C.2, 3.C.3, 3.C.4) + 4 docs commits = total 10 commits dual-pushed dalam 1 sesi. Sub-fase 3.C BE FULL CLOSED.
 
-**Pilihan jawaban:**
-- "gas 3.C.4 inline" → CLOSE sub-fase 3.C dengan inline patching (~30 menit effort). Selesai sub-fase BE Materi full 4/4.
-- "stop dulu" → save state, lanjut next session. Sesi udah produktif banget (3.C.1, 3.C.2, 3.C.3 ship 3 task back-to-back, total 8 commits dual-pushed).
+**Live deploy command** (kapan lu mau):
+```
+ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
+```
+Migration 000006_materi udah applied di server (di Task 3.C.1). Server tree udah di commit `caad20a` after fetch+reset.
 
 > Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
 QA Fase 1 v0.7.2 ditunda — lu bisa run kapan-kapan via creds dummy yang udah di-seed; cara reset/seed ulang: `ssh rdpkhorur "cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go run ./cmd/seed-dummy"`.
 
-> Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat, bisa delegasi ke `codex` atau `claude-code` per task. **Live restart blocked di sesi ini** — perubahan udah di-commit + di-push ke server git tree, tapi binary `lms-api` belum rebuilt + restart. Saat lu siap deploy live: `ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'`.
+> Catatan eksekusi: pakai inline approach default. Kalau task tertentu butuh research/scaffolding berat, bisa delegasi ke `codex` atau `claude-code` per task. **Live restart blocked di sesi ini** — perubahan udah di-commit + di-push ke server git tree, tapi binary `lms-api` belum rebuilt + restart.
 
 > Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
