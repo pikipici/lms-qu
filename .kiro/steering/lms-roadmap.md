@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.2 — **Fase 5.B 3/3 ✅ DONE** 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.3 — **Fase 5.C 1/2** + 5.B 3/3 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 5.B.3 ✅ DONE — bulk paste pipe-delimited, commit `dabbdf1`; sub-fase 5.B fully closed 3/3)
+> Last updated: 2026-05-21 (Task 5.C.1 ✅ DONE — UlanganBabSetting GET+PUT upsert, commit `7b9edd5`; Fase 5 progress 4/15)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2416,13 +2416,15 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 5.C UlanganBabSetting + Latihan Flow
 
-**Task 5.C.1 — UlanganBabSetting GET + PUT (upsert)** ⏳
+**Task 5.C.1 — UlanganBabSetting GET + PUT (upsert)** ✅ DONE 2026-05-21 commit `7b9edd5`
 - Endpoints:
-  - `GET /api/v1/bab/:id/ulangan-setting` — guru/admin owner. Siswa enrolled hanya read subset (durasi_menit, batas_attempt, izinkan_review, waktu_buka_review) — untuk lobby info.
-  - `PUT /api/v1/bab/:id/ulangan-setting` body `{jumlah_soal, durasi_menit, batas_attempt, izinkan_review_setelah_submit, waktu_buka_review?, version?}` — upsert: kalau row belum ada, insert (version=1). Kalau ada, update + check version. Validate jumlah_soal ≤ count(soal mode IN ('ulangan','keduanya')) — 400 `jumlah_soal_exceeds_pool` kalau exceed.
-- Audit `ulangan_setting_updated`.
-- Verify: handler test (upsert insert path + update version conflict + exceeds_pool).
-- Commit: `feat(ulanganbab): setting GET + PUT upsert`
+  - `GET /api/v1/bab/:id/ulangan-setting` — guru/admin owner full payload (incl. `pool_size` + `version` + `configured`). Default view returned ketika belum ada row (Configured=false, defaults 10/30/1/true).
+  - `GET /api/v1/siswa/bab/:id/ulangan-setting` — siswa enrolled lobby trim `{durasi_menit, batas_attempt, izinkan_review_setelah_submit, waktu_buka_review, configured}` — pool size + version intentionally hidden.
+  - `PUT /api/v1/bab/:id/ulangan-setting` body `{jumlah_soal, durasi_menit, batas_attempt, izinkan_review_setelah_submit, waktu_buka_review?, version?}` — upsert (no row → insert version=1; ada → update + version match). Validate bounds (jumlah_soal 1-200, durasi 1-300, attempt 1-10) + `jumlah_soal ≤ count(soal mode IN ulangan|keduanya)` → 400 `jumlah_soal_exceeds_pool`. Pool kosong (0 soal ulangan-eligible) → 400 `ulangan_pool_empty`.
+- Sentinels: `invalid_id` 400, `invalid_body` 400, `invalid_waktu_buka_review` 400, `ulangan_pool_empty` 400, `jumlah_soal_exceeds_pool` 400, `forbidden` 403, `not_found` 404, `bab_archived` 409, `version_conflict` 409.
+- Audit `ulangan_setting_updated` dengan diff (`old_version`, `new_version`, `insert` flag, full payload + `pool_size`).
+- Smoke E2E hijau: GET default no-row + PUT pool_empty + seed 3 soal + PUT exceed_pool + PUT happy insert v=1 + PUT update v=1→2 + PUT stale v=1 (409) + 4 bounds (durasi 0, attempt 11, jumlah 0, RFC3339 invalid) + version-required-on-update + siswa not-enrolled 403 + join → siswa lobby trim 200 + siswa PUT 403 (role guard) + invalid_id + not_found + empty body 400 + siswa2 not-enrolled via guru endpoint 403.
+- Commit: `7b9edd5 feat(soalbab): UlanganBabSetting GET + PUT upsert (Task 5.C.1)`
 
 **Task 5.C.2 — Latihan flow BE (start, answer, finish — no nilai persist)** ⏳
 - Endpoints:
