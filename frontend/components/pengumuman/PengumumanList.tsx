@@ -241,7 +241,13 @@ export function PengumumanList({
   }
 
   const items = listQuery.data?.items ?? [];
-  const now = React.useMemo(() => new Date(), [listQuery.dataUpdatedAt]);
+  const now = React.useMemo(
+    () =>
+      listQuery.dataUpdatedAt
+        ? new Date(listQuery.dataUpdatedAt)
+        : new Date(),
+    [listQuery.dataUpdatedAt],
+  );
 
   return (
     <Card>

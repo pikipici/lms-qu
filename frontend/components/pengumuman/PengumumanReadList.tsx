@@ -92,9 +92,15 @@ export function PengumumanReadList({
     },
   });
 
-  const items = listQuery.data?.items ?? [];
+  const items = React.useMemo(
+    () => listQuery.data?.items ?? [],
+    [listQuery.data?.items],
+  );
   const now = React.useMemo(
-    () => new Date(),
+    () =>
+      listQuery.dataUpdatedAt
+        ? new Date(listQuery.dataUpdatedAt)
+        : new Date(),
     [listQuery.dataUpdatedAt],
   );
 
