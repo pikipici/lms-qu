@@ -268,9 +268,12 @@ func LoginRateLimit(perWindow int) fiber.Handler {
 				"request_id": middleware.RequestIDFromFiber(c),
 			})
 		},
-		// Fiber's limiter counts every request in the window, not only failed
-		// logins. Service.Login remains the precise 5-failed-attempts policy.
-		SkipFailedRequests: false,
+		// Only failed login responses (>=400) count toward the limiter, mirroring
+		// the DB-backed policy in Service.Login (failed_login_attempts cleared on
+		// success/change-password/admin-reset). Successful logins must not consume
+		// budget — otherwise typo + correct combos drain the window unfairly.
+		SkipSuccessfulRequests: true,
+		SkipFailedRequests:     false,
 	})
 }
 
