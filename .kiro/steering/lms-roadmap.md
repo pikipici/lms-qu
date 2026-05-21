@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.6 — **Task 3.F.1 ✅ DONE** 2026-05-21 (commit `cf8c5bc`; server `go vet` PASS, `go build ./...` PASS, `go test ./internal/pengumuman/... -v` 18/18 PASS di 0.062s, `go test ./...` ALL packages PASS, migration 000007_pengumuman applied to dev DB clean — schema verified: 3 indexes + status CHECK + FK kelas/bab/users + set_updated_at trigger). Pengumuman domain shipped — CRUD endpoints + role-branched authorization (guru/admin manage own kelas; siswa enrolled forced status=published).
+> Status: v0.9.7 — **Tasks 3.F.2 + 3.F.3 ✅ DONE** 2026-05-21 (commits `1ab48f7` + `6958676` + `6d3cc6f`; server `npx tsc --noEmit` PASS, `npm run build` PASS — 22 static routes, no lint warnings dari files baru). FE pengumuman shipped end-to-end: guru CRUD (list+filter+compose+edit+archive+delete) + siswa read-only (kelas-wide + bab-scoped). **Fase 3 17/17 = 100% complete.**
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.F.1 shipped — pengumuman BE migration + CRUD)
+> Last updated: 2026-05-21 (Fase 3 closed — pengumuman FE guru + siswa shipped)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2142,52 +2142,55 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: server full repo `go test ./...` PASS (admin/auth/bab/importjob/kelas/materi/middleware/pengumuman/siswabab/storage all OK). Migration up applied to dev DB; `\d pengumuman` confirms 3 indexes, status CHECK, FK kelas/bab/users, set_updated_at trigger.
 - Commit: `cf8c5bc feat(pengumuman): migration 000007 + CRUD endpoints (Task 3.F.1)`
 
-**Task 3.F.2 — FE guru: tab Pengumuman di kelas detail + bab detail (compose + edit + archive)**
-- Files: `frontend/lib/pengumuman-api.ts`, `frontend/components/pengumuman/{PengumumanList,PengumumanComposer,PengumumanEditDialog}.tsx`. Extend kelas detail (3.B placeholder) + bab detail (3.B.2 placeholder).
-- Composer: judul + isi (markdown editor reuse dari 3.D.1). Bab detail tab → bab_id auto-fill. Kelas detail tab → bab_id null (announcement umum).
-- List: card per pengumuman, sort newest, badge "Baru" kalau `created_at` < 7 hari (locked #66, calc client-side dari now). Tombol Edit/Archive/Hapus untuk guru pemilik.
-- Verify: typecheck + build + manual smoke.
-- Commit: `feat(fe-guru): pengumuman compose + edit + archive di kelas+bab detail`
+**Task 3.F.2 — FE guru: tab Pengumuman di kelas detail + bab detail (compose + edit + archive)** ✅ DONE 2026-05-21 (commit `1ab48f7`; server `npx tsc --noEmit` PASS, `npm run build` PASS — 22 static routes, no lint warnings).
+- Files baru:
+  - `frontend/lib/pengumuman-api.ts` — typed client mirror BE Task 3.F.1: types `Pengumuman/PengumumanStatus`, CRUD (`listPengumuman`/`listSiswaPengumuman`/`getPengumuman`/`createPengumuman`/`updatePengumuman`/`deletePengumuman`), helpers `isPengumumanNew` (7-day threshold per #66) + `friendlyPengumumanError`. `bab_id` semantics: undefined=no filter, null='null' (kelas-wide), uuid=bab-scoped — sama BE.
+  - `frontend/components/pengumuman/PengumumanComposer.tsx` — dialog buat pengumuman baru. Reuse `<MarkdownEditor>` dari sub-fase 3.D.1, cap 200 char judul + 50KB isi (mirror BE `MaxJudulBytes`/`MaxIsiBytes`). Auto-derive scope dari prop `babID` (null=kelas-wide, uuid=bab-scoped).
+  - `frontend/components/pengumuman/PengumumanEditDialog.tsx` — edit dialog (judul/isi/status). Optimistic concurrency #56 — kirim version dari snapshot, 409 → invalidate + refetch + re-sync. Status field via `<StatusOption>` cards (published/archived radio).
+  - `frontend/components/pengumuman/PengumumanList.tsx` — guru list dengan status filter tabs (all/published/archived). Card expandable markdown body (chevron toggle), badge "Baru" kalau <7 hari (locked #66, calc client-side), aksi via DropdownMenu: Edit / Archive / Aktifkan / Hapus. Status invalidation: invalidate ALL 3 filter variants pas mutation supaya status flip pindah bucket.
+- Files diubah:
+  - `frontend/app/(authed)/guru/kelas/detail/page.tsx` — tab Pengumuman placeholder diganti `<PengumumanList kelasID={kelas.id} babID={null} contextLabel="Pengumuman ke seluruh siswa kelas {nama}." disabled={archived} />`.
+  - `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` — tab Pengumuman placeholder diganti `<PengumumanList kelasID babID contextLabel="Pengumuman untuk Bab {nomor} — {judul}." disabled={archived} />`.
+- Locked decisions: #56 optimistic concurrency, #66 passive timestamp + 7-day "Baru" threshold, #20 BabID nullable.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS. Bundle `/guru/kelas/detail` 6.99 kB / 252 kB (vs sebelum +negligible — markdown deps sudah ada dari materi 3.D.1). `/guru/kelas/detail/bab` 9.61 kB / 254 kB.
+- Commit: `1ab48f7 feat(fe-pengumuman): combined Task 3.F.2+3.F.3 — guru CRUD + siswa read-only`
 
-**Task 3.F.3 — FE siswa: read-only pengumuman list di kelas detail + bab detail**
-- Files: `frontend/components/pengumuman/PengumumanReadList.tsx`. Extend `/siswa/kelas/detail` + `/siswa/kelas/detail/bab` (Task 3.E.2 sections).
-- UI: card list, sort newest, badge "Baru" kalau < 7 hari, render isi via react-markdown. No mark-read action (locked #66 passive timestamp). Empty state "Belum ada pengumuman".
-- Verify: typecheck + build + manual smoke.
-- Commit: `feat(fe-siswa): pengumuman read-only list di kelas+bab detail`
+**Task 3.F.3 — FE siswa: read-only pengumuman list di kelas detail + bab detail** ✅ DONE 2026-05-21 (commit `1ab48f7`; sama dengan 3.F.2 — combined ship satu commit).
+- Files baru: `frontend/components/pengumuman/PengumumanReadList.tsx` — read-only list pakai `listSiswaPengumuman` (BE force `status=published` + enrollment guard). Card expandable markdown body, badge "Baru" client-side (<7 hari, locked #66), no mark-read action (passive timestamp). Optional `expandFirst` prop untuk auto-expand pengumuman terbaru di kelas page.
+- Files diubah:
+  - `frontend/app/(authed)/siswa/kelas/detail/page.tsx` — tambah Card section "Pengumuman kelas" di bawah Bab list, pakai `<PengumumanReadList kelasID babID={null} expandFirst emptyState="Belum ada pengumuman dari guru." />`. Auto-expand pengumuman pertama supaya siswa langsung lihat update terbaru.
+  - `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx` — tab Pengumuman placeholder diganti Card + `<PengumumanReadList kelasID babID emptyState="Belum ada pengumuman untuk bab ini." />`.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS. Bundle `/siswa/kelas/detail` 3.21 kB / 165 kB (markdown deps shared via chunk — minimal increase). `/siswa/kelas/detail/bab` 9.91 kB / 172 kB.
+- Lint cleanup commit `6d3cc6f`: wrap `now` di `React.useMemo` pakai `dataUpdatedAt` untuk hindarin `react-hooks/exhaustive-deps` warning, dan wrap `items` di useMemo agar useEffect deps stable.
+- Commit: `1ab48f7` (combined) + `6958676` (strict-null guard `items[0]`) + `6d3cc6f` (lint cleanup).
 
 ---
 
 ### Current Next Step (Section 18)
 
-**Task 3.F.1 ✅ DONE** 2026-05-21. Pengumuman BE shipped (commit `cf8c5bc`). Server `go vet` + `go build ./...` + `go test ./internal/pengumuman/... -v` 18/18 PASS di 0.062s, full repo `go test ./...` PASS, migration 000007 applied to dev DB clean. **Sub-fase 3.F 1/3. Fase 3 overall 15/17 task (88%).**
+**Tasks 3.F.2 + 3.F.3 ✅ DONE** 2026-05-21 (commits `1ab48f7` + `6958676` + `6d3cc6f`). FE pengumuman shipped end-to-end. Server `npx tsc --noEmit` PASS, `npm run build` PASS — 22 static routes, no lint warnings dari files pengumuman. **Sub-fase 3.F 3/3 ✅ CLOSED. Fase 3 overall 17/17 = 100% complete.**
 
-**Sub-fase progress recap:**
+**Sub-fase final recap:**
 - 3.A Bab BE 4/4 ✅ CLOSED
 - 3.B Bab FE Guru 2/2 ✅ CLOSED
 - 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
 - 3.D Materi FE 2/2 ✅ CLOSED (commits `eeca652` + `d08df3f`)
 - 3.E Bab Siswa + Progress 2/2 ✅ CLOSED (commits `c0d795a` + `3a69ddb`)
-- 3.F Pengumuman 1/3 (3.F.1 commit `cf8c5bc`)
+- 3.F Pengumuman 3/3 ✅ CLOSED (commits `cf8c5bc` BE + `1ab48f7` FE)
 
-**Eksekusi berikutnya: Task 3.F.2 (FE guru tab Pengumuman) + 3.F.3 (FE siswa read-only) untuk close Fase 3 full (17/17).**
-
-Pilihan opsi:
-- **gas 3.F.2 inline** — FE guru `tab Pengumuman` di kelas detail + bab detail. Files: `frontend/lib/pengumuman-api.ts`, `frontend/components/pengumuman/{PengumumanList,PengumumanComposer,PengumumanEditDialog}.tsx`. Composer pakai markdown editor reuse dari 3.D.1. Tab Pengumuman placeholder di GuruKelasDetail + GuruBabDetail diganti komponen real. Effort medium (~600-800 LOC).
-- **gas 3.F.3 inline (lompat)** — FE siswa `PengumumanReadList` di siswa kelas detail + bab detail. Read-only, no compose. Bisa dilakukan tanpa 3.F.2 (independent karena BE udah ready). Effort kecil-medium (~300-400 LOC).
-- **gas 3.F.2 + 3.F.3 combined** — bareng-bareng, share types via `pengumuman-api.ts`. Effort gede (~1000 LOC) tapi efficient.
-- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE + 3.E.1 BE + 3.E.2 FE + 3.F.1 BE bener-bener hidup. Backlog cumulative: 4 BE + 3 FE belum hidup di binary live. **Termasuk migration 000007** — DB sudah migrate up tapi binary lama belum tau pengumuman table exists, gak masalah karena binary lama gak query pengumuman, tapi binary baru perlu di-restart untuk pickup endpoint baru.
-- **stop dulu** — save state. Sesi ini udah ship 3.D.1 + 3.D.2 + 3.E.1 + 3.E.2 + 3.F.1 (5 task) + 5 docs commits dalam 1 sesi.
+**Eksekusi berikutnya: pilih satu**
+- **gas Fase 4 (Tugas)** — sub-fase planning belum dibuat. Butuh decompose dulu: A. Tugas BE (CRUD + deadline + late penalty + R2 attachment), B. Tugas FE Guru, C. Submission BE (siswa upload + grade workflow), D. Submission FE Siswa, E. Submission Review FE Guru. Estimasi rough 18-22 task. Lock decisions tersisa: open #5 JWT storage, #1 notifikasi (defer ke v0.8), tidak relevan untuk Fase 4. Tugas independent secara DB schema (FK ke Bab + Kelas + User).
+- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE (Materi) + 3.D.1+3.D.2 FE + 3.E.1 BE + 3.E.2 FE + 3.F.1 BE + 3.F.2+3.F.3 FE bener-bener hidup. Backlog cumulative: 5 BE + 4 FE belum hidup di binary live. Migration 000007 sudah applied ke dev DB tapi binary lama gak query pengumuman/materi/siswabab — restart pickup endpoint baru.
+- **stop dulu** — save state, sesi udah ship 7 task (3.D.1 + 3.D.2 + 3.E.1 + 3.E.2 + 3.F.1 + 3.F.2 + 3.F.3) + roadmap docs commits.
 
 **Live deploy command** (kapan lu mau):
 ```
 ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
 ```
-Server tree udah di commit `cf8c5bc` post fetch+reset. Migration 000007 sudah applied (versi 6→7) — DB siap. Binary `lms-api` belum di-restart untuk pick up endpoint pengumuman baru. Re-run command di atas akan rebuild Go binary + restart systemd.
+Server tree udah di commit `6d3cc6f` post fetch+reset. Migration 000007 sudah applied (versi 7) — DB siap. Binary `lms-api` belum di-restart untuk pickup endpoint pengumuman + materi + siswabab. Re-run command di atas akan rebuild Go binary + restart systemd. **FE static export sudah di-rebuild** server-side via `npm run build` — siap di-serve via Go binary baru.
 
-> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `cf8c5bc`, tapi binary belum di-restart.
+> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `6d3cc6f`, tapi binary belum di-restart.
 
-> Catatan paket layout: pengumuman pakai `kelasRepo` dua kali (kelasLookup + enrollmentLookup) karena method-set overlap. Sama pola dengan siswabab Task 3.E.1. **Ini reusable pattern untuk Fase 4-5** — domain yang butuh manage-by-owner + verify-enrollment.
+> Catatan FE pattern Task 3.F.2: tab Pengumuman pakai status filter tabs (all/published/archived) + invalidate ALL 3 filter variants pas mutation. Filter all → server `status` undefined (return all). Card expandable supaya hemat space + body markdown rendered via react-markdown + remark-gfm (sama deps materi 3.D.1, no extra bundle cost). Badge "Baru" pakai `dataUpdatedAt` di useMemo deps supaya re-eval pas refetch (avoid stale "Baru" indicator setelah 7 hari ke-trigger via background refetch).
 
-> Catatan FE pattern Task 3.E.2: siswa endpoint sengaja strip guru-only fields (object_key, mime_type, size_bytes, version, kelas_id, timestamps) — siswa download PDF lewat presigned URL endpoint, jadi metadata file gak perlu di-leak. FE adapter `siswaCardToMateri` isi field missing dengan safe defaults (null/0/'') sebelum pass ke `<MateriViewer>` yang shape-nya butuh `Materi` lengkap. Pakai `hideHeader` flag biar parent component yang render judul + tipe + status badge.
-
-> Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
+> Catatan FE pattern Task 3.F.3: siswa pakai endpoint `/siswa/kelas/:id/pengumuman` (BE force status=published + enrollment guard). FE gak perlu cek role atau filter status — server-side enforced. `expandFirst` prop di /siswa/kelas/detail buat auto-expand pengumuman terbaru supaya siswa langsung lihat update tanpa klik. Badge "Baru" 7-day client-side (locked #66 passive timestamp — no per-siswa read receipt).
