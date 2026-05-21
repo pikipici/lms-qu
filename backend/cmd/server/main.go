@@ -348,7 +348,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// Owner-only mutations + siswa direct-list/get BLOCKED (siswa lewat
 	// flow Latihan/Ulangan endpoint, locked #76 anti-cheat).
 	soalbabRepo := soalbab.NewRepo(gdb)
-	soalbabSvc := soalbab.NewService(soalbabRepo, kelasRepo, babRepo, authRepo)
+	soalbabSvc := soalbab.NewService(soalbabRepo, kelasRepo, babRepo, authRepo, objectStore)
 	soalbabHandler := soalbab.NewHandler(soalbabSvc, objectStore)
 	babGroup.Post("/:id/soal", soalbabHandler.Create)
 	babGroup.Get("/:id/soal", soalbabHandler.ListByBab)
@@ -360,6 +360,10 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	soalbabGroup.Get("/:id", soalbabHandler.Get)
 	soalbabGroup.Patch("/:id", soalbabHandler.Update)
 	soalbabGroup.Delete("/:id", soalbabHandler.Delete)
+	// Task 5.B.2 — inline image slots (pertanyaan + opsi a..e).
+	soalbabGroup.Post("/:id/image", soalbabHandler.UploadImage)
+	soalbabGroup.Delete("/:id/image", soalbabHandler.DeleteImage)
+	soalbabGroup.Get("/:id/image-url", soalbabHandler.ImageURL)
 
 	// Materi (Task 3.C.2 + 3.C.3): learning content CRUD per kelas.
 	// youtube + markdown via JSON (3.C.2); PDF via multipart upload (3.C.3

@@ -187,6 +187,72 @@ func (r *Repo) BulkCreateSoal(ctx context.Context, soals []SoalBab) (int, error)
 	return 0, errNotImplemented
 }
 
+// UpdateSoalImageSlot atomically swaps one image-slot column on a soal_bab
+// row and returns the previous object key so the caller can compensating
+// delete it from R2 (locked #69 + Task 5.B.2).
+//
+//   - column must be one of {pertanyaan,opsi_a..e}_object_key — caller
+//     responsibility (handler maps from the validated ImageSlot).
+//   - newKey == nil clears the slot (DELETE flow).
+//   - newKey != nil writes the new key (UPLOAD flow). The caller is
+//     responsible for already having uploaded the new key to R2 before
+//     calling this; on row-not-found this method returns
+//     gorm.ErrRecordNotFound and the caller MUST drop the new R2 object.
+//
+// Image swap does NOT bump version — keeping image swap orthogonal to
+// content edits supaya guru bisa fix typo gambar tanpa invalidasi tab
+// editor lain (locked #56 explicit applies to text edits, gambar is
+// idempotent set/clear).
+func (r *Repo) UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error) {
+	switch column {
+	case "pertanyaan_object_key",
+		"opsi_a_object_key", "opsi_b_object_key",
+		"opsi_c_object_key", "opsi_d_object_key", "opsi_e_object_key":
+		// allowed
+	default:
+		return nil, errors.New("soalbab: invalid image column")
+	}
+
+	var prevKey *string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing SoalBab
+		if err := tx.Select("id", column).Where("id = ?", id).First(&existing).Error; err != nil {
+			return err
+		}
+		// Capture old slot value before write.
+		switch column {
+		case "pertanyaan_object_key":
+			prevKey = existing.PertanyaanObjectKey
+		case "opsi_a_object_key":
+			prevKey = existing.OpsiAObjectKey
+		case "opsi_b_object_key":
+			prevKey = existing.OpsiBObjectKey
+		case "opsi_c_object_key":
+			prevKey = existing.OpsiCObjectKey
+		case "opsi_d_object_key":
+			prevKey = existing.OpsiDObjectKey
+		case "opsi_e_object_key":
+			prevKey = existing.OpsiEObjectKey
+		}
+		updates := map[string]any{
+			column:       newKey,
+			"updated_at": gorm.Expr("now()"),
+		}
+		res := tx.Model(&SoalBab{}).Where("id = ?", id).UpdateColumns(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prevKey, nil
+}
+
 // ---------------------------------------------------------------------------
 // UlanganBabSetting persistence
 // ---------------------------------------------------------------------------

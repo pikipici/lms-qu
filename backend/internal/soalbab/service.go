@@ -34,6 +34,7 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/kelas"
+	"github.com/pikip/lms/backend/internal/storage"
 )
 
 // Sentinel errors mapped to HTTP status di handler.
@@ -57,6 +58,7 @@ type repoAPI interface {
 	FindSoalByID(ctx context.Context, id uuid.UUID) (*SoalBab, error)
 	ListSoalByBab(ctx context.Context, babID uuid.UUID, f SoalListFilter) ([]SoalBab, error)
 	UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]interface{}) error
+	UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error)
 	DeleteSoal(ctx context.Context, id uuid.UUID) ([]string, error)
 }
 
@@ -81,12 +83,15 @@ type Service struct {
 	kelas kelasLookup
 	bab   babLookup
 	audit auditLogger
+	store storage.Storage
 	now   func() time.Time
 }
 
 // NewService wires soalbab Repo + kelas/bab lookups + audit logger.
-func NewService(repo repoAPI, kelas kelasLookup, bab babLookup, audit auditLogger) *Service {
-	return &Service{repo: repo, kelas: kelas, bab: bab, audit: audit, now: time.Now}
+// Storage is optional — pass nil untuk disable image upload (Task 5.B.2).
+// Pass *storage.R2Client untuk production.
+func NewService(repo repoAPI, kelas kelasLookup, bab babLookup, audit auditLogger, store storage.Storage) *Service {
+	return &Service{repo: repo, kelas: kelas, bab: bab, audit: audit, store: store, now: time.Now}
 }
 
 // ---------- Create ----------

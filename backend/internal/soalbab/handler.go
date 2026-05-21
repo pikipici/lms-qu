@@ -32,6 +32,9 @@ type soalbabService interface {
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*SoalBab, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*SoalBab, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*SoalBab, []string, error)
+	UploadImage(ctx context.Context, soalID, callerID uuid.UUID, callerRole string, in UploadImageInput, ip, userAgent string) (*ImageUploadResult, error)
+	DeleteImage(ctx context.Context, soalID, callerID uuid.UUID, callerRole string, slot ImageSlot, ip, userAgent string) (*SoalBab, error)
+	PresignImageURL(ctx context.Context, soalID, callerID uuid.UUID, callerRole string, slot ImageSlot, ip, userAgent string) (*SoalImageURLResult, error)
 }
 
 // Handler wires HTTP routes to soalbab Service.
