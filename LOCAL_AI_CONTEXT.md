@@ -39,7 +39,7 @@
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
 - Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.9.0 — Fase 3 closed + Fase 4 decomposed 14 task).
-- 67 locked decisions (v0.9.0: +#70 submission single-row, +#71 late hard-block, +#72 attachment policy, +#73 FOR UPDATE concurrency, +#74 tugas attachment), 10 open decisions, ~7 minggu estimasi.
+- 67 locked decisions (v0.9.1: +#75 login rate-limit decay + threshold 5→10), 10 open decisions, ~7 minggu estimasi.
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
