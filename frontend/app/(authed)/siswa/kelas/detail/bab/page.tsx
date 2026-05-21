@@ -67,6 +67,7 @@ import { MateriViewer } from '@/components/materi/MateriViewer';
 import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
 import { siswaCardToMateri } from '@/components/siswa/siswaCardToMateri';
 import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
+import { SiswaTugasList } from '@/components/submission/SiswaTugasList';
 
 // ---------- Sub-tab definition ----------
 
@@ -445,12 +446,21 @@ function SiswaBabDetailContent({
       )}
 
       {tab === 'tugas' && (
-        <PlaceholderTab
-          Icon={ClipboardList}
-          title="Tugas"
-          body="Tugas + submit + nilai. Akan tersedia di Fase 4."
-          taskRef="Fase 4 (Tugas)"
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Tugas bab</CardTitle>
+            <CardDescription>
+              Tugas yang ditujukan untuk bab ini. Buka untuk submit/resubmit.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SiswaTugasList
+              kelasID={kelasID}
+              babID={babID}
+              emptyState="Belum ada tugas untuk bab ini."
+            />
+          </CardContent>
+        </Card>
       )}
 
       {tab === 'pengumuman' && (

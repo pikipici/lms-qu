@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/card';
 import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
 import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
+import { SiswaTugasList } from '@/components/submission/SiswaTugasList';
 
 function formatDate(input?: string | null): string {
   if (!input) return '—';
@@ -257,6 +258,23 @@ function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
         </CardHeader>
         <CardContent>
           <BabListBody kelasID={kelasID} query={babQuery} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <CardTitle className="text-base">Tugas kelas</CardTitle>
+            <CardDescription>
+              Tugas dari guru. Tugas bab tersedia di halaman bab masing-masing.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <SiswaTugasList
+            kelasID={kelasID}
+            babID={null}
+            emptyState="Belum ada tugas kelas-wide."
+          />
         </CardContent>
       </Card>
       <Card>
