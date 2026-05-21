@@ -182,9 +182,32 @@ func collectImageKeys(s *SoalBab) []string {
 }
 
 // BulkCreateSoal inserts multiple soal_bab rows in a single transaction.
-// Returns inserted count + per-row errors. To be implemented by Task 5.B.3.
+// Returns the number of inserted rows. All-or-nothing — kalau salah satu
+// row gagal Create, tx rollback dan return error.
+//
+// Caller (Service.BulkCreate) is responsible for parse + per-line
+// validation; this method assumes input rows already pass validation.
 func (r *Repo) BulkCreateSoal(ctx context.Context, soals []SoalBab) (int, error) {
-	return 0, errNotImplemented
+	if len(soals) == 0 {
+		return 0, nil
+	}
+	var inserted int
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Use CreateInBatches to avoid a single huge INSERT that blows
+		// past Postgres' parameter limit (~65k). 50 row × ~25 cols = 1250
+		// params per batch — comfortable headroom.
+		const batchSize = 50
+		res := tx.CreateInBatches(soals, batchSize)
+		if res.Error != nil {
+			return res.Error
+		}
+		inserted = int(res.RowsAffected)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return inserted, nil
 }
 
 // UpdateSoalImageSlot atomically swaps one image-slot column on a soal_bab

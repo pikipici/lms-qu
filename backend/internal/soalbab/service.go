@@ -60,6 +60,7 @@ type repoAPI interface {
 	UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]interface{}) error
 	UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error)
 	DeleteSoal(ctx context.Context, id uuid.UUID) ([]string, error)
+	BulkCreateSoal(ctx context.Context, soals []SoalBab) (int, error)
 }
 
 // kelasLookup hydrates kelas ownership/lifecycle.

@@ -352,6 +352,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	soalbabHandler := soalbab.NewHandler(soalbabSvc, objectStore)
 	babGroup.Post("/:id/soal", soalbabHandler.Create)
 	babGroup.Get("/:id/soal", soalbabHandler.ListByBab)
+	babGroup.Post("/:id/soal/bulk", soalbabHandler.BulkCreate)
 	soalbabGroup := api.Group("/soal-bab",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),
