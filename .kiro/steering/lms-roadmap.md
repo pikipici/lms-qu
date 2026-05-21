@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.5 — **Task 3.E.2 ✅ DONE** 2026-05-21 (commit `3a69ddb`; server `npx tsc --noEmit` PASS, `npm run build` PASS — **24 static routes** generated, dua route baru `/siswa/kelas/detail` 2.65 kB + `/siswa/kelas/detail/bab` 8.6 kB First Load 169 kB). Siswa bab pages shipped — list bab dgn progress bar + bab detail dgn tab materi pakai `<MateriViewer>` 3.D.2. Mark-read auto-fired oleh viewer subcomponents; setelah 3s open, parent invalidate detail (read-state) + parent list (progress) supaya UI catch-up. **Sub-fase 3.E 2/2 CLOSED. Fase 3 overall 14/17 task (82%).**
+> Status: v0.9.6 — **Task 3.F.1 ✅ DONE** 2026-05-21 (commit `cf8c5bc`; server `go vet` PASS, `go build ./...` PASS, `go test ./internal/pengumuman/... -v` 18/18 PASS di 0.062s, `go test ./...` ALL packages PASS, migration 000007_pengumuman applied to dev DB clean — schema verified: 3 indexes + status CHECK + FK kelas/bab/users + set_updated_at trigger). Pengumuman domain shipped — CRUD endpoints + role-branched authorization (guru/admin manage own kelas; siswa enrolled forced status=published).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.E.2 shipped — siswa kelas + bab detail pages)
+> Last updated: 2026-05-21 (Task 3.F.1 shipped — pengumuman BE migration + CRUD)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2118,18 +2118,29 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.F Pengumuman
 
-**Task 3.F.1 — Migration `000007_pengumuman.up.sql` + Pengumuman model + repo + CRUD endpoints**
-- Files: `backend/migrations/000007_pengumuman.up.sql` + `down.sql`, `backend/internal/pengumuman/{model,repo,service,handler,handler_test}.go`. Wire group `/api/v1`.
-- Schema: `pengumuman(id uuid pk, kelas_id uuid fk→kelas restrict, bab_id uuid fk→bab set null, judul text, isi text, created_by_id uuid fk→users restrict, status text default 'published' check in ('published','archived'), created_at timestamptz, updated_at timestamptz)`. Index `(kelas_id, created_at DESC)` (Section 6.3).
-- Endpoints:
-  - `POST /kelas/:id/pengumuman` (guru-only, kelas owner) body `{judul, isi, bab_id?}`
-  - `GET /kelas/:id/pengumuman?status=published&bab_id=<uuid|null>&limit=20` (guru + siswa enrolled, sort `created_at DESC`)
-  - `GET /pengumuman/:id`
-  - `PATCH /pengumuman/:id` body `{judul?, isi?, status?}` (guru pemilik / kelas owner / admin)
-  - `DELETE /pengumuman/:id` (hard delete + audit)
-- Audit: `pengumuman_created/updated/archived/deleted`.
-- Verify: handler tests.
-- Commit: `feat(migrations): 000006 pengumuman`, `feat(pengumuman): CRUD service + handler`
+**Task 3.F.1 — Migration `000007_pengumuman.up.sql` + Pengumuman model + repo + CRUD endpoints** ✅ DONE 2026-05-21 (commit `cf8c5bc`; server `go vet` PASS, `go build ./...` PASS, `go test ./internal/pengumuman/... -v` 18/18 PASS di 0.062s, `go test ./...` ALL packages PASS, migration up applied to dev DB clean — schema verified via `\d pengumuman`).
+- Files baru: `backend/migrations/000007_pengumuman.up.sql` + `down.sql`, `backend/internal/pengumuman/{model,repo,service,handler,handler_test}.go`.
+- Files diubah: `backend/cmd/server/main.go` — import + wire pengumumanRepo/Svc/Handler, mount routes (POST/GET di kelasGroup, GET/PATCH/DELETE di pengumumanGroup, GET siswa-scope di siswaGroup).
+- Schema: `pengumuman(id uuid pk, kelas_id uuid fk→kelas RESTRICT, bab_id uuid? fk→bab SET NULL, judul text, isi text default '', created_by_id uuid fk→users RESTRICT, status text default 'published' check in ('published','archived'), version int default 1, created_at, updated_at timestamptz)`. Three indexes: `(kelas_id, created_at DESC)` primary list query, `(bab_id, created_at DESC) WHERE bab_id IS NOT NULL` partial bab-scoped, `(kelas_id, status, created_at DESC)` siswa published-only filter. Trigger `pengumuman_set_updated_at` reuses `set_updated_at()` dari 000002. `schema_meta` updated to `'000007_pengumuman'`.
+- Endpoints (mounted in main.go):
+  - `POST /api/v1/kelas/:id/pengumuman` (guru/admin own kelas) body `{judul, isi, bab_id?}`. 201 + `{pengumuman}`. Sentinel mapping: `kelas_archived` 409, `bab_not_in_kelas` 400.
+  - `GET /api/v1/kelas/:id/pengumuman?bab_id=<uuid|null>&status=<published|archived>&limit=<int>` (guru/admin) — full visibility, status optional. 200 `{items, total}`.
+  - `GET /api/v1/siswa/kelas/:id/pengumuman?bab_id=&limit=` (siswa enrolled) — service ALWAYS forces `status=published` (handler-passed status ignored), enrollment guard via `assertEnrolled`.
+  - `GET /api/v1/pengumuman/:id` — guru/admin owner full visibility; siswa enrolled + `status=published` only (archived → 404, no info leak).
+  - `PATCH /api/v1/pengumuman/:id` (guru/admin owner) body `{version, judul?, isi?, status?}`. Optimistic concurrency #56. Audit `pengumuman_archived` saat status flip published→archived, `pengumuman_updated` else.
+  - `DELETE /api/v1/pengumuman/:id` (guru/admin owner) hard delete. 200 `{pengumuman_id}`. Audit `pengumuman_deleted`.
+- Authorization (defensive — service re-checks meski handler RoleGuard):
+  - Create/Update/Delete: `findKelasOrForbidden` (admin all, guru own kelas).
+  - List/Get guru/admin: full visibility incl. archived.
+  - List siswa: `assertEnrolled` (active enrollment) + force `Status=&StatusPublished` di repo filter.
+  - Get siswa: archived → `ErrNotFound` (no info leak), enrollment required.
+- Locked decisions referenced: #56 optimistic concurrency, #66 passive timestamp (no per-siswa read receipt — FE pakai created_at vs last_seen client-side untuk badge "Baru"), #20 bab nullable.
+- Caps: `MaxJudulBytes` 200 chars, `MaxIsiBytes` 50KB (mirror materi markdown locked roadmap §3.C.2). `DefaultListLimit` 50, `MaxListLimit` 200.
+- Audit log entries (4 actions): `pengumuman_created`, `pengumuman_updated`, `pengumuman_archived` (status flip), `pengumuman_deleted`.
+- Service constructor signature: `NewService(repo, kelas, bab, enroll, audit)`. Wired di main.go pakai `pengumuman.NewService(pengumumanRepo, kelasRepo, babRepo, kelasRepo, authRepo)` — `kelasRepo` dipakai dua kali untuk `kelasLookup` + `enrollmentLookup` karena method-set overlap (sama pola dengan siswabab Task 3.E.1).
+- Test coverage (handler_test.go): 18 cases — 14 service-level + 4 handler smoke. Service: create happy/empty-judul/isi-too-long/kelas-archived/not-owner/bab-not-in-kelas, list siswa force-published-only/not-enrolled, list guru full-visibility, get siswa archived-hidden, update version-conflict, update archive-audit-action, delete not-found/happy. Handler: create happy, list invalid status, update version conflict, delete not found.
+- Verify: server full repo `go test ./...` PASS (admin/auth/bab/importjob/kelas/materi/middleware/pengumuman/siswabab/storage all OK). Migration up applied to dev DB; `\d pengumuman` confirms 3 indexes, status CHECK, FK kelas/bab/users, set_updated_at trigger.
+- Commit: `cf8c5bc feat(pengumuman): migration 000007 + CRUD endpoints (Task 3.F.1)`
 
 **Task 3.F.2 — FE guru: tab Pengumuman di kelas detail + bab detail (compose + edit + archive)**
 - Files: `frontend/lib/pengumuman-api.ts`, `frontend/components/pengumuman/{PengumumanList,PengumumanComposer,PengumumanEditDialog}.tsx`. Extend kelas detail (3.B placeholder) + bab detail (3.B.2 placeholder).
@@ -2148,7 +2159,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.E.2 ✅ DONE** 2026-05-21. Siswa kelas + bab detail pages shipped (commit `3a69ddb`). Server `npx tsc --noEmit` + `npm run build` PASS — 24 static routes generated. **Sub-fase 3.E 2/2 CLOSED. Fase 3 overall 14/17 task (82%).**
+**Task 3.F.1 ✅ DONE** 2026-05-21. Pengumuman BE shipped (commit `cf8c5bc`). Server `go vet` + `go build ./...` + `go test ./internal/pengumuman/... -v` 18/18 PASS di 0.062s, full repo `go test ./...` PASS, migration 000007 applied to dev DB clean. **Sub-fase 3.F 1/3. Fase 3 overall 15/17 task (88%).**
 
 **Sub-fase progress recap:**
 - 3.A Bab BE 4/4 ✅ CLOSED
@@ -2156,24 +2167,26 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
 - 3.D Materi FE 2/2 ✅ CLOSED (commits `eeca652` + `d08df3f`)
 - 3.E Bab Siswa + Progress 2/2 ✅ CLOSED (commits `c0d795a` + `3a69ddb`)
-- 3.F Pengumuman 0/3
+- 3.F Pengumuman 1/3 (3.F.1 commit `cf8c5bc`)
 
-**Eksekusi berikutnya: Sub-fase 3.F (Pengumuman) — 3 task tersisa untuk close Fase 3.**
+**Eksekusi berikutnya: Task 3.F.2 (FE guru tab Pengumuman) + 3.F.3 (FE siswa read-only) untuk close Fase 3 full (17/17).**
 
 Pilihan opsi:
-- **gas 3.F.1 inline** — Migration `000007_pengumuman` + Pengumuman model + repo + CRUD endpoints. Schema: `pengumuman(id, kelas_id, bab_id?, judul, isi, created_by_id, status, created_at, updated_at)`. Endpoints: POST/GET/PATCH/DELETE di kelas + bab scope. Audit log. Effort medium.
-- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE + 3.E.1 BE + 3.E.2 FE bener-bener hidup. Backlog server tree udah cukup banyak (3 BE + 3 FE) tapi binary belum di-restart. Sesi ini build BUILD_OK tapi systemctl restart blocked dua kali sebelumnya — user perlu trigger manual.
-- **stop dulu** — save state. Sesi ini udah ship 3.D.1 + 3.D.2 + 3.E.1 + 3.E.2 (4 task) + 4 docs commits dalam 1 sesi.
+- **gas 3.F.2 inline** — FE guru `tab Pengumuman` di kelas detail + bab detail. Files: `frontend/lib/pengumuman-api.ts`, `frontend/components/pengumuman/{PengumumanList,PengumumanComposer,PengumumanEditDialog}.tsx`. Composer pakai markdown editor reuse dari 3.D.1. Tab Pengumuman placeholder di GuruKelasDetail + GuruBabDetail diganti komponen real. Effort medium (~600-800 LOC).
+- **gas 3.F.3 inline (lompat)** — FE siswa `PengumumanReadList` di siswa kelas detail + bab detail. Read-only, no compose. Bisa dilakukan tanpa 3.F.2 (independent karena BE udah ready). Effort kecil-medium (~300-400 LOC).
+- **gas 3.F.2 + 3.F.3 combined** — bareng-bareng, share types via `pengumuman-api.ts`. Effort gede (~1000 LOC) tapi efficient.
+- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE + 3.E.1 BE + 3.E.2 FE + 3.F.1 BE bener-bener hidup. Backlog cumulative: 4 BE + 3 FE belum hidup di binary live. **Termasuk migration 000007** — DB sudah migrate up tapi binary lama belum tau pengumuman table exists, gak masalah karena binary lama gak query pengumuman, tapi binary baru perlu di-restart untuk pickup endpoint baru.
+- **stop dulu** — save state. Sesi ini udah ship 3.D.1 + 3.D.2 + 3.E.1 + 3.E.2 + 3.F.1 (5 task) + 5 docs commits dalam 1 sesi.
 
 **Live deploy command** (kapan lu mau):
 ```
 ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
 ```
-Server tree udah di commit `3a69ddb` post fetch+reset. Frontend `.next` static export dir udah di-build via `npm run build` di session ini, tapi binary `lms-api` belum di-restart untuk pick up perubahan. Re-run command di atas akan rebuild Go binary + restart systemd; FE static dir di-serve oleh binary yang sama.
+Server tree udah di commit `cf8c5bc` post fetch+reset. Migration 000007 sudah applied (versi 6→7) — DB siap. Binary `lms-api` belum di-restart untuk pick up endpoint pengumuman baru. Re-run command di atas akan rebuild Go binary + restart systemd.
 
-> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `3a69ddb`, tapi binary belum di-restart.
+> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `cf8c5bc`, tapi binary belum di-restart.
 
-> Catatan paket layout: siswa flow yang butuh `bab` + `materi` bareng tidak bisa hidup di paket `bab` karena `materi` udah depend ke `bab` (untuk `bab.Bab` di Service.duplicate childCopier). Solusi: paket baru `backend/internal/siswabab/`. Pola yang sama bisa dipakai untuk Fase 4 (tugas) + Fase 5 (soal) kalau hadirnya butuh akses cross-domain.
+> Catatan paket layout: pengumuman pakai `kelasRepo` dua kali (kelasLookup + enrollmentLookup) karena method-set overlap. Sama pola dengan siswabab Task 3.E.1. **Ini reusable pattern untuk Fase 4-5** — domain yang butuh manage-by-owner + verify-enrollment.
 
 > Catatan FE pattern Task 3.E.2: siswa endpoint sengaja strip guru-only fields (object_key, mime_type, size_bytes, version, kelas_id, timestamps) — siswa download PDF lewat presigned URL endpoint, jadi metadata file gak perlu di-leak. FE adapter `siswaCardToMateri` isi field missing dengan safe defaults (null/0/'') sebelum pass ke `<MateriViewer>` yang shape-nya butuh `Materi` lengkap. Pakai `hideHeader` flag biar parent component yang render judul + tipe + status badge.
 
