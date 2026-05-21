@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.7 — **Task 3.B.2 ✅ DONE** 2026-05-21 (commit `5282cad`; server build/typecheck/lint PASS, 22/22 static pages). Bab detail shell page shipped: `/guru/kelas/detail/bab?id=<kelas>&bid=<bab>` (query-param routing — static-export-friendly). Header bab + breadcrumb + Refresh/Edit/Duplikat/Arsipkan (REUSE BabFormDialog/ArchiveBabDialog/DuplicateBabDialog dari Task 3.B.1 — major payoff dari solo execution). Sub-tabs: Materi/Soal/Tugas/Pengumuman placeholder + Pengaturan inline form (PATCH dgn version, 409 → toast + invalidate + form re-sync). Duplicate sukses → router.push ke detail bab baru via `onSuccess` callback. BabSortableCard judul jadi `<Link>` ke detail page (BabCardReadOnly tidak linkified saat kelas archived). **Sub-fase 3.B FULL DONE 2/2 (35% Fase 3).** Berikutnya: Task 3.C.1 (Materi backend — migration 000006 + GORM model + repo).
+> Status: v0.8.8 — **Task 3.C.1 ✅ DONE** 2026-05-21 (commit `7772f63`; server build clean + tests cached PASS, migrate up→6 + down/up roundtrip verified). Materi backend foundation shipped: migration `000006_materi` (materi + materi_read tables) + GORM model + repo. Schema: `materi(id, kelas_id FK kelas RESTRICT, bab_id FK bab SET NULL nullable, judul, tipe enum pdf|youtube|markdown via CHECK, konten, object_key/original_filename/mime_type/size_bytes nullable, urutan, version, timestamps)` + CHECK constraint `materi_tipe_payload_chk` enforcing tipe↔payload coherence (pdf MUST have R2 fields, youtube/markdown MUST NOT). Indexes: `(kelas_id, bab_id, urutan)`, `(kelas_id, tipe)`, partial `(bab_id, urutan) WHERE bab_id IS NOT NULL`. `materi_read(materi_id CASCADE, siswa_id CASCADE, read_at, PK composite)` untuk progress calc Fase-3-partial (locked #68). Repo lengkap: Create/FindByID/MaxUrutan(BabFilter)/ListByKelas(BabFilter any|null|eq)/ListByBab/CountByKelas/CountByBab/UpdateBasic dgn optimistic version (#56)/Delete (returns ObjectKey untuk caller R2 cleanup, locked #69)/MarkRead idempotent ON CONFLICT DO NOTHING (returns wasNew bool)/CountReadByBabSiswa untuk progress denominator. Berikutnya: Task 3.C.2 (Materi CRUD endpoints — youtube + markdown service+handler).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.B.2 shipped — bab detail shell page + sub-tabs scaffold)
+> Last updated: 2026-05-21 (Task 3.C.1 shipped — materi BE foundation: migration + model + repo)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1999,13 +1999,13 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.C Materi Backend
 
-**Task 3.C.1 — Migration `000006_materi.up.sql` + Materi GORM model + repo**
-- Files: `backend/migrations/000006_materi.up.sql` + `down.sql`, `backend/internal/materi/{model,repo}.go`
-- Schema: `materi(id uuid pk, kelas_id uuid fk→kelas restrict, bab_id uuid fk→bab set null, judul text, tipe text check in ('pdf','youtube','markdown'), konten text, object_key text null, original_filename text null, mime_type text null, size_bytes bigint null, urutan int, version int default 1, created_at timestamptz, updated_at timestamptz)`. Trigger `materi_set_updated_at`. Indexes: `(kelas_id, bab_id, urutan)`, `(kelas_id, tipe)`.
-- Tambah `materi_read(materi_id uuid fk cascade, siswa_id uuid fk cascade, read_at timestamptz, PK(materi_id, siswa_id))` di migration yang sama.
-- Repo: Create, FindByID, ListByKelas (filter `?bab_id=`), ListByBab, UpdateBasic dgn optimistic concurrency, Delete (hard, return ObjectKey untuk caller R2 cleanup), MarkRead (idempotent ON CONFLICT DO NOTHING), CountReadByBabSiswa(bab_id, siswa_id) → progress calc.
-- Verify: build/test + migrate up.
-- Commit: `feat(migrations): 000005 materi + materi_read`, `feat(materi): GORM model + repo`
+**Task 3.C.1 — Migration `000006_materi.up.sql` + Materi GORM model + repo** ✅ DONE 2026-05-21 (commit `7772f63`; server migrate up→6 + down/up roundtrip verified, build/test clean).
+- Files shipped: `backend/migrations/000006_materi.up.sql` + `down.sql`, `backend/internal/materi/{model,repo}.go`.
+- Schema applied: `materi(id, kelas_id FK kelas RESTRICT, bab_id FK bab SET NULL nullable, judul, tipe enum pdf|youtube|markdown CHECK, konten, object_key/original_filename/mime_type/size_bytes nullable, urutan, version, timestamps)` + CHECK constraint `materi_tipe_payload_chk` enforcing tipe↔payload coherence (pdf MUST have R2 fields, youtube/markdown MUST NOT).
+- Indexes: `(kelas_id, bab_id, urutan)` general, `(kelas_id, tipe)` for filter, partial `(bab_id, urutan) WHERE bab_id IS NOT NULL` for bab-scoped queries.
+- `materi_read(materi_id FK CASCADE, siswa_id FK CASCADE, read_at, PK composite + idx siswa_id)` shipped for progress calc (locked #68).
+- Repo lengkap: Create, FindByID, MaxUrutan(BabFilter), ListByKelas(BabFilter any|null|eq), ListByBab, CountByKelas, CountByBab, UpdateBasic dgn optimistic concurrency (#56), Delete returns ObjectKey, MarkRead idempotent ON CONFLICT DO NOTHING returns (read, wasNew), CountReadByBabSiswa untuk progress numerator. Tipe immutable after Create (per roadmap — caller harus delete + recreate).
+- Verify: server `go vet`, `go build ./...`, `go test ./...` cached PASS, migrate up/down roundtrip clean.
 
 **Task 3.C.2 — Materi CRUD endpoints — youtube + markdown (no upload)**
 - Files: `backend/internal/materi/{service,handler,youtube,handler_test}.go`. Wire group `/api/v1`.
@@ -2118,19 +2118,18 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.B.2 ✅ DONE** 2026-05-21. `/guru/kelas/detail/bab` shell page shipped (header w/ REUSE dialogs, 5 sub-tabs, Pengaturan inline form). 22/22 static pages, server build/typecheck/lint PASS. **Sub-fase 3.B FULL DONE 2/2.**
+**Task 3.C.1 ✅ DONE** 2026-05-21. Migration `000006_materi` + materi/materi_read tables + GORM model + repo shipped (commit `7772f63`). Schema verified live di server (migrate up→6, down/up roundtrip clean), build + tests cached PASS. **Sub-fase 3.C 1/4 (38% Fase 3 overall: 7/17).**
 
-**Eksekusi berikutnya: Task 3.C.1 — Materi backend (migration `000006_materi.up.sql` + Materi GORM model + repo).**
+**Eksekusi berikutnya: Task 3.C.2 — Materi CRUD endpoints (youtube + markdown, no upload).**
 
-Sub-fase 3.C (Materi Backend) belum dimulai 0/4. Fase 3 overall 6/17 task (35%).
+Sub-fase 3.C (Materi Backend) berjalan 1/4. Fase 3 overall 7/17 task (38%).
 
-Task 3.C.1 scope: schema `materi(id, kelas_id FK, bab_id nullable FK, judul, tipe enum pdf|youtube|markdown, konten, object_key, original_filename, mime_type, size_bytes, urutan, version, created_at, updated_at)` + `materi_read(materi_id, siswa_id, read_at, PK(materi_id,siswa_id))` di migration sama. Repo: Create, FindByID, ListByKelas (filter `?bab_id=`), ListByBab, UpdateBasic dgn optimistic concurrency, Delete (return ObjectKey), MarkRead (idempotent ON CONFLICT DO NOTHING), CountReadByBabSiswa untuk progress calc. Pure backend Go — bisa codex (kalau auth fresh) atau inline.
+Task 3.C.2 scope: `backend/internal/materi/{service,handler,youtube,handler_test}.go` + wire ke `/api/v1`. Helper `youtube.go`: `parseYouTubeID(url)` → 11-char video_id. Endpoints: `POST /kelas/:id/materi` (youtube/markdown only, no PDF in 3.C.2 — itu di 3.C.3), `GET /kelas/:id/materi?bab_id=`, `GET /materi/:id`, `PATCH /materi/:id` (judul/konten/urutan + version, tipe immutable), `DELETE /materi/:id` (hard delete, R2 di 3.C.3). Handler tests + parseYouTubeID test 8+ kasus.
 
 **Pilihan jawaban:**
-- "gas 3.C.1 inline" → gua langsung kerjain backend Go tanpa codex (akan butuh ~6-8 file: migration up/down + model + repo + tests).
-- "delegasi codex 3.C.1" → siapin prompt + minta lu re-login codex dulu (`codex logout && codex login`).
-- "delegasi codex 3.C.1+3.C.2 batch" → gua siapin prompt batch (locked roadmap suggested 3.C.1+3.C.2 sebagai pasangan untuk codex). Re-login codex required.
-- "review subagent option" → eksplorasi `subagent-driven-development` skill via Hermes delegate_task (bypass codex auth issue, hidden context).
+- "gas 3.C.2 inline" → gua langsung kerjain backend Go: service/handler/youtube helper + tests. Pattern reuse dari bab/3.A.x service.go + handler.go.
+- "delegasi codex 3.C.2" → siapin prompt + minta lu re-login codex dulu (`codex logout && codex login`).
+- "delegasi codex 3.C.2+3.C.3 batch" → bundle YouTube/Markdown + PDF upload sebagai 1 task untuk codex (PDF butuh R2 storage wrapper integration). Re-login codex required.
 - "stop dulu" → save state, lanjut next session.
 
 > Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
