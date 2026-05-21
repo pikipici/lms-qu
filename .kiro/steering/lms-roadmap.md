@@ -2242,7 +2242,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 4.C Submission Backend
 
-**Task 4.C.1 — Migration `000009_submission.up.sql` + Submission GORM model + repo** ⏳ PENDING
+**Task 4.C.1 — Migration `000009_submission.up.sql` + Submission GORM model + repo** ✅ DONE (commit `55296be`)
 - Files: `backend/migrations/000009_submission.up.sql` + `down.sql`, `backend/internal/submission/{model,repo}.go`.
 - Schema: `submission(id uuid pk, tugas_id uuid fk→tugas CASCADE, siswa_id uuid fk→users RESTRICT, catatan text default '', status text default 'submitted' check (status in ('submitted','graded','returned')), is_late bool default false, nilai_asli numeric(5,2) null, penalty_persen_applied smallint null, nilai_setelah_penalty numeric(5,2) null, feedback text default '', graded_by_id uuid? fk→users SET NULL, graded_at timestamptz null, version int default 1, submitted_at timestamptz default now(), updated_at timestamptz default now(), unique(tugas_id, siswa_id))`.
 - `submission_attachment(id uuid pk, submission_id uuid fk→submission CASCADE, object_key text not null, original_filename text not null, mime_type text not null, size_bytes bigint not null, created_at timestamptz)` — locked #72.
