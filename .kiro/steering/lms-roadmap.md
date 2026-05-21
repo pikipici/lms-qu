@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.9 — **Task 3.C.2 ✅ DONE** 2026-05-21 (commit `6e76b4c`; server build + test + vet PASS, materi pkg + 25+ youtube test cases + 14 handler test cases all green). Materi backend CRUD shipped (youtube + markdown only — PDF di 3.C.3, MarkRead di 3.C.4). Endpoints live: `POST /kelas/:id/materi` (rejects tipe='pdf' with `tipe_unsupported`), `GET /kelas/:id/materi?bab_id=<uuid|null>`, `GET /materi/:id`, `PATCH /materi/:id` (judul/konten/urutan + version, tipe immutable per existing.Tipe switch — youtube re-parse, markdown size cap, pdf rejects with `tipe_immutable`), `DELETE /materi/:id` (returns object_key + pending_r2_cleanup flag for pdf rows — signal for 3.C.3 R2 sweep). `parseYouTubeID` helper supports 4 formats (watch?v=, youtu.be/, shorts/, embed/) + http/https + www/m subdomain + youtube-nocookie + scheme-less. Routes mounted di main.go: `/kelas/:id/materi` di kelasGroup; `/materi/:id` di materiGroup (RoleGuard admin|guru). Audit log: materi_created/updated/deleted dgn TargetKelasID populated for guru audit scope (#59). **Sub-fase 3.C 2/4 (47% Fase 3 overall: 8/17).** Berikutnya: Task 3.C.3 (Materi PDF upload + presigned download + compensating delete via R2).
+> Status: v0.9.0 — **Task 3.C.3 ✅ DONE** 2026-05-21 (commit `8c2b495`; server vet + build + tests PASS, materi pkg 16 new test cases ship green incl. compensating R2 delete coverage). Materi PDF upload + presigned download shipped. New endpoints: `POST /kelas/:id/materi/upload` (multipart `file`+`judul`+`bab_id?`) — pipeline: 20MB cap → mime sniff `application/pdf` only via `http.DetectContentType` (#46/#64) → uuid `materi/<uuid>.pdf` (#58/#61) → R2 PutObject → DB insert; on DB fail → compensating `R2.DeleteObject` + `materi_r2_orphan` audit log if cleanup itself fails. `GET /materi/:id/file-url` — `PresignGetDownload(key, ttl=15m, original_filename)` for inline disposition (#62), audit `materi_file_url_issued`. `Service.Delete` extended: tipe=pdf now triggers compensating `R2.DeleteObject` after DB delete; on R2 fail logs `materi_r2_orphan` + sets `r2_orphan:true` flag in `materi_deleted` audit meta (locked #69 — DB+R2 drift toleransi). `NewService` signature now takes `storage.Storage` as 5th arg (passed `objectStore` di main.go). Error mapping: `unsupported_mime` 415, `payload_too_large` 413, `r2_put_failed` 500, `r2_unavailable` 503, `tipe_unsupported` 400 untuk presigned non-pdf. **Sub-fase 3.C 3/4 (53% Fase 3 overall: 9/17).** Berikutnya: Task 3.C.4 (MateriRead siswa endpoint).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.C.2 shipped — materi BE CRUD: youtube + markdown service+handler+youtube parser)
+> Last updated: 2026-05-21 (Task 3.C.3 shipped — materi PDF upload + presigned download + compensating R2 cleanup)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2020,20 +2020,32 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Handler tests: 14 cases (Create youtube happy, Create pdf 400 tipe_unsupported, Create kelas_archived 409, Create bab_not_in_kelas 400, List ?bab_id=null, List bab_id=invalid 400, List bab_id=<uuid>, Update version_conflict 409, Update missing version 400, Update tipe_immutable 409, Get not_found 404, Get forbidden 403, Delete markdown no object_key, Delete pdf returns object_key+pending_r2_cleanup, invalid UUID 400).
 - Verify: server `go vet ./...`, `go build ./...`, `go test ./...` (materi 0.343s) PASS — live restart skip per user policy (req. permission), unit tests + build cukup koheren.
 
-**Task 3.C.3 — Materi PDF upload + presigned download**
-- Files: `backend/internal/materi/upload.go` (+ tests). Reuse `storage.R2Client` interface dari 2.D.0.
-- Endpoint upload: `POST /kelas/:id/materi/upload` (multipart) — fields: `bab_id?`, `judul`, file `pdf`. Pipeline:
-  1. Auth + ownership guard.
-  2. File header sniff via `http.DetectContentType` (lihat #46) → must be `application/pdf`. Reject 415 `unsupported_mime`.
-  3. Size cap 20MB (locked #64). Reject 413 `payload_too_large` kalau exceed.
-  4. Generate uuid → `object_key = "materi/<uuid>.pdf"`.
-  5. R2 PutObject. Kalau gagal, return 500 (no DB row yet — clean state).
-  6. Insert DB row dgn `tipe='pdf'`, `object_key`, `original_filename`, `mime_type`, `size_bytes`. Kalau insert gagal → R2 DeleteObject compensating + return 500 `materi_db_failed`.
-  7. Return `{materi_id, object_key, original_filename, size_bytes}`.
-- Endpoint presigned: `GET /materi/:id/file-url` (auth + ownership/enrollment guard) → call `R2Client.PresignGet(object_key, ttl=R2_PRESIGN_TTL_SECONDS)` dgn `ResponseContentDisposition='inline; filename="<original>"'` → return `{url, expires_at}`. Audit log `file_url_issued` dgn `meta={materi_id, object_key, ttl}`.
-- Endpoint delete (extend 3.C.2): kalau `tipe='pdf'`, panggil `R2Client.DeleteObject(object_key)` SETELAH DB delete sukses. Kalau R2 delete fail → log `audit.materi_r2_orphan` + return 200 (DB sudah gone, R2 orphan toleransi — consistent dgn locked #69).
-- Verify: handler tests dgn mock R2 (happy + mime mismatch 415 + oversize 413 + DB fail compensating + presigned URL gen + DELETE flow).
-- Commit: `feat(materi): pdf upload to R2 + presigned download + compensating delete`
+**Task 3.C.3 — Materi PDF upload + presigned download** ✅ DONE 2026-05-21 (commit `8c2b495`; server vet + build + tests PASS).
+- Files shipped: `backend/internal/materi/upload.go` + `upload_test.go` (16 test cases). `service.go` + `handler.go` extended (Delete compensating cleanup, Upload+PresignFileURL service methods + handler routes). `cmd/server/main.go` wires `objectStore` ke `NewService` + mounts upload + file-url routes.
+- `Service.Upload(ctx, kelasID, callerID, role, in UploadInput, ip, ua)` pipeline:
+  1. R2 store nil check → `ErrR2Required` (503 r2_unavailable)
+  2. judul + body validation → `ErrInvalidInput`
+  3. size cap `MaxMateriBytes = 20MB` → `ErrPayloadTooLarge` 413 (locked #64)
+  4. `http.DetectContentType` first 512B; require `application/pdf` prefix → `ErrUnsupportedMime` 415 (locked #46/#63)
+  5. `findKelasOrForbidden` + ArchivedAt check + `assertBabInKelas`
+  6. uuid → `object_key = "materi/<uuid>.pdf"` via `storage.BuildKey(CategoryMateri, ...)` (locked #58/#61)
+  7. `MaxUrutan(BabFilter)` for next slot
+  8. `store.PutObject`; on fail return `ErrUploadFailed` 500 r2_put_failed (no DB row yet)
+  9. `repo.Create` with sanitized `OriginalFilename`; on fail run compensating `store.DeleteObject` in background ctx + audit `materi_r2_orphan` if cleanup itself fails
+  10. audit `materi_uploaded` + return `*Materi`
+- `Service.PresignFileURL`: ownership guard, reject non-pdf with `ErrTipeUnsupported`, `PresignGetDownload(key, PresignTTL=15m, original_filename)` for inline disposition (locked #62), audit `materi_file_url_issued`.
+- `sanitizeFilename`: strips path separators, NUL, traversal segments; caps at 200 chars; falls back to `materi.pdf` on empty.
+- `Service.Delete` extended: tipe=pdf triggers compensating `R2.DeleteObject` after DB delete; on R2 fail logs `materi_r2_orphan` (with reason + err) + sets `r2_orphan:true` flag in `materi_deleted` audit meta. Non-pdf rows skip R2 call entirely (no-op).
+- Endpoints:
+  - `POST /api/v1/kelas/:id/materi/upload` (multipart): FormFile pre-check + `io.LimitReader` (defense in depth) + judul/bab_id parsing → svc.Upload → 201 `{materi, object_key, original_filename, size_bytes}`.
+  - `GET /api/v1/materi/:id/file-url` → 200 `{url, expires_at, original_filename, mime_type}`.
+- 16 test cases shipped:
+  - Service.Upload: happy (sanitizes traversal in filename, persists object_key+size), mime mismatch (R2 stays empty), payload too large, DB fail with compensating R2 delete (R2 stays empty), kelas archived (R2 stays empty), bab not in kelas (R2 stays empty), R2 store unconfigured.
+  - Service.PresignFileURL: pdf happy + audit `materi_file_url_issued`, non-pdf rejected `ErrTipeUnsupported`, not_found.
+  - Service.Delete: pdf w/ R2 delete happy, pdf w/ R2 fail logs `materi_r2_orphan` + flags `r2_orphan:true` in `materi_deleted` meta, non-pdf skips R2 call.
+  - Handler.Upload: multipart happy, mime mismatch 415, missing file 400.
+  - Handler.FileURL: happy, non-pdf 400 `tipe_unsupported`.
+- Verify: server `go vet ./...`, `go build ./...`, `go test ./...` all PASS — live restart skip per user policy (lihat catatan deploy di Current Next Step).
 
 **Task 3.C.4 — MateriRead endpoint (siswa mark-as-read)**
 - Files: `backend/internal/materi/read.go` (+ test)
@@ -2119,23 +2131,17 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.C.2 ✅ DONE** 2026-05-21. Materi CRUD endpoints (youtube + markdown) + parseYouTubeID helper shipped (commit `6e76b4c`). Server build + vet + tests PASS (25 youtube cases + 14 handler cases). **Sub-fase 3.C 2/4 (47% Fase 3 overall: 8/17).**
+**Task 3.C.3 ✅ DONE** 2026-05-21. Materi PDF upload + presigned download + compensating R2 cleanup shipped (commit `8c2b495`). Server vet + build + tests PASS (16 new test cases). **Sub-fase 3.C 3/4 (53% Fase 3 overall: 9/17).**
 
-**Eksekusi berikutnya: Task 3.C.3 — Materi PDF upload + presigned download.**
+**Eksekusi berikutnya: Task 3.C.4 — MateriRead endpoint (siswa mark-as-read).**
 
-Sub-fase 3.C (Materi Backend) berjalan 2/4. Fase 3 overall 8/17 task (47%).
+Sub-fase 3.C (Materi Backend) hampir CLOSED 3/4 — task terakhir. Fase 3 overall 9/17 task (53%).
 
-Task 3.C.3 scope: `backend/internal/materi/upload.go` (+ tests). Reuse `storage.R2Client` interface dari 2.D.0. Endpoints:
-- `POST /kelas/:id/materi/upload` (multipart) — fields `bab_id?`, `judul`, file `pdf`. Pipeline: auth+ownership → mime sniff (`http.DetectContentType`, must be `application/pdf`, 415 mismatch) → size cap 20MB locked #64 (413 oversize) → uuid + `object_key="materi/<uuid>.pdf"` → `R2.PutObject` (500 on fail) → DB insert `tipe='pdf'` (compensating `R2.DeleteObject` + 500 on DB fail) → return `{materi_id, object_key, original_filename, size_bytes}`.
-- `GET /materi/:id/file-url` — `R2.PresignGet(object_key, ttl)` dgn `ResponseContentDisposition='inline; filename="<original>"'`. Audit `file_url_issued`.
-- Extend `Service.Delete`: kalau tipe=pdf, panggil `R2.DeleteObject` SETELAH DB delete sukses; R2 fail → `audit.materi_r2_orphan` + return 200 (locked #69 toleransi orphan).
-
-Pure backend Go, mid-size task (~3-4 file). Pattern reference: `backend/internal/importjob/upload*.go` (csv multipart upload via R2) — kelas yang sama pattern reuse-able.
+Task 3.C.4 scope: `backend/internal/materi/read.go` (+ test). Endpoint `POST /materi/:id/read` (siswa-only, role guard + enrollment guard untuk Materi.KelasID). Idempotent: Repo.MarkRead udah implementasi `INSERT ... ON CONFLICT DO NOTHING` dgn return `wasNew bool`, jadi handler tinggal call dan return `{materi_id, read_at, was_new}`. Audit skip (terlalu chatty), pakai slog level=debug. Verify: handler test idempotent + role guard 403 untuk guru + enrollment 403 untuk siswa di kelas lain. Pure backend Go, **kecil** (~150-250 LOC, 1 endpoint + 4-5 test cases).
 
 **Pilihan jawaban:**
-- "gas 3.C.3 inline" → gua langsung kerjain backend Go: upload.go + extend Service.Delete + tests (mock R2 client). Pattern ada di 2.D.x importjob, mostly mechanical.
-- "delegasi codex 3.C.3" → siapin prompt + minta lu re-login codex dulu (`codex logout && codex login`).
-- "stop dulu" → save state, lanjut next session. Sesi udah produktif (3.C.1 + 3.C.2 shipped 2 task in a row).
+- "gas 3.C.4 inline" → CLOSE sub-fase 3.C dengan inline patching (~30 menit effort). Selesai sub-fase BE Materi full 4/4.
+- "stop dulu" → save state, lanjut next session. Sesi udah produktif banget (3.C.1, 3.C.2, 3.C.3 ship 3 task back-to-back, total 8 commits dual-pushed).
 
 > Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
