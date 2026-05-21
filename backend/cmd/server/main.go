@@ -483,6 +483,18 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
 	)
 	submissionStaffGroup.Post("/:id/grade", submissionHandler.Grade)
+
+	// Guru pending counters (Task 4.E.2 — partial; activity feed full
+	// deferred ke Fase 7 locked #39). Cumulative across kelas yang dimiliki
+	// guru; admin sees all kelas. Used untuk badge sidebar + dashboard.
+	pendingCounter := submission.NewPendingCounter(submissionRepo, kelasRepo)
+	pendingHandler := submission.NewPendingHandler(pendingCounter)
+	guruGroup := api.Group("/guru",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	guruGroup.Get("/pending-counts", pendingHandler.Count)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

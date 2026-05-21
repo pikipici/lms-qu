@@ -65,6 +65,22 @@ func (r *Repo) ListByGuru(ctx context.Context, guruID uuid.UUID, includeArchived
 	return rows, total, nil
 }
 
+// ListIDsByGuru returns the kelas IDs (active + archived) yang dimiliki
+// guruID. Used by aggregate queries (pending counters, feed scope).
+//
+// Includes archived kelas — pending submissions di kelas archived tetap
+// counted supaya guru ga lupa nilai pas pre-archive.
+func (r *Repo) ListIDsByGuru(ctx context.Context, guruID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	if err := r.db.WithContext(ctx).
+		Model(&Kelas{}).
+		Where("guru_id = ?", guruID).
+		Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // ListAll returns a page of every kelas regardless of guru, plus the matching
 // count. Used by admin scope.
 func (r *Repo) ListAll(ctx context.Context, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {

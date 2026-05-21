@@ -286,6 +286,30 @@ func (h *Handler) ListMine(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(ListMineResponse{Items: rows, Total: len(rows)})
 }
 
+// PendingHandler bundles HTTP handler untuk guru pending counters.
+type PendingHandler struct {
+	counter *PendingCounter
+}
+
+// NewPendingHandler returns a Handler bound to a PendingCounter.
+func NewPendingHandler(c *PendingCounter) *PendingHandler {
+	return &PendingHandler{counter: c}
+}
+
+// Count handles GET /api/v1/guru/pending-counts.
+func (h *PendingHandler) Count(c *fiber.Ctx) error {
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+	res, err := h.counter.Count(c.UserContext(), callerID, role)
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(res)
+}
+
 // GradeRequest is the JSON body for POST /submission/:id/grade.
 type GradeRequest struct {
 	NilaiAsli float64 `json:"nilai_asli"`
