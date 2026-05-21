@@ -439,7 +439,6 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	soalbabLatihanSvc := soalbab.NewLatihanService(soalbabRepo, babRepo, kelasRepo)
 	soalbabLatihanHandler := soalbab.NewLatihanHandler(soalbabLatihanSvc)
 	siswaGroup.Post("/bab/:id/latihan/start", soalbabLatihanHandler.Start)
-	siswaGroup.Post("/hasil-soal-bab/:id/answer", soalbabLatihanHandler.Answer)
 	siswaGroup.Post("/hasil-soal-bab/:id/finish", soalbabLatihanHandler.Finish)
 
 	// Task 5.D.1 — Ulangan Bab start (random pool deterministic seed).
@@ -447,10 +446,17 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// → math/rand source (locked #79). Single-flight per (bab, siswa)
 	// via pg_advisory_xact_lock — concurrent Start calls return same
 	// hasil. attempt_no enforced ≤ Setting.BatasAttempt (locked #76).
-	// Answer/submit/cron land in 5.D.2-5.D.4.
+	// Submit/cron land in 5.D.3-5.D.4.
 	soalbabUlanganSvc := soalbab.NewUlanganService(soalbabRepo, babRepo, kelasRepo, authRepo)
 	soalbabUlanganHandler := soalbab.NewUlanganHandler(soalbabUlanganSvc)
 	siswaGroup.Post("/bab/:id/ulangan/start", soalbabUlanganHandler.Start)
+
+	// Task 5.D.2 — Answer endpoint dispatcher. Latihan dapat immediate
+	// is_benar feedback (locked #81), Ulangan delayed grade dengan
+	// is_benar=NULL + 410 timer_expired guard (locked #76). FE hit satu
+	// endpoint shared, dispatcher peek hasil.mode lalu route.
+	soalbabAnswerHandler := soalbab.NewAttemptAnswerHandler(soalbabRepo, soalbabLatihanHandler, soalbabUlanganHandler)
+	siswaGroup.Post("/hasil-soal-bab/:id/answer", soalbabAnswerHandler.Answer)
 
 	// Pengumuman (Task 3.F.1): announcement CRUD per kelas. BabID nullable
 	// — bisa kelas-wide atau bab-scoped. Status enum published|archived

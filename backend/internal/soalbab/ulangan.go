@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,6 +54,11 @@ var (
 	// (validate saat PUT setting): di sini guru pernah valid setting
 	// tapi kemudian delete soal sehingga pool shrunk.
 	ErrUlanganPoolInsufficient = errors.New("soalbab: ulangan pool insufficient")
+	// ErrUlanganTimerExpired — siswa POST answer setelah deadline_at.
+	// Cron auto-grade (5.D.4) bakal mark hasil selesai eventually, tapi
+	// ujung autosave 5s harus refuse update biar nggak ada last-second
+	// race dengan grade. HTTP 410 Gone.
+	ErrUlanganTimerExpired = errors.New("soalbab: ulangan timer expired")
 )
 
 // UlanganRepoAPI is the subset of *Repo Ulangan service depends on.
@@ -66,6 +72,8 @@ type UlanganRepoAPI interface {
 	FindActiveHasil(ctx context.Context, babID, siswaID uuid.UUID, mode HasilMode) (*HasilSoalBab, error)
 	CountHasilByBabSiswa(ctx context.Context, babID, siswaID uuid.UUID, mode HasilMode) (int64, error)
 	CreateHasil(ctx context.Context, h *HasilSoalBab) error
+	FindHasilByID(ctx context.Context, id uuid.UUID) (*HasilSoalBab, error)
+	UpsertJawaban(ctx context.Context, j *JawabanBab) error
 	AppendEvent(ctx context.Context, e *EventBab) error
 }
 
@@ -288,9 +296,87 @@ func (s *UlanganService) Start(ctx context.Context, babID, siswaID uuid.UUID, ip
 	return result, nil
 }
 
+// Answer upserts a jawaban for an in-flight ulangan attempt without
+// revealing is_benar/jawaban_benar to the caller — locked #76 — siswa
+// hanya tahu jawabannya tersimpan; grading dilakukan saat submit
+// (5.D.3) atau cron auto-grade (5.D.4) on timer expire.
+//
+// Behavior:
+//   - Validates ownership + mode=ulangan + status=berlangsung.
+//   - Checks now() ≤ deadline_at; otherwise returns ErrUlanganTimerExpired
+//     (HTTP 410). Cron auto-grade akan eventually mark hasil 'selesai',
+//     tapi kita tetap refuse di edge biar nggak ada race save-after-grade.
+//   - Anti-cheat: soal_id MUST be in hasil.SoalIDsJSON snapshot.
+//   - UPSERT JawabanBab: jawaban=letter, is_benar=NULL, poin_dapat=0.
+//     Late-grade nanti bakal recompute is_benar+poin saat submit/cron.
+//   - Appends EventBab(action=answer_save, mode=ulangan).
+func (s *UlanganService) Answer(ctx context.Context, hasilID, siswaID uuid.UUID, in AnswerInput) error {
+	if !in.Jawaban.Valid() {
+		return fmt.Errorf("%w: jawaban must be a|b|c|d|e", ErrInvalidInput)
+	}
+
+	hasil, err := s.repo.FindHasilByID(ctx, hasilID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("soalbab ulangan answer find: %w", err)
+	}
+	if hasil.SiswaID != siswaID {
+		return ErrHasilNotOwned
+	}
+	if hasil.Mode != HasilModeUlangan {
+		return ErrHasilModeInvalid
+	}
+	if hasil.Status == HasilSelesai {
+		return ErrHasilAlreadyFinished
+	}
+	if hasil.Status == HasilDibatalkan {
+		return ErrHasilCancelled
+	}
+	if hasil.DeadlineAt == nil {
+		return errors.New("soalbab ulangan: hasil missing deadline_at")
+	}
+	if !s.now().Before(*hasil.DeadlineAt) {
+		return ErrUlanganTimerExpired
+	}
+
+	pool, perr := decodeSoalIDsJSON(hasil.SoalIDsJSON)
+	if perr != nil {
+		return fmt.Errorf("soalbab ulangan answer pool decode: %w", perr)
+	}
+	if !containsUUID(pool, in.SoalID) {
+		return ErrSoalNotInPool
+	}
+
+	jawabanLower := Jawaban(strings.ToLower(string(in.Jawaban)))
+	jawabanStr := string(jawabanLower)
+	now := s.now()
+	row := &JawabanBab{
+		HasilID: hasilID,
+		SoalID:  in.SoalID,
+		Jawaban: &jawabanStr,
+		// IsBenar nil → grading delayed sampai submit/auto-grade (locked #76).
+		IsBenar:    nil,
+		PoinDapat:  0,
+		AnsweredAt: now,
+	}
+	if err := s.repo.UpsertJawaban(ctx, row); err != nil {
+		return fmt.Errorf("soalbab ulangan answer upsert: %w", err)
+	}
+	_ = s.repo.AppendEvent(ctx, &EventBab{
+		HasilID: hasilID,
+		Action:  "answer_save",
+		Meta: marshalMeta(map[string]any{
+			"soal_id": in.SoalID.String(),
+			"jawaban": jawabanStr,
+			"mode":    "ulangan",
+		}),
+	})
+	return nil
+}
+
 // requireSiswaBabAccess enforces (siswa enrolled active) ∩ (bab published).
-// Mirrors LatihanService.requireSiswaBabAccess but lives here so the two
-// flows can evolve independently.
 func (s *UlanganService) requireSiswaBabAccess(ctx context.Context, babID, siswaID uuid.UUID) (*bab.Bab, error) {
 	b, err := s.bab.FindByID(ctx, babID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
