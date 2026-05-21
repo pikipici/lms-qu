@@ -68,9 +68,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
 
 export const submissionQueryKey = (tugasID: string) =>
   ['submission', 'mine', tugasID] as const;
@@ -303,7 +301,7 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
             )}
             {isGraded && (
               <>
-                <Separator />
+                <hr className="my-2 border-border" />
                 <div className="grid gap-2 rounded-md bg-emerald-50 p-3 text-sm dark:bg-emerald-900/20">
                   <div className="flex items-center justify-between">
                     <span className="font-medium">Nilai</span>
@@ -354,11 +352,14 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
               <>
                 <div className="space-y-1.5">
                   <Label htmlFor="submission-catatan">Catatan</Label>
-                  <Textarea
+                  <textarea
                     id="submission-catatan"
+                    className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Tulis jawaban / catatan lu di sini…"
                     value={catatan}
-                    onChange={(e) => setCatatan(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      setCatatan(e.target.value)
+                    }
                     disabled={blockedSubmit || submitMu.isPending}
                     rows={6}
                   />
