@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.2 — **Task 3.D.1 ✅ DONE** 2026-05-21 (commit `eeca652`; server typecheck + `next build` PASS, 22 static routes generated, /guru/kelas/detail/bab page bundle 54.3 kB). Tab Materi guru shipped — create dialog 3-tipe (PDF drag-drop / YouTube URL parse + nocookie embed preview / Markdown split write+preview) + list per-bab + dropdown actions (Edit/Hapus, Buka PDF utk tipe pdf) + delete confirm. Files: `frontend/lib/youtube.ts` (port `parseYouTubeID` mirror locked #65 4 formats), `frontend/lib/materi-api.ts` (typed client + multipart upload + presign + friendly errors), `frontend/components/materi/{MarkdownEditor,YouTubeInput,PdfUpload,MateriCreateDialog,MateriEditDialog,MateriList}.tsx`. Wiring: `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` Materi tab swap PlaceholderTab → `<MateriList kelasID babID contextLabel disabled={archived} />`. Tipe immutable di Edit dialog (locked #63) — pdf konten read-only, ganti file = delete+create. PDF FE-side preflight (.pdf+20MB, locked #46/#64); server tetap re-validate via mime sniff. **Sub-fase 3.D 1/2 (Materi FE Guru DONE; siswa viewer 3.D.2 berikutnya). Fase 3 overall 11/17 task (65%).**
+> Status: v0.9.3 — **Task 3.D.2 ✅ DONE** 2026-05-21 (commit `d08df3f`; server typecheck + `next build` PASS, 22 static routes). Siswa materi viewer dispatcher shipped — komponen standalone untuk dipakai di Task 3.E.2 page. Files: `frontend/components/materi/{useMarkMateriRead.ts,PdfViewer.tsx,YouTubeEmbed.tsx,MarkdownView.tsx,MateriViewer.tsx}`; extend `frontend/lib/materi-api.ts` (markMateriRead + MarkReadResponse). PDF viewer pakai TanStack Query presigned URL (staleTime 10min, server TTL 15min) + iframe browser-native + debounce 2s mark-read (locked roadmap §3.D.2). YouTube + Markdown fire-on-mount mark-read. Shared `useMarkMateriRead` hook fire-and-forget, retry=false, silent on error by default. **Sub-fase 3.D 2/2 ✅ CLOSED — Materi FE 100%. Fase 3 overall 12/17 task (71%).**
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.D.1 shipped — Materi FE Guru full CRUD UI)
+> Last updated: 2026-05-21 (Task 3.D.2 shipped — siswa viewer 3-tipe + auto mark-read; sub-fase 3.D CLOSED)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2069,13 +2069,16 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (22 static routes generated, 1 ESLint warning di lib/role-guard.tsx pre-existing — not from this task). Local skip karena no runtime deps. Live deploy belum (FE static export auto-served oleh `lms-api` binary; binary perlu rebuild + restart untuk pick up `frontend/.next` dir baru — blocked oleh user di sesi ini).
 - Commit: `eeca652 feat(fe-guru): materi tab — create dialog 3-tipe + list + edit/delete`
 
-**Task 3.D.2 — Siswa materi viewer (PDF iframe + YouTube embed + react-markdown) + auto mark-read**
-- Files: `frontend/components/materi/{MateriViewer,PdfViewer,YouTubeEmbed,MarkdownView}.tsx`. Dipakai di `/siswa/kelas/detail/bab` page (Task 3.E.2).
-- PdfViewer: fetch presigned URL via `GET /materi/:id/file-url` (TanStack Query staleTime 10min, locked #62) → `<iframe src={url}>`. Auto-call `POST /materi/:id/read` on mount (debounce 2s biar gak fire saat scroll-by).
-- YouTubeEmbed: `<iframe src="https://www.youtube-nocookie.com/embed/<id>" allow="encrypted-media" />`. Auto mark-read on mount (no debounce — view cheap).
-- MarkdownView: `<Markdown>{konten}</Markdown>` dgn safe renderer. Auto mark-read on mount.
-- Verify: typecheck + build + manual click flow di siswa role.
-- Commit: `feat(fe-siswa): materi viewer 3-tipe + auto mark-read`
+**Task 3.D.2 — Siswa materi viewer (PDF iframe + YouTube embed + react-markdown) + auto mark-read** ✅ DONE 2026-05-21 (commit `d08df3f`; server typecheck + `next build` PASS, 22 static routes — viewer komponen standalone, belum di-import bundle ke /siswa page karena dipakai di Task 3.E.2).
+- Files shipped: `frontend/components/materi/useMarkMateriRead.ts` (shared hook fire-and-forget mutation, retry=false, silent on error by default; opts notifyOnError + onSuccess), `frontend/components/materi/PdfViewer.tsx` (TanStack Query presigned URL staleTime 10min — server TTL 15min sisain 5min buffer locked roadmap §3.D.2; iframe browser-native render 70vh min 480px; debounce 2s mark-read), `frontend/components/materi/YouTubeEmbed.tsx` (youtube-nocookie iframe locked #65; defensive 11-char video_id regex; mark-read on mount tanpa debounce), `frontend/components/materi/MarkdownView.tsx` (react-markdown + remark-gfm prose render; mark-read on mount), `frontend/components/materi/MateriViewer.tsx` (dispatcher switch-by-tipe + standar header card dgn judul + tipe badge + meta; hideHeader prop opsional).
+- Files diubah: `frontend/lib/materi-api.ts` — tambah `MarkReadResponse` type + `markMateriRead(id)` helper untuk POST `/siswa/materi/:id/read` (siswaGroup BearerAuth + ForceChangePassword + RoleGuard(siswa) di backend, plus enrollment guard di service.MarkRead, locked #25 idempotent ON CONFLICT DO NOTHING).
+- Mark-read strategy:
+  - PDF debounce 2s → hindari fire saat user scroll-by tab (locked roadmap §3.D.2). Mounting dianggap intensional setelah 2s kontak.
+  - YouTube + Markdown fire-on-mount langsung (load iframe / render markdown udah cukup signal).
+  - Hook fire-and-forget: tidak invalidate query, error silent default. Read state ditampilin lewat bab detail siswa endpoint (Task 3.E.1) yang refetch saat user navigate balik.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (22 static routes generated). Bundle /guru/kelas/detail/bab tetap 54.3 kB (viewer belum di-import — dipakai nanti di Task 3.E.2 page yg belum ada). No new ESLint warnings.
+- Belum di-wire ke `/siswa/kelas/detail/bab` page — itu Task 3.E.2 yang depend Task 3.E.1 BE GET endpoints siswa bab list + detail. Komponen 3.D.2 standalone, siap import.
+- Commit: `d08df3f feat(fe-siswa): materi viewer 3-tipe + auto mark-read`
 
 #### 3.E Bab Siswa + Progress
 
@@ -2134,30 +2137,31 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.D.1 ✅ DONE** 2026-05-21. Tab Materi guru shipped (commit `eeca652`). Server typecheck + `next build` PASS — 22 static routes generated, /guru/kelas/detail/bab bundle 54.3 kB. **Sub-fase 3.D 1/2 (Materi FE Guru DONE; siswa viewer 3.D.2 berikutnya). Fase 3 overall 11/17 task (65%).**
+**Task 3.D.2 ✅ DONE** 2026-05-21. Siswa materi viewer dispatcher shipped (commit `d08df3f`). Server typecheck + `next build` PASS. **Sub-fase 3.D 2/2 ✅ CLOSED — Materi FE 100%. Fase 3 overall 12/17 task (71%).**
 
 **Sub-fase progress recap:**
 - 3.A Bab BE 4/4 ✅ CLOSED
 - 3.B Bab FE Guru 2/2 ✅ CLOSED
 - 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
-- 3.D Materi FE 1/2 (3.D.1 commit `eeca652`)
+- 3.D Materi FE 2/2 ✅ CLOSED (commits `eeca652` + `d08df3f`)
 - 3.E Bab Siswa + Progress 0/2
 - 3.F Pengumuman 0/3
 
-**Eksekusi berikutnya: lanjut sub-fase 3.D.2 (Materi FE Siswa viewer) atau lompat ke 3.E.1 (BE siswa bab list + progress) dulu.**
+**Eksekusi berikutnya: Sub-fase 3.E (siswa flow) atau 3.F (pengumuman). Default rekomendasi: 3.E.1 → 3.E.2 dulu karena 3.E.2 page yang menghidupkan komponen viewer 3.D.2 yg udah ship.**
 
 Pilihan opsi:
-- **gas 3.D.2 inline** — Siswa materi viewer (PdfViewer iframe + YouTubeEmbed + MarkdownView) + auto mark-read on mount. Components-only, dipakai nanti di Task 3.E.2 page. Ringan: 4 component files, no new endpoint, semua API call udah ready (`getMateriFileURL` + `POST /siswa/materi/:id/read`).
-- **gas 3.E.1 inline** — BE GET endpoints siswa bab list + bab detail dgn progress (formula fase-3-partial: materi_read/materi_total). Files: `backend/internal/bab/student.go`. Effort sedang (handler+service+test). Ini blocker untuk 3.E.2 page yang link siswa flow.
-- **gas 3.D.2 + 3.E.1 paralel via codex/claude-code subagent** — kalau auth balik, bisa dispatch dua workstream paralel.
-- **stop dulu** — save state. Sesi ini udah ship 1 task FE besar (1912 LOC, 9 files).
+- **gas 3.E.1 inline** — BE GET endpoints siswa bab list + detail dgn progress fase-3-partial (formula `materi_read_count / materi_total × 100`, locked #68 + Section 6.4). Files: `backend/internal/bab/student.go` (handler + service). Endpoints: `GET /siswa/kelas/:id/bab` (list bab status=published + progress per bab) + `GET /siswa/bab/:id` (detail bab + materi list + read state per materi). Single batched query untuk progress (LEFT JOIN materi_read scoped siswa_id, hindari N+1). Effort sedang.
+- **gas 3.E.2 inline** — pre-req 3.E.1 dulu. Setelah BE ready, FE page `/siswa/kelas/detail` (list bab + progress bar) + `/siswa/kelas/detail/bab` (Tab Materi pakai `<MateriViewer>` dari 3.D.2). Effort medium-besar.
+- **gas 3.F.1 inline (lompat)** — Migration `000007_pengumuman` + Pengumuman model + repo + CRUD endpoints (guru-only create/update/archive, guru+siswa read). Bisa di-attach ke kelas atau bab. Independen dari sub-fase 3.E.
+- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE bener-bener hidup. Sesi ini udah 2 task FE shipped + binary BUILD_OK tapi belum restart.
+- **stop dulu** — save state. Sesi udah heroik: 3.D.1 + 3.D.2 = 14 files / 2382 LOC + 2 docs commits.
 
-**Live deploy command** (kapan lu mau — restart binary supaya `.next` static dir di-serve update):
+**Live deploy command** (kapan lu mau):
 ```
 ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
 ```
-Note: 3.C BE binary udah `BUILD_OK` di sesi ini (server side udah commit `eeca652` post fetch+reset), tapi systemctl restart blocked. Re-run command di atas akan restart binary + serve FE static export terbaru sekaligus.
+Server tree udah di commit `d08df3f` post fetch+reset. Frontend `.next` static export dir udah di-build via `npm run build` di session ini, tapi binary `lms-api` belum di-restart untuk pick up perubahan. Re-run command di atas akan rebuild Go binary + restart systemd; FE static dir di-serve oleh binary yang sama.
 
-> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree fetch+reset ke `eeca652`, tapi binary belum di-restart.
+> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `d08df3f`, tapi binary belum di-restart.
 
 > Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
