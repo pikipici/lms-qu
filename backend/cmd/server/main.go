@@ -353,6 +353,18 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	babGroup.Post("/:id/soal", soalbabHandler.Create)
 	babGroup.Get("/:id/soal", soalbabHandler.ListByBab)
 	babGroup.Post("/:id/soal/bulk", soalbabHandler.BulkCreate)
+
+	// Task 5.C.1 — UlanganBabSetting GET + PUT (upsert).
+	// Guru/admin GET via /bab/:id/ulangan-setting (full payload incl.
+	// pool_size + version). Siswa GET via /siswa/bab/:id/ulangan-setting
+	// (trimmed lobby payload, requires active enrollment). PUT
+	// guru/admin only with optimistic concurrency (locked #56) +
+	// jumlah_soal pool validation.
+	soalbabSettingSvc := soalbab.NewSettingService(soalbabRepo, babRepo, kelasRepo, kelasRepo, authRepo)
+	soalbabSettingHandler := soalbab.NewSettingHandler(soalbabSettingSvc)
+	babGroup.Get("/:id/ulangan-setting", soalbabSettingHandler.Get)
+	babGroup.Put("/:id/ulangan-setting", soalbabSettingHandler.Upsert)
+
 	soalbabGroup := api.Group("/soal-bab",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),
@@ -414,6 +426,10 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	siswaBabHandler := siswabab.NewHandler(siswaBabSvc)
 	siswaGroup.Get("/kelas/:id/bab", siswaBabHandler.ListSiswa)
 	siswaGroup.Get("/bab/:id", siswaBabHandler.GetSiswa)
+	// Task 5.C.1 — siswa lobby payload (trimmed). Reuses the same
+	// SettingHandler.Get; the handler branches on role internally and
+	// returns SiswaLobbyView when caller is siswa.
+	siswaGroup.Get("/bab/:id/ulangan-setting", soalbabSettingHandler.Get)
 
 	// Pengumuman (Task 3.F.1): announcement CRUD per kelas. BabID nullable
 	// — bisa kelas-wide atau bab-scoped. Status enum published|archived

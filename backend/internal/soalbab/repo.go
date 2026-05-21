@@ -290,10 +290,69 @@ func (r *Repo) GetSettingByBab(ctx context.Context, babID uuid.UUID) (*UlanganBa
 	return &s, nil
 }
 
-// UpsertSetting inserts a new setting row or updates an existing one with
-// optimistic concurrency on update path. To be implemented by Task 5.C.1.
-func (r *Repo) UpsertSetting(ctx context.Context, s *UlanganBabSetting) error {
-	return errNotImplemented
+// UpsertSetting inserts a new ulangan_bab_setting row when none exists for
+// the bab, or updates the existing row with optimistic concurrency
+// (locked #56). On update path, expectedVersion must match the current row
+// version — caller pre-fetches via GetSettingByBab to learn it. expected=0
+// signals insert path (caller asserts no row exists yet).
+//
+// Mutates s in place: ID + Version + CreatedAt + UpdatedAt are filled from
+// the persisted row so caller can return the fresh payload directly.
+//
+// Returns ErrVersionConflict when the row exists but version mismatches.
+// Returns gorm.ErrRecordNotFound only if a concurrent delete races — not
+// expected in MVP since bab→setting is 1:1 with FK CASCADE.
+func (r *Repo) UpsertSetting(ctx context.Context, s *UlanganBabSetting, expectedVersion int) error {
+	if s == nil || s.BabID == uuid.Nil {
+		return errors.New("soalbab: setting + bab_id required")
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Try to read current row first to decide insert vs update.
+		var current UlanganBabSetting
+		err := tx.Where("bab_id = ?", s.BabID).First(&current).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Insert path. Caller may have passed expectedVersion=0 (no
+			// prior row) or any other value; we ignore on insert because
+			// optimistic concurrency only matters once a row exists.
+			s.Version = 1
+			if err := tx.Create(s).Error; err != nil {
+				return err
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		// Update path — enforce optimistic concurrency.
+		if expectedVersion <= 0 || expectedVersion != current.Version {
+			return ErrVersionConflict
+		}
+		fields := map[string]any{
+			"jumlah_soal":                   s.JumlahSoal,
+			"durasi_menit":                  s.DurasiMenit,
+			"batas_attempt":                 s.BatasAttempt,
+			"izinkan_review_setelah_submit": s.IzinkanReviewSetelahSubmit,
+			"waktu_buka_review":             s.WaktuBukaReview,
+			"version":                       gorm.Expr("version + 1"),
+			"updated_at":                    gorm.Expr("now()"),
+		}
+		res := tx.Model(&UlanganBabSetting{}).
+			Where("id = ? AND version = ?", current.ID, expectedVersion).
+			UpdateColumns(fields)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrVersionConflict
+		}
+		// Refetch to populate caller's struct with persisted fields.
+		var fresh UlanganBabSetting
+		if err := tx.Where("id = ?", current.ID).First(&fresh).Error; err != nil {
+			return err
+		}
+		*s = fresh
+		return nil
+	})
 }
 
 // ---------------------------------------------------------------------------
