@@ -34,6 +34,7 @@ import (
 	"github.com/pikip/lms/backend/internal/health"
 	"github.com/pikip/lms/backend/internal/importjob"
 	"github.com/pikip/lms/backend/internal/kelas"
+	"github.com/pikip/lms/backend/internal/materi"
 	"github.com/pikip/lms/backend/internal/middleware"
 	"github.com/pikip/lms/backend/internal/storage"
 	"gorm.io/gorm"
@@ -335,6 +336,23 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	babGroup.Patch("/:id", babHandler.Update)
 	babGroup.Post("/:id/archive", babHandler.Archive)
 	babGroup.Post("/:id/duplicate", babHandler.Duplicate)
+
+	// Materi (Task 3.C.2): learning content CRUD per kelas. youtube +
+	// markdown only — PDF upload + presigned download di Task 3.C.3, siswa
+	// mark-as-read di Task 3.C.4.
+	materiRepo := materi.NewRepo(gdb)
+	materiSvc := materi.NewService(materiRepo, kelasRepo, babRepo, authRepo)
+	materiHandler := materi.NewHandler(materiSvc)
+	kelasGroup.Get("/:id/materi", materiHandler.ListByKelas)
+	kelasGroup.Post("/:id/materi", materiHandler.Create)
+	materiGroup := api.Group("/materi",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	materiGroup.Get("/:id", materiHandler.Get)
+	materiGroup.Patch("/:id", materiHandler.Update)
+	materiGroup.Delete("/:id", materiHandler.Delete)
 
 	// Siswa-side enrollment (Phase 2.C): siswa joins a kelas via kode invite.
 	// Rate-limited per IP+siswa to deter scraping. Mounted under /siswa group
