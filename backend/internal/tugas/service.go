@@ -31,6 +31,7 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/kelas"
+	"github.com/pikip/lms/backend/internal/storage"
 )
 
 // Sentinel errors mapped to HTTP status di handler.
@@ -58,6 +59,11 @@ type repoAPI interface {
 	ListByKelas(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Tugas, error)
 	UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]any) error
 	Delete(ctx context.Context, id uuid.UUID) ([]string, error)
+	AddAttachment(ctx context.Context, a *Attachment) error
+	FindAttachmentByID(ctx context.Context, tugasID, attachmentID uuid.UUID) (*Attachment, error)
+	ListAttachmentsByTugas(ctx context.Context, tugasID uuid.UUID) ([]Attachment, error)
+	CountAttachmentsByTugas(ctx context.Context, tugasID uuid.UUID) (int64, error)
+	DeleteAttachment(ctx context.Context, tugasID, attachmentID uuid.UUID) (string, error)
 }
 
 // kelasLookup hydrates kelas ownership/lifecycle.
@@ -87,13 +93,16 @@ type Service struct {
 	bab    babLookup
 	enroll enrollmentLookup
 	audit  auditLogger
+	store  storage.Storage
 	now    func() time.Time
 }
 
-// NewService wires tugas Repo + kelas/bab/enrollment lookups + audit logger.
-// Pass nil for `enroll` to disable siswa list/get path (tests).
-func NewService(repo repoAPI, kelas kelasLookup, bab babLookup, enroll enrollmentLookup, audit auditLogger) *Service {
-	return &Service{repo: repo, kelas: kelas, bab: bab, enroll: enroll, audit: audit, now: time.Now}
+// NewService wires tugas Repo + kelas/bab/enrollment lookups + audit logger
+// + optional object store. Pass nil for `enroll` to disable siswa list/get
+// path (tests). Pass nil for `store` to disable attachment upload/download
+// (tests yang gak butuh R2).
+func NewService(repo repoAPI, kelas kelasLookup, bab babLookup, enroll enrollmentLookup, audit auditLogger, store storage.Storage) *Service {
+	return &Service{repo: repo, kelas: kelas, bab: bab, enroll: enroll, audit: audit, store: store, now: time.Now}
 }
 
 // ---------- Create ----------

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -31,6 +32,10 @@ type tugasService interface {
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*Tugas, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Tugas, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Tugas, []string, error)
+	UploadAttachment(ctx context.Context, tugasID, callerID uuid.UUID, callerRole string, in UploadAttachmentInput, ip, userAgent string) (*Attachment, error)
+	DeleteAttachment(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, callerRole, ip, userAgent string) error
+	PresignAttachmentURL(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, callerRole, ip, userAgent string) (*AttachmentURLResult, error)
+	ListAttachments(ctx context.Context, tugasID, callerID uuid.UUID, callerRole string) ([]Attachment, error)
 }
 
 // Handler wires HTTP routes to tugas Service.
@@ -283,6 +288,21 @@ func mapServiceErr(c *fiber.Ctx, err error) error {
 		return errResp(c, fiber.StatusRequestEntityTooLarge, friendlyMessage(err, "deskripsi too long"), "payload_too_large")
 	case errors.Is(err, ErrBabNotInKelas):
 		return errResp(c, fiber.StatusBadRequest, "bab does not belong to this kelas", "bab_not_in_kelas")
+	case errors.Is(err, ErrAttachmentUnsupportedMime):
+		return errResp(c, fiber.StatusUnsupportedMediaType, friendlyMessage(err, "attachment mime not allowed"), "unsupported_mime")
+	case errors.Is(err, ErrAttachmentTooLarge):
+		return errResp(c, fiber.StatusRequestEntityTooLarge,
+			fmt.Sprintf("attachment melebihi batas %d MB", MaxTugasAttachmentBytes/(1024*1024)),
+			"payload_too_large")
+	case errors.Is(err, ErrAttachmentLimitReached):
+		return errResp(c, fiber.StatusBadRequest,
+			fmt.Sprintf("max %d attachment per tugas", MaxAttachmentsPerTugas),
+			"attachment_limit_reached")
+	case errors.Is(err, ErrAttachmentUploadFailed):
+		slog.Error("tugas attachment r2", slog.String("err", err.Error()))
+		return errResp(c, fiber.StatusInternalServerError, "upload to object store failed", "r2_put_failed")
+	case errors.Is(err, ErrR2Required):
+		return errResp(c, fiber.StatusServiceUnavailable, "object store not configured", "r2_unavailable")
 	case errors.Is(err, ErrNotFound), errors.Is(err, gorm.ErrRecordNotFound):
 		return errResp(c, fiber.StatusNotFound, "tugas not found", "not_found")
 	case errors.Is(err, ErrForbidden):

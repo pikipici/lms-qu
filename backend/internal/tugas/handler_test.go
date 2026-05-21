@@ -25,11 +25,16 @@ import (
 // ---------- Stubs untuk service deps ----------
 
 type stubRepo struct {
-	createFn func(ctx context.Context, t *Tugas) error
-	findFn   func(ctx context.Context, id uuid.UUID) (*Tugas, error)
-	listFn   func(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Tugas, error)
-	updateFn func(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]any) error
-	deleteFn func(ctx context.Context, id uuid.UUID) ([]string, error)
+	createFn    func(ctx context.Context, t *Tugas) error
+	findFn      func(ctx context.Context, id uuid.UUID) (*Tugas, error)
+	listFn      func(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Tugas, error)
+	updateFn    func(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]any) error
+	deleteFn    func(ctx context.Context, id uuid.UUID) ([]string, error)
+	addAttFn    func(ctx context.Context, a *Attachment) error
+	findAttFn   func(ctx context.Context, tugasID, attachmentID uuid.UUID) (*Attachment, error)
+	listAttFn   func(ctx context.Context, tugasID uuid.UUID) ([]Attachment, error)
+	countAttFn  func(ctx context.Context, tugasID uuid.UUID) (int64, error)
+	deleteAttFn func(ctx context.Context, tugasID, attachmentID uuid.UUID) (string, error)
 }
 
 func (r *stubRepo) Create(ctx context.Context, t *Tugas) error {
@@ -46,6 +51,36 @@ func (r *stubRepo) UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersio
 }
 func (r *stubRepo) Delete(ctx context.Context, id uuid.UUID) ([]string, error) {
 	return r.deleteFn(ctx, id)
+}
+func (r *stubRepo) AddAttachment(ctx context.Context, a *Attachment) error {
+	if r.addAttFn == nil {
+		return nil
+	}
+	return r.addAttFn(ctx, a)
+}
+func (r *stubRepo) FindAttachmentByID(ctx context.Context, tugasID, attachmentID uuid.UUID) (*Attachment, error) {
+	if r.findAttFn == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return r.findAttFn(ctx, tugasID, attachmentID)
+}
+func (r *stubRepo) ListAttachmentsByTugas(ctx context.Context, tugasID uuid.UUID) ([]Attachment, error) {
+	if r.listAttFn == nil {
+		return nil, nil
+	}
+	return r.listAttFn(ctx, tugasID)
+}
+func (r *stubRepo) CountAttachmentsByTugas(ctx context.Context, tugasID uuid.UUID) (int64, error) {
+	if r.countAttFn == nil {
+		return 0, nil
+	}
+	return r.countAttFn(ctx, tugasID)
+}
+func (r *stubRepo) DeleteAttachment(ctx context.Context, tugasID, attachmentID uuid.UUID) (string, error) {
+	if r.deleteAttFn == nil {
+		return "", gorm.ErrRecordNotFound
+	}
+	return r.deleteAttFn(ctx, tugasID, attachmentID)
 }
 
 type stubKelas struct {
@@ -124,7 +159,7 @@ func TestService_Create_HappyPath(t *testing.T) {
 		return activeKelas(id, guruID), nil
 	}}
 	audit := &stubAudit{}
-	svc := NewService(repo, k, &stubBab{}, nil, audit)
+	svc := NewService(repo, k, &stubBab{}, nil, audit, nil)
 
 	tg, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "  Tugas Pertama  ", Deskripsi: "kerjakan ya"}, "1.1.1.1", "ua")
@@ -144,7 +179,7 @@ func TestService_Create_RejectEmptyJudul(t *testing.T) {
 	kelasID := uuid.New()
 	svc := NewService(&stubRepo{}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "   ", Deskripsi: ""}, "", "")
 	if !errors.Is(err, ErrInvalidInput) {
@@ -157,7 +192,7 @@ func TestService_Create_RejectDeskripsiTooLong(t *testing.T) {
 	kelasID := uuid.New()
 	svc := NewService(&stubRepo{}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	huge := strings.Repeat("x", MaxDeskripsiBytes+1)
 	_, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "ok", Deskripsi: huge}, "", "")
@@ -171,7 +206,7 @@ func TestService_Create_RejectPenaltyOutOfRange(t *testing.T) {
 	kelasID := uuid.New()
 	svc := NewService(&stubRepo{}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "ok", PenaltyPersen: 150}, "", "")
 	if !errors.Is(err, ErrInvalidInput) {
@@ -189,7 +224,7 @@ func TestService_Create_KelasArchived(t *testing.T) {
 	kelasID := uuid.New()
 	svc := NewService(&stubRepo{}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return archivedKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "ok"}, "", "")
 	if !errors.Is(err, ErrKelasArchived) {
@@ -203,7 +238,7 @@ func TestService_Create_NotOwner(t *testing.T) {
 	kelasID := uuid.New()
 	svc := NewService(&stubRepo{}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, otherGuru), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "ok"}, "", "")
 	if !errors.Is(err, ErrForbidden) {
@@ -220,7 +255,7 @@ func TestService_Create_BabNotInKelas(t *testing.T) {
 		return activeKelas(id, guruID), nil
 	}}, &stubBab{findFn: func(ctx context.Context, id uuid.UUID) (*bab.Bab, error) {
 		return &bab.Bab{ID: id, KelasID: otherKelasID}, nil
-	}}, nil, nil)
+	}}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), kelasID, guruID, string(auth.Guru),
 		CreateInput{Judul: "ok", BabID: &babID}, "", "")
 	if !errors.Is(err, ErrBabNotInKelas) {
@@ -245,7 +280,7 @@ func TestService_List_Siswa_ForcePublishedOnly(t *testing.T) {
 		return activeKelas(id, uuid.New()), nil
 	}}, &stubBab{}, &stubEnroll{findFn: func(ctx context.Context, kID, sID uuid.UUID) (*kelas.Enrollment, error) {
 		return activeEnrollment(kID, sID), nil
-	}}, nil)
+	}}, nil, nil)
 
 	st := StatusArchived
 	_, err := svc.ListByKelas(context.Background(), kelasID, siswaID, string(auth.Siswa), ListInput{Status: &st})
@@ -264,7 +299,7 @@ func TestService_List_Siswa_NotEnrolled(t *testing.T) {
 		return activeKelas(id, uuid.New()), nil
 	}}, &stubBab{}, &stubEnroll{findFn: func(ctx context.Context, kID, sID uuid.UUID) (*kelas.Enrollment, error) {
 		return nil, gorm.ErrRecordNotFound
-	}}, nil)
+	}}, nil, nil)
 	_, err := svc.ListByKelas(context.Background(), kelasID, siswaID, string(auth.Siswa), ListInput{})
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
@@ -286,7 +321,7 @@ func TestService_List_Guru_FullVisibility(t *testing.T) {
 	}
 	svc := NewService(repo, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	rows, err := svc.ListByKelas(context.Background(), kelasID, guruID, string(auth.Guru), ListInput{})
 	if err != nil {
 		t.Fatalf("List err: %v", err)
@@ -307,7 +342,7 @@ func TestService_Get_Siswa_DraftHidden(t *testing.T) {
 		findFn: func(ctx context.Context, _ uuid.UUID) (*Tugas, error) {
 			return &Tugas{ID: id, KelasID: kelasID, Status: StatusDraft}, nil
 		},
-	}, &stubKelas{}, &stubBab{}, nil, nil)
+	}, &stubKelas{}, &stubBab{}, nil, nil, nil)
 	_, err := svc.Get(context.Background(), id, siswaID, string(auth.Siswa))
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for draft siswa view, got %v", err)
@@ -322,7 +357,7 @@ func TestService_Get_Siswa_ArchivedHidden(t *testing.T) {
 		findFn: func(ctx context.Context, _ uuid.UUID) (*Tugas, error) {
 			return &Tugas{ID: id, KelasID: kelasID, Status: StatusArchived}, nil
 		},
-	}, &stubKelas{}, &stubBab{}, nil, nil)
+	}, &stubKelas{}, &stubBab{}, nil, nil, nil)
 	_, err := svc.Get(context.Background(), id, siswaID, string(auth.Siswa))
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for archived siswa view, got %v", err)
@@ -342,7 +377,7 @@ func TestService_Update_VersionConflict(t *testing.T) {
 		},
 	}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	newJudul := "new"
 	_, err := svc.Update(context.Background(), id, guruID, string(auth.Guru), UpdateInput{
 		ExpectedVersion: 5, Judul: &newJudul,
@@ -372,7 +407,7 @@ func TestService_Update_StatusChangedAuditAction(t *testing.T) {
 	audit := &stubAudit{}
 	svc := NewService(repo, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, audit)
+	}}, &stubBab{}, nil, audit, nil)
 	st := StatusPublished
 	_, err := svc.Update(context.Background(), id, guruID, string(auth.Guru), UpdateInput{
 		ExpectedVersion: 5, Status: &st,
@@ -401,7 +436,7 @@ func TestService_Update_NoOpReturnsExisting(t *testing.T) {
 	}
 	svc := NewService(repo, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	// Patch with same judul as existing (no-op).
 	sameJudul := "x"
 	_, err := svc.Update(context.Background(), id, guruID, string(auth.Guru), UpdateInput{
@@ -422,7 +457,7 @@ func TestService_Delete_NotFound(t *testing.T) {
 		findFn: func(ctx context.Context, _ uuid.UUID) (*Tugas, error) {
 			return nil, gorm.ErrRecordNotFound
 		},
-	}, &stubKelas{}, &stubBab{}, nil, nil)
+	}, &stubKelas{}, &stubBab{}, nil, nil, nil)
 	_, _, err := svc.Delete(context.Background(), id, guruID, string(auth.Guru), "", "")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
@@ -444,7 +479,7 @@ func TestService_Delete_HappyPath(t *testing.T) {
 		},
 	}, &stubKelas{findFn: func(ctx context.Context, id uuid.UUID) (*kelas.Kelas, error) {
 		return activeKelas(id, guruID), nil
-	}}, &stubBab{}, nil, nil)
+	}}, &stubBab{}, nil, nil, nil)
 	_, keys, err := svc.Delete(context.Background(), id, guruID, string(auth.Guru), "", "")
 	if err != nil {
 		t.Fatalf("Delete err: %v", err)
@@ -460,11 +495,15 @@ func TestService_Delete_HappyPath(t *testing.T) {
 // ---------- Handler tests (smoke) ----------
 
 type stubSvc struct {
-	createFn func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Tugas, error)
-	listFn   func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ListInput) ([]Tugas, error)
-	getFn    func(ctx context.Context, id, callerID uuid.UUID, role string) (*Tugas, error)
-	updateFn func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Tugas, error)
-	deleteFn func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Tugas, []string, error)
+	createFn          func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Tugas, error)
+	listFn            func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ListInput) ([]Tugas, error)
+	getFn             func(ctx context.Context, id, callerID uuid.UUID, role string) (*Tugas, error)
+	updateFn          func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Tugas, error)
+	deleteFn          func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Tugas, []string, error)
+	uploadAttFn       func(ctx context.Context, tugasID, callerID uuid.UUID, role string, in UploadAttachmentInput, ip, ua string) (*Attachment, error)
+	deleteAttFn       func(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, role, ip, ua string) error
+	presignAttURLFn   func(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, role, ip, ua string) (*AttachmentURLResult, error)
+	listAttachmentsFn func(ctx context.Context, tugasID, callerID uuid.UUID, role string) ([]Attachment, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Tugas, error) {
@@ -481,6 +520,30 @@ func (s *stubSvc) Update(ctx context.Context, id, callerID uuid.UUID, role strin
 }
 func (s *stubSvc) Delete(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Tugas, []string, error) {
 	return s.deleteFn(ctx, id, callerID, role, ip, ua)
+}
+func (s *stubSvc) UploadAttachment(ctx context.Context, tugasID, callerID uuid.UUID, role string, in UploadAttachmentInput, ip, ua string) (*Attachment, error) {
+	if s.uploadAttFn == nil {
+		return nil, ErrR2Required
+	}
+	return s.uploadAttFn(ctx, tugasID, callerID, role, in, ip, ua)
+}
+func (s *stubSvc) DeleteAttachment(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, role, ip, ua string) error {
+	if s.deleteAttFn == nil {
+		return ErrR2Required
+	}
+	return s.deleteAttFn(ctx, tugasID, attachmentID, callerID, role, ip, ua)
+}
+func (s *stubSvc) PresignAttachmentURL(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, role, ip, ua string) (*AttachmentURLResult, error) {
+	if s.presignAttURLFn == nil {
+		return nil, ErrR2Required
+	}
+	return s.presignAttURLFn(ctx, tugasID, attachmentID, callerID, role, ip, ua)
+}
+func (s *stubSvc) ListAttachments(ctx context.Context, tugasID, callerID uuid.UUID, role string) ([]Attachment, error) {
+	if s.listAttachmentsFn == nil {
+		return nil, nil
+	}
+	return s.listAttachmentsFn(ctx, tugasID, callerID, role)
 }
 
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {

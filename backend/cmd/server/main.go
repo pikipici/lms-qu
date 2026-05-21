@@ -422,7 +422,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// (GET/PATCH/DELETE :id) under tugasGroup terbuka untuk siswa enrolled
 	// (service branches by role).
 	tugasRepo := tugas.NewRepo(gdb)
-	tugasSvc := tugas.NewService(tugasRepo, kelasRepo, babRepo, kelasRepo, authRepo)
+	tugasSvc := tugas.NewService(tugasRepo, kelasRepo, babRepo, kelasRepo, authRepo, objectStore)
 	tugasHandler := tugas.NewHandler(tugasSvc)
 	kelasGroup.Post("/:id/tugas", tugasHandler.Create)
 	kelasGroup.Get("/:id/tugas", tugasHandler.ListByKelas)
@@ -434,6 +434,15 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	tugasGroup.Get("/:id", tugasHandler.Get)
 	tugasGroup.Patch("/:id", tugasHandler.Update)
 	tugasGroup.Delete("/:id", tugasHandler.Delete)
+
+	// Attachment endpoints (Task 4.A.3): multipart upload + presigned download.
+	// Allowlist mime locked #46 (pdf, docx, jpg, png, zip), cap 5×20MB
+	// (locked #74). Siswa enrolled bisa GET list + presigned URL untuk
+	// download lampiran soal sebelum submit; guru/admin owner control upload+delete.
+	tugasGroup.Post("/:id/attachments", tugasHandler.UploadAttachment)
+	tugasGroup.Get("/:id/attachments", tugasHandler.ListAttachments)
+	tugasGroup.Delete("/:id/attachments/:attID", tugasHandler.DeleteAttachment)
+	tugasGroup.Get("/:id/attachments/:attID/url", tugasHandler.AttachmentURL)
 
 	// Siswa-scope read alias mirror pengumuman pattern.
 	siswaGroup.Get("/kelas/:id/tugas", tugasHandler.ListByKelas)
