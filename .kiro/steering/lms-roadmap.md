@@ -2178,17 +2178,14 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 4.A Tugas Backend
 
-**Task 4.A.1 — Migration `000008_tugas.up.sql` + Tugas GORM model + repo dasar** ⏳ NEXT
-- Files: `backend/migrations/000008_tugas.up.sql` + `down.sql`, `backend/internal/tugas/{model,repo}.go`.
-- Schema: `tugas(id uuid pk, kelas_id uuid fk→kelas RESTRICT, bab_id uuid? fk→bab SET NULL nullable, judul text, deskripsi text default '', deadline timestamptz null, izinkan_late bool default false, penalty_persen smallint default 0 check (penalty_persen between 0 and 100), wajib_attachment bool default false, status text default 'draft' check (status in ('draft','published','archived')), version int default 1, created_by_id uuid fk→users RESTRICT, created_at, updated_at timestamptz)`. Note: `bab_id nullable` per locked #20; `deadline nullable` (tugas tanpa deadline = always-open).
-- `tugas_attachment(id uuid pk, tugas_id uuid fk→tugas CASCADE, object_key text not null, original_filename text not null, mime_type text not null, size_bytes bigint not null, created_at timestamptz)` — locked #74. Index `(tugas_id)` btree.
-- Indexes: `(kelas_id, status, created_at DESC)` btree (siswa published-only filter), `(bab_id, status) WHERE bab_id IS NOT NULL` partial bab-scoped, `(kelas_id, deadline)` btree (sort by deadline + due-soon query future).
-- Trigger `tugas_set_updated_at` reuse `set_updated_at()` dari 000002.
-- Repo: `Create(ctx, t)`, `FindByID(id)` w/ Preload Attachments, `ListByKelas(kelasID, babFilter, statusFilter, limit)`, `ListByBab(babID, statusFilter, limit)`, `CountByKelas(kelasID)`, `CountByBab(babID)`, `UpdateBasic(id, version, fields)` optimistic concurrency #56, `Delete(id)` returns deleted ObjectKeys for compensating R2 cleanup, `AddAttachment(tx, att)`, `DeleteAttachmentsByTugas(tx, tugasID)` returns ObjectKeys, `schema_meta` update to `'000008_tugas'`.
-- Verify: server `go vet`, `go build ./...`, `go test ./...` PASS, migrate up applied to dev DB → `\d tugas` show schema + indexes, `\d tugas_attachment` confirm FK CASCADE.
-- Commit: `feat(migrations): 000008 tugas + attachment + indexes`, `feat(tugas): GORM model + repo + optimistic concurrency`
+**Task 4.A.1 — Migration `000008_tugas.up.sql` + Tugas GORM model + repo dasar** ✅ DONE 2026-05-21 (commit `b6a2cf9`; server `go vet` PASS, `go build ./...` PASS, migrate up→8 + down/up roundtrip clean, schema verified `\d tugas` + `\d tugas_attachment`).
+- Files shipped: `backend/migrations/000008_tugas.up.sql` + `down.sql`, `backend/internal/tugas/{model,repo}.go`.
+- Schema applied: `tugas(id uuid pk, kelas_id FK kelas RESTRICT, bab_id FK bab SET NULL nullable, judul, deskripsi, deadline timestamptz nullable, izinkan_late bool, penalty_persen smallint CHECK 0-100, wajib_attachment bool, status enum CHECK draft|published|archived, version int, created_by_id FK users RESTRICT, timestamps)` + `tugas_attachment(id, tugas_id FK CASCADE, object_key, original_filename, mime_type, size_bytes, created_at)`.
+- Indexes verified: `(kelas_id, status, created_at DESC)` general, `(bab_id, status) WHERE bab_id IS NOT NULL` partial, `(kelas_id, deadline) WHERE deadline IS NOT NULL` partial, `(tugas_id)` on attachment.
+- Repo lengkap: Create, FindByID (Preload Attachments), ListByKelas/ListByBab w/ ListFilter (Status + BabFilter + Limit), CountByKelas/CountByBab, UpdateBasic dgn optimistic concurrency #56 (auto-bump version + updated_at, fields map approach untuk partial patch), Delete returns []ObjectKey untuk compensating R2 cleanup (locked #69), AddAttachment, FindAttachmentByID, ListAttachmentsByTugas, CountAttachmentsByTugas (cap enforcement #74), DeleteAttachment returns ObjectKey, DB() exposes *gorm.DB.
+- Verify: server `go vet` clean, `go build ./...` PASS, migrate up→8 + down→7 + up→8 roundtrip clean, schema PSQL verified.
 
-**Task 4.A.2 — Tugas CRUD service + handler (Create/List/Get/Patch/Delete)** ⏳ PENDING
+**Task 4.A.2 — Tugas CRUD service + handler (Create/List/Get/Patch/Delete)** ⏳ NEXT
 - Files: `backend/internal/tugas/{service,handler,handler_test}.go`. Wire di `cmd/server/main.go` group `/api/v1` dgn middleware order `BearerAuth → ForceChangePassword → RoleGuard(admin,guru) → kelasOwnershipGuard`.
 - Endpoints (Section 7 + locked #58/#62):
   - `POST /kelas/:id/tugas` body `{judul, deskripsi?, bab_id?, deadline?, izinkan_late?, penalty_persen?, wajib_attachment?, status?}` (defaults: status=draft, version=1, izinkan_late=false, penalty_persen=0, wajib_attachment=false). Validate: penalty_persen 0-100, deadline boleh null tapi kalau set wajib > now (warn 400 `deadline_in_past` kalau gak), bab_id (kalau set) wajib `kelas_id=<:id>` (400 `bab_not_in_kelas`).
@@ -2343,10 +2340,10 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **Fase 4 plan ✅ DECOMPOSED 14 task** — sub-fase 4.A (BE 4) + 4.B (FE Guru 2) + 4.C (Submission BE 4) + 4.D (FE Siswa 2) + 4.E (Review FE Guru 2). Locked decisions baru #70-#74 (resubmit single-row, late hard-block, attachment policy, FOR UPDATE concurrency, tugas attachment policy). Roadmap version → v0.9.0.
 
-**Eksekusi berikutnya: Task 4.A.1 (migration 000008_tugas + GORM model + repo dasar)**
-- Pattern proven: mirror Task 3.A.1 (bab) + 3.C.1 (materi) — schema + indexes + repo dgn optimistic concurrency.
-- Build/test gate: server `go vet`, `go build ./...`, `go test ./internal/tugas/... -v` PASS, migrate up dev DB → `\d tugas` confirm.
-- Deliverable: 4 files (`migrations/000008_*.sql` × 2, `internal/tugas/{model,repo}.go`).
-- Estimated: 30-45 menit (scaffolding straightforward, no service/handler logic yet).
+**Eksekusi berikutnya: Task 4.A.2 (Tugas CRUD service + handler)**
+- Pattern proven: mirror Task 3.A.2 (bab) + 3.F.1 (pengumuman) — service + handler + ownership guard + audit log + handler tests.
+- Endpoints: POST `/kelas/:id/tugas`, GET `/kelas/:id/tugas`, GET `/tugas/:id`, PATCH `/tugas/:id`, DELETE `/tugas/:id`.
+- Build/test gate: server `go vet`, `go build ./...`, `go test ./internal/tugas/... -v` PASS w/ 14+ test cases (happy + 409 + 403 + 400 + ownership).
+- Estimated: 60-90 menit (service logic + handler tests + main.go wiring).
 
 > Catatan FE pattern Task 3.F.3: siswa pakai endpoint `/siswa/kelas/:id/pengumuman` (BE force status=published + enrollment guard). FE gak perlu cek role atau filter status — server-side enforced. `expandFirst` prop di /siswa/kelas/detail buat auto-expand pengumuman terbaru supaya siswa langsung lihat update tanpa klik. Badge "Baru" 7-day client-side (locked #66 passive timestamp — no per-siswa read receipt).
