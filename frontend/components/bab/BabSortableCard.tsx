@@ -5,14 +5,15 @@
  * `BabReorderList` dengan @dnd-kit/sortable.
  *
  * Drag handle (icon GripVertical) di kiri sebagai listener-bound area;
- * sisa card NON-draggable supaya klik di body / dropdown gak konflik dgn
- * drag intent.
+ * judul di body adalah Link ke `/guru/kelas/detail/bab?id=<kelas>&bid=<bab>`
+ * (Task 3.B.2 detail page) supaya guru bisa langsung masuk ke bab.
  *
  * `BabCardReadOnly` adalah varian non-DnD — dipakai saat kelas archived
  * (manajemen bab dinonaktifkan) atau di MVP untuk siswa view (Fase 3.E).
  */
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -60,16 +61,32 @@ export function StatusBadge({ status }: { status: BabStatus }) {
 
 interface CardBodyProps {
   bab: Bab;
+  /**
+   * Saat true, judul di-render sebagai `<Link>` ke detail bab.
+   * Disable di varian readonly atau saat link tidak diinginkan.
+   */
+  linkToDetail?: boolean;
 }
 
-function CardBody({ bab }: CardBodyProps) {
+function CardBody({ bab, linkToDetail = true }: CardBodyProps) {
+  const titleNode = linkToDetail ? (
+    <Link
+      href={`/guru/kelas/detail/bab?id=${bab.kelas_id}&bid=${bab.id}`}
+      className="font-medium hover:underline"
+    >
+      {bab.judul}
+    </Link>
+  ) : (
+    <span className="font-medium">{bab.judul}</span>
+  );
+
   return (
     <div className="min-w-0 flex-1 space-y-1">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">
           Bab {bab.nomor}
         </span>
-        <span className="font-medium">{bab.judul}</span>
+        {titleNode}
         <StatusBadge status={bab.status} />
       </div>
       {bab.deskripsi && (
@@ -182,9 +199,9 @@ interface BabCardReadOnlyProps {
 }
 
 /**
- * Read-only variant — no drag handle, no actions. Dipakai saat kelas
- * archived (manajemen bab dimatikan) supaya guru tetap bisa lihat daftar
- * tapi gak bisa modifikasi.
+ * Read-only variant — no drag handle, no actions, judul tidak linkified.
+ * Dipakai saat kelas archived (manajemen bab dimatikan) supaya guru tetap
+ * bisa lihat daftar tapi gak bisa modifikasi atau navigate ke detail edit.
  */
 export function BabCardReadOnly({ bab }: BabCardReadOnlyProps) {
   return (
@@ -192,7 +209,7 @@ export function BabCardReadOnly({ bab }: BabCardReadOnlyProps) {
       <div className="rounded p-1 text-muted-foreground/40">
         <GripVertical className="size-4" />
       </div>
-      <CardBody bab={bab} />
+      <CardBody bab={bab} linkToDetail={false} />
     </div>
   );
 }

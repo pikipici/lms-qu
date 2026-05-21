@@ -53,6 +53,12 @@ interface DuplicateBabDialogProps {
   onOpenChange: (open: boolean) => void;
   bab: Bab | null;
   invalidateKeys: readonly (readonly unknown[])[];
+  /**
+   * Optional callback dipanggil dengan bab baru setelah duplikat sukses,
+   * sebelum dialog ditutup. Cocok untuk router.push ke detail bab baru
+   * dari halaman /guru/kelas/detail/bab (Task 3.B.2).
+   */
+  onSuccess?: (newBab: Bab) => void;
 }
 
 export function DuplicateBabDialog({
@@ -60,6 +66,7 @@ export function DuplicateBabDialog({
   onOpenChange,
   bab,
   invalidateKeys,
+  onSuccess,
 }: DuplicateBabDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -88,6 +95,7 @@ export function DuplicateBabDialog({
         title: 'Bab berhasil diduplikasi',
         description: `${dup.judul} (Bab ${dup.nomor}) — status draft, urutan ${dup.urutan}.`,
       });
+      onSuccess?.(dup);
       onOpenChange(false);
     },
     onError: (err) => {
