@@ -110,16 +110,75 @@ func (r *Repo) CountSoalByBabMode(ctx context.Context, babID uuid.UUID, m Mode) 
 }
 
 // UpdateSoalBasic applies a partial PATCH to soal_bab with optimistic
-// concurrency (#56). To be implemented by Task 5.B.1.
-func (r *Repo) UpdateSoalBasic(ctx context.Context, id uuid.UUID, version int, fields map[string]interface{}) (*SoalBab, error) {
-	return nil, errNotImplemented
+// concurrency (#56). Mirror tugas.Repo.UpdateBasic semantics: caller
+// supplies resolved fields; repo bumps version + updated_at.
+func (r *Repo) UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	fields["version"] = gorm.Expr("version + 1")
+	fields["updated_at"] = gorm.Expr("now()")
+	res := r.db.WithContext(ctx).
+		Model(&SoalBab{}).
+		Where("id = ? AND version = ?", id, expectedVersion).
+		UpdateColumns(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		var probe SoalBab
+		if err := r.db.WithContext(ctx).
+			Select("id", "version").
+			Where("id = ?", id).
+			First(&probe).Error; err != nil {
+			return err
+		}
+		return ErrVersionConflict
+	}
+	return nil
 }
 
 // DeleteSoal hard-deletes a soal_bab row and returns the list of object
 // keys (any of pertanyaan + opsi a..e image slots) so callers can run a
-// compensating R2 cleanup (locked #69). To be implemented by Task 5.B.1.
+// compensating R2 cleanup (locked #69).
+//
+// Returns gorm.ErrRecordNotFound when the row does not exist.
 func (r *Repo) DeleteSoal(ctx context.Context, id uuid.UUID) ([]string, error) {
-	return nil, errNotImplemented
+	var existing SoalBab
+	if err := r.db.WithContext(ctx).
+		Select("id",
+			"pertanyaan_object_key",
+			"opsi_a_object_key", "opsi_b_object_key",
+			"opsi_c_object_key", "opsi_d_object_key",
+			"opsi_e_object_key").
+		Where("id = ?", id).
+		First(&existing).Error; err != nil {
+		return nil, err
+	}
+	keys := collectImageKeys(&existing)
+	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&SoalBab{})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return keys, nil
+}
+
+// collectImageKeys gathers non-nil object keys from all 6 image slots.
+func collectImageKeys(s *SoalBab) []string {
+	out := make([]string, 0, 6)
+	for _, p := range []*string{
+		s.PertanyaanObjectKey,
+		s.OpsiAObjectKey, s.OpsiBObjectKey, s.OpsiCObjectKey,
+		s.OpsiDObjectKey, s.OpsiEObjectKey,
+	} {
+		if p != nil && *p != "" {
+			out = append(out, *p)
+		}
+	}
+	return out
 }
 
 // BulkCreateSoal inserts multiple soal_bab rows in a single transaction.

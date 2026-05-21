@@ -38,6 +38,7 @@ import (
 	"github.com/pikip/lms/backend/internal/middleware"
 	"github.com/pikip/lms/backend/internal/pengumuman"
 	"github.com/pikip/lms/backend/internal/siswabab"
+	"github.com/pikip/lms/backend/internal/soalbab"
 	"github.com/pikip/lms/backend/internal/storage"
 	"github.com/pikip/lms/backend/internal/submission"
 	"github.com/pikip/lms/backend/internal/tugas"
@@ -340,6 +341,25 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	babGroup.Patch("/:id", babHandler.Update)
 	babGroup.Post("/:id/archive", babHandler.Archive)
 	babGroup.Post("/:id/duplicate", babHandler.Duplicate)
+
+	// SoalBab (Task 5.B.1 — CRUD): multiple-choice 5-opsi soal per bab.
+	// Latihan + Ulangan flow eligibility via mode field (locked #76).
+	// Image upload (locked #78) + bulk paste (locked #77) di Task 5.B.2/5.B.3.
+	// Owner-only mutations + siswa direct-list/get BLOCKED (siswa lewat
+	// flow Latihan/Ulangan endpoint, locked #76 anti-cheat).
+	soalbabRepo := soalbab.NewRepo(gdb)
+	soalbabSvc := soalbab.NewService(soalbabRepo, kelasRepo, babRepo, authRepo)
+	soalbabHandler := soalbab.NewHandler(soalbabSvc, objectStore)
+	babGroup.Post("/:id/soal", soalbabHandler.Create)
+	babGroup.Get("/:id/soal", soalbabHandler.ListByBab)
+	soalbabGroup := api.Group("/soal-bab",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	soalbabGroup.Get("/:id", soalbabHandler.Get)
+	soalbabGroup.Patch("/:id", soalbabHandler.Update)
+	soalbabGroup.Delete("/:id", soalbabHandler.Delete)
 
 	// Materi (Task 3.C.2 + 3.C.3): learning content CRUD per kelas.
 	// youtube + markdown via JSON (3.C.2); PDF via multipart upload (3.C.3
