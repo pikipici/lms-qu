@@ -158,11 +158,11 @@ export default function SiswaDashboardPage() {
                       {it.kelas.bobot_tugas}
                     </p>
                   </div>
-                  <Button asChild variant="ghost" size="sm" disabled>
-                    <span className="text-muted-foreground">
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href={`/siswa/kelas/detail?id=${it.kelas.id}`}>
                       Buka
                       <ArrowRight className="size-4" />
-                    </span>
+                    </Link>
                   </Button>
                 </li>
               ))}
