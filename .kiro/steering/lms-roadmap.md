@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.1 — **Fase 5.B 2/3 ✅ DONE** 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign 15m + resize 1920px `57eb504`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.2 — **Fase 5.B 3/3 ✅ DONE** 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 5.B.2 ✅ DONE — image upload 6-slot + resize + presign 15m, commit `57eb504`)
+> Last updated: 2026-05-21 (Task 5.B.3 ✅ DONE — bulk paste pipe-delimited, commit `dabbdf1`; sub-fase 5.B fully closed 3/3)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2406,12 +2406,13 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Sentinel mapping: `ErrImageSlotInvalid`→400, `ErrImageSlotEmpty`→404, `ErrImageUnsupportedMime`→415, `ErrImageTooLarge`→413, `ErrImageDecodeFailed`→422, `ErrImageEncodeFailed`→500, `ErrImageUploadFailed`→500, `ErrR2Required`→503.
 - Deps: `github.com/disintegration/imaging v1.6.2` + `golang.org/x/image` indirect.
 
-**Task 5.B.3 — SoalBab bulk paste endpoint (pipe-delimited)** ⏳
+**Task 5.B.3 — SoalBab bulk paste endpoint (pipe-delimited)** ✅ DONE 2026-05-21 (commit `dabbdf1`; server `go vet ./...` PASS, `go build ./...` PASS, restart healthz=200, smoke E2E pass — happy mixed 2 valid + 6 invalid (each reason code: invalid_columns, empty_jawaban_option×2, invalid_jawaban, invalid_poin, invalid_mode) + 6 hard preconditions (rows_required×2, invalid_body, too_many, invalid_id, forbidden) + skip blank/comment + pipe-escape `\\|` → literal verified).
 - Endpoint: `POST /api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}`. Parse line-by-line (skip blank + `#` comments), unescape `\\|` → `|` literal. Validate per baris: 9 kolom, jawaban a-e, poin int 1-100 (default 1), mode latihan/ulangan/keduanya (fallback `mode_default` atau `keduanya`).
-- Response: `{created: int, errors: [{line: int, reason: string}]}` (HTTP 200 partial-success bahkan kalau ada error). Commit dalam tx; kalau seluruh batch error → rollback + `created: 0`.
-- Audit `soalbab_bulk_created` w/ meta `{count, source: 'paste'}`.
-- Verify: handler test (happy multiline + escape + invalid_columns + invalid_jawaban + mixed partial).
-- Commit: `feat(soalbab): bulk paste pipe-delimited endpoint`
+- Response `{created: int, errors: [{line, reason, raw}]}` HTTP 200 partial-success bahkan kalau ada error. Stable reason enum: `invalid_columns`, `empty_pertanyaan`, `empty_jawaban_option`, `invalid_jawaban`, `invalid_poin`, `invalid_mode`, `pertanyaan_too_long`, `opsi_too_long`.
+- Hard preconditions (4xx, abort sebelum parse): `invalid_id` 400, `invalid_body` 400, `rows_required` 400, `too_many` 400 (cap 200), `forbidden` 403, `not_found` 404, `bab_archived` 409.
+- Repo `BulkCreateSoal` pakai `CreateInBatches(50)` supaya gak nabrak Postgres parameter limit (~65k). All-or-nothing tx — kalau salah satu Create gagal, rollback (caller handle as 5xx).
+- Audit `soalbab_bulk_created` w/ meta `{bab_id, created, error_count, source: 'paste'}`.
+- Skill referenced: `bulk-partial-success-classify-endpoint` (decisions #1 hard/soft split, #3 stable reason enum, #4 slices never nil, #6 batch cap).
 
 #### 5.C UlanganBabSetting + Latihan Flow
 
@@ -2523,13 +2524,13 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **Fase 5 plan ✅ DECOMPOSED 15 task** — locked #76-#82. Roadmap v0.10.0.
 - 5.A BE foundation: 1/1 ✅ DONE (5.A.1 commits `c83a15e`+`d63124d` migration 000010 + 6 model + repo skeleton; up→10 round-trip clean, all tests PASS, healthz=200)
-- 5.B BE SoalBab CRUD + image + bulk: 2/3 ⏳ (5.B.1 ✅ DONE commit `928401b` CRUD + main.go wiring + smoke E2E hijau; 5.B.2 ✅ DONE commit `57eb504` image upload 6-slot + resize 1920px + presign 15m + 6 negative tests pass; ⏳ NEXT 5.B.3 bulk paste pipe-delimited)
+- 5.B BE SoalBab CRUD + image + bulk: 3/3 ✅ DONE (5.B.1 ✅ commit `928401b` CRUD + handler + smoke E2E; 5.B.2 ✅ commit `57eb504` image upload 6-slot + resize 1920px + presign 15m; 5.B.3 ✅ commit `dabbdf1` bulk paste pipe-delimited + 8 reason codes + 6 hard preconditions + escape `\\|` verified)
 - 5.C BE Setting + Latihan: 0/2
 - 5.D BE Ulangan + cron: 0/4
 - 5.E BE Resume + Remedial + Review + Hasil: 0/1
 - 5.F FE Guru editor + setting + rekap: 0/2
 - 5.G FE Siswa latihan + ulangan + review: 0/2
 
-**Eksekusi berikutnya: gas Task 5.B.3** — SoalBab bulk paste endpoint pipe-delimited. POST `/api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}`. Parse line-by-line, unescape `\\|`, validate 9 kolom, jawaban a-e, poin 1-100, mode latihan/ulangan/keduanya. Response `{created, errors}` partial-success. Audit `soalbab_bulk_created`. Estimasi 60-90 menit.
+**Eksekusi berikutnya: gas Task 5.C.1** — UlanganBabSetting GET + PUT (upsert). `GET /api/v1/bab/:id/ulangan-setting` (guru full / siswa subset durasi+batas+izinkan_review+waktu_buka_review buat lobby), `PUT /api/v1/bab/:id/ulangan-setting` body `{jumlah_soal, durasi_menit, batas_attempt, izinkan_review_setelah_submit, waktu_buka_review?, version?}` upsert — kalau row belum ada insert (version=1), kalau ada update + check version. Validate `jumlah_soal ≤ count(soal mode IN ('ulangan','keduanya'))` — 400 `jumlah_soal_exceeds_pool` kalau exceed. Audit `ulangan_setting_updated`. Estimasi 60 menit.
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
