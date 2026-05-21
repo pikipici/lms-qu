@@ -94,6 +94,12 @@ export interface DeleteMateriResponse {
   pending_r2_cleanup?: boolean;
 }
 
+export interface MarkReadResponse {
+  materi_id: string;
+  read_at: string;
+  was_new: boolean;
+}
+
 export interface ListMateriOptions {
   /**
    * UUID untuk pin bab tertentu, atau string `'null'` untuk pin
@@ -159,6 +165,21 @@ export async function deleteMateri(id: string): Promise<DeleteMateriResponse> {
  */
 export async function getMateriFileURL(id: string): Promise<FileURLResponse> {
   return api<FileURLResponse>(`/materi/${id}/file-url`);
+}
+
+/**
+ * Siswa mark-as-read untuk materi. Idempotent — server pakai
+ * ON CONFLICT DO NOTHING (locked #25). First call → was_new=true,
+ * subsequent calls → was_new=false (read_at preserved dari original).
+ *
+ * Endpoint terkunci di siswaGroup BearerAuth + ForceChangePassword +
+ * RoleGuard(siswa) di backend, plus enrollment guard di service. Caller
+ * di FE harus siswa yang enrolled di kelas materi tsb.
+ */
+export async function markMateriRead(id: string): Promise<MarkReadResponse> {
+  return api<MarkReadResponse>(`/siswa/materi/${id}/read`, {
+    method: 'POST',
+  });
 }
 
 /**
