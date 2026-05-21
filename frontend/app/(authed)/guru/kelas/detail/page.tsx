@@ -37,6 +37,7 @@ import {
 import {
   Archive,
   ArrowLeft,
+  BookOpen,
   ClipboardCheck,
   ClipboardCopy,
   Copy,
@@ -85,6 +86,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { BabListSection } from '@/components/bab/BabListSection';
 
 // ---------- Schema & helpers ----------
 
@@ -792,16 +794,17 @@ function SiswaTab({ kelasID }: { kelasID: string }) {
 
 // ---------- Page ----------
 
-type TabKey = 'pengaturan' | 'siswa' | 'pengumuman';
+type TabKey = 'bab' | 'pengaturan' | 'siswa' | 'pengumuman';
 
 const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: 'bab', label: 'Bab', Icon: BookOpen },
   { key: 'pengaturan', label: 'Pengaturan', Icon: Settings },
   { key: 'siswa', label: 'Siswa', Icon: Users },
   { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
 ];
 
 function GuruKelasDetailContent({ id }: { id: string }) {
-  const [tab, setTab] = React.useState<TabKey>('pengaturan');
+  const [tab, setTab] = React.useState<TabKey>('bab');
   const [archiveOpen, setArchiveOpen] = React.useState(false);
   const [duplicateOpen, setDuplicateOpen] = React.useState(false);
 
@@ -956,6 +959,8 @@ function GuruKelasDetailContent({ id }: { id: string }) {
       </div>
 
       {/* Tab content */}
+      {tab === 'bab' && <BabListSection kelasID={kelas.id} archived={archived} />}
+
       {tab === 'pengaturan' && (
         <Card>
           <CardHeader>
