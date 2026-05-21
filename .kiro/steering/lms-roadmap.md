@@ -2362,7 +2362,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 5.A Backend Foundation
 
-**Task 5.A.1 — Migration `000010_soalbab.up.sql` + 6 GORM models + repo skeleton** ⏳ NEXT
+**Task 5.A.1 — Migration `000010_soalbab.up.sql` + 6 GORM models + repo skeleton** ✅ DONE 2026-05-21 (commits `c83a15e` migration + `d63124d` model+repo; server `go vet` PASS, `go build ./...` PASS, `go test ./...` ALL PASS, migrate up→10 + down→9 + up→10 roundtrip clean, schema verified `\d soal_bab` confirms 5 opsi + 6 image slot + jawaban check a-e + mode check + 2 indexes; restart lms-api healthz=200).
 - Files: `backend/migrations/000010_soalbab.{up,down}.sql`, `backend/internal/soalbab/{model,repo}.go`, `backend/internal/ulanganbab/{model,repo}.go` (atau gabung di `soalbab/` — keputusan saat ship; default gabung kalau bisa < 600 LOC).
 - Tabel:
   - `soal_bab(id uuid pk, bab_id FK bab CASCADE, kelas_id FK kelas RESTRICT (denormal untuk query cepat), pertanyaan text, pertanyaan_object_key text null, opsi_a..opsi_e text, opsi_a..e_object_key text null, jawaban text check in ('a','b','c','d','e'), poin smallint default 1 check 1-100, mode text check in ('latihan','ulangan','keduanya') default 'keduanya', urutan int default 0, version int default 1, created_by_id FK users RESTRICT, timestamps)` — index `(bab_id, mode)`, `(bab_id, urutan)`.
@@ -2513,14 +2513,14 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 **Fase 4 ✅ CLOSED 14/14 = 100%.** Live deploy verified 2026-05-21 (commit `bd482f4`).
 
 **Fase 5 plan ✅ DECOMPOSED 15 task** — locked #76-#82. Roadmap v0.10.0.
-- 5.A BE foundation: 0/1 ⏳ NEXT (migration 000010 + 6 model + repo skeleton)
-- 5.B BE SoalBab CRUD + image + bulk: 0/3
+- 5.A BE foundation: 1/1 ✅ DONE (5.A.1 commits `c83a15e`+`d63124d` migration 000010 + 6 model + repo skeleton; up→10 round-trip clean, all tests PASS, healthz=200)
+- 5.B BE SoalBab CRUD + image + bulk: 0/3 ⏳ NEXT (5.B.1 CRUD)
 - 5.C BE Setting + Latihan: 0/2
 - 5.D BE Ulangan + cron: 0/4
 - 5.E BE Resume + Remedial + Review + Hasil: 0/1
 - 5.F FE Guru editor + setting + rekap: 0/2
 - 5.G FE Siswa latihan + ulangan + review: 0/2
 
-**Eksekusi berikutnya: gas Task 5.A.1** — Migration `000010_soalbab.up.sql` + 6 GORM models (SoalBab, UlanganBabSetting, HasilSoalBab, JawabanBab, EventBab, SoalAssignment) + repo skeleton method signatures (return errNotImplemented). Verify migrate up→10 + down→9 + up→10 roundtrip + go vet + go build PASS. Estimasi 60-90 menit.
+**Eksekusi berikutnya: gas Task 5.B.1** — SoalBab CRUD service + handler (Create/List/Get/Patch/Delete). Wire `/api/v1/bab/:id/soal` + `/api/v1/soal-bab/:id` di main.go dengan ownership guard + version conflict + jawaban_invalid validation + R2 compensating cleanup di Delete. Estimasi 90-120 menit.
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
