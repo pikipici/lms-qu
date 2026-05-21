@@ -108,8 +108,11 @@ export function PengumumanReadList({
       !wasInitialized.current &&
       items.length > 0
     ) {
-      wasInitialized.current = true;
-      setExpanded(new Set([items[0].id]));
+      const first = items[0];
+      if (first) {
+        wasInitialized.current = true;
+        setExpanded(new Set([first.id]));
+      }
     }
   }, [expandFirst, items]);
 
