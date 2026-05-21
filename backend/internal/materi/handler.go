@@ -26,6 +26,7 @@ type materiService interface {
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Materi, *string, error)
 	Upload(ctx context.Context, kelasID, callerID uuid.UUID, callerRole string, in UploadInput, ip, userAgent string) (*Materi, error)
 	PresignFileURL(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*FileURLResult, error)
+	MarkRead(ctx context.Context, materiID, siswaID uuid.UUID, callerRole string) (*MarkReadResult, error)
 }
 
 // Handler wires HTTP routes to materi Service.

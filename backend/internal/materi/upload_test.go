@@ -33,6 +33,7 @@ type fakeRepo struct {
 	listByKelasFn  func(ctx context.Context, kelasID uuid.UUID, f BabFilter) ([]Materi, error)
 	updateBasicFn  func(ctx context.Context, id uuid.UUID, expectedVersion int, judul, konten string, urutan int) error
 	deleteFn       func(ctx context.Context, id uuid.UUID) (*string, error)
+	markReadFn     func(ctx context.Context, materiID, siswaID uuid.UUID) (*Read, bool, error)
 }
 
 func (r *fakeRepo) Create(ctx context.Context, m *Materi) error {
@@ -58,6 +59,12 @@ func (r *fakeRepo) UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersio
 }
 func (r *fakeRepo) Delete(ctx context.Context, id uuid.UUID) (*string, error) {
 	return r.deleteFn(ctx, id)
+}
+func (r *fakeRepo) MarkRead(ctx context.Context, materiID, siswaID uuid.UUID) (*Read, bool, error) {
+	if r.markReadFn == nil {
+		return &Read{MateriID: materiID, SiswaID: siswaID, ReadAt: time.Now()}, true, nil
+	}
+	return r.markReadFn(ctx, materiID, siswaID)
 }
 
 type fakeKelas struct {
@@ -98,6 +105,22 @@ func (f *failingDeleteStorage) DeleteObject(ctx context.Context, key string) err
 	return f.deleteErr
 }
 
+// fakeEnroll satisfies enrollmentLookup for upload_test fixtures (most
+// tests don't exercise MarkRead path; fakeEnroll defaults to nil enroll
+// arg, but a few tests in read_test.go re-use the helper with a real
+// stub).
+type fakeEnroll struct {
+	rec *kelas.Enrollment
+	err error
+}
+
+func (e *fakeEnroll) FindEnrollment(ctx context.Context, kelasID, siswaID uuid.UUID) (*kelas.Enrollment, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.rec, nil
+}
+
 // helper to seed a small valid PDF body so http.DetectContentType returns
 // application/pdf without us needing to embed a real PDF.
 func pdfBody() []byte {
@@ -116,7 +139,7 @@ func newSvcWithStore(t *testing.T, store storage.Storage, repo *fakeRepo, k *kel
 	if b == nil {
 		bb.err = gorm.ErrRecordNotFound
 	}
-	return NewService(repo, kl, bb, audit, store), audit
+	return NewService(repo, kl, bb, audit, store, nil), audit
 }
 
 func ownedKelas(guruID uuid.UUID) *kelas.Kelas {

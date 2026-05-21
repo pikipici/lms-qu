@@ -342,7 +342,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// — mime sniff, 20MB cap, compensating R2 delete on DB fail/Delete).
 	// MarkRead siswa flow di Task 3.C.4.
 	materiRepo := materi.NewRepo(gdb)
-	materiSvc := materi.NewService(materiRepo, kelasRepo, babRepo, authRepo, objectStore)
+	materiSvc := materi.NewService(materiRepo, kelasRepo, babRepo, authRepo, objectStore, kelasRepo)
 	materiHandler := materi.NewHandler(materiSvc)
 	kelasGroup.Get("/:id/materi", materiHandler.ListByKelas)
 	kelasGroup.Post("/:id/materi", materiHandler.Create)
@@ -370,6 +370,11 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		kelasHandler.JoinByKode,
 	)
 	siswaGroup.Get("/kelas", kelasHandler.ListMyKelas)
+
+	// Materi MarkRead (Task 3.C.4): siswa-only idempotent mark-as-read.
+	// Enrollment guard inside Service.MarkRead — no extra rate limit needed
+	// (idempotent + cheap upsert).
+	siswaGroup.Post("/materi/:id/read", materiHandler.MarkRead)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

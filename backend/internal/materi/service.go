@@ -52,6 +52,7 @@ type materiRepo interface {
 	ListByKelas(ctx context.Context, kelasID uuid.UUID, f BabFilter) ([]Materi, error)
 	UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, judul, konten string, urutan int) error
 	Delete(ctx context.Context, id uuid.UUID) (*string, error)
+	MarkRead(ctx context.Context, materiID, siswaID uuid.UUID) (*Read, bool, error)
 }
 
 // kelasLookup hydrates kelas ownership/lifecycle. We don't import *kelas.Repo
@@ -74,21 +75,25 @@ type auditLogger interface {
 
 // Service handles materi business logic.
 type Service struct {
-	repo  materiRepo
-	kelas kelasLookup
-	bab   babLookup
-	audit auditLogger
-	store storage.Storage
-	now   func() time.Time
+	repo   materiRepo
+	kelas  kelasLookup
+	bab    babLookup
+	audit  auditLogger
+	store  storage.Storage
+	enroll enrollmentLookup
+	now    func() time.Time
 }
 
 // NewService wires materi Repo + kelas + bab lookup + audit logger +
-// optional object store. The store is used by Upload (Task 3.C.3) for
-// PutObject and by Delete for compensating R2 cleanup of tipe='pdf'
-// rows (locked #69). Pass nil to disable upload/cleanup paths — used in
-// 3.C.2-only test fixtures and main.go before R2 is configured.
-func NewService(repo materiRepo, kelas kelasLookup, bab babLookup, audit auditLogger, store storage.Storage) *Service {
-	return &Service{repo: repo, kelas: kelas, bab: bab, audit: audit, store: store, now: time.Now}
+// optional object store + optional enrollment lookup. The store is used
+// by Upload (Task 3.C.3) for PutObject and by Delete for compensating R2
+// cleanup of tipe='pdf' rows (locked #69). The enroll lookup is used by
+// MarkRead (Task 3.C.4) to verify siswa enrollment in materi.kelas_id.
+// Pass nil to disable upload/cleanup or mark-read paths respectively —
+// used in 3.C.2-only test fixtures and in main.go before R2/enrollment
+// wiring is configured.
+func NewService(repo materiRepo, kelas kelasLookup, bab babLookup, audit auditLogger, store storage.Storage, enroll enrollmentLookup) *Service {
+	return &Service{repo: repo, kelas: kelas, bab: bab, audit: audit, store: store, enroll: enroll, now: time.Now}
 }
 
 // CreateInput holds fields for POST /kelas/:id/materi (youtube + markdown).

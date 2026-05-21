@@ -25,6 +25,7 @@ type stubSvc struct {
 	deleteFn  func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Materi, *string, error)
 	uploadFn  func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in UploadInput, ip, ua string) (*Materi, error)
 	presignFn func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*FileURLResult, error)
+	markReadFn func(ctx context.Context, materiID, siswaID uuid.UUID, role string) (*MarkReadResult, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Materi, error) {
@@ -47,6 +48,9 @@ func (s *stubSvc) Upload(ctx context.Context, kelasID, callerID uuid.UUID, role 
 }
 func (s *stubSvc) PresignFileURL(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*FileURLResult, error) {
 	return s.presignFn(ctx, id, callerID, role, ip, ua)
+}
+func (s *stubSvc) MarkRead(ctx context.Context, materiID, siswaID uuid.UUID, role string) (*MarkReadResult, error) {
+	return s.markReadFn(ctx, materiID, siswaID, role)
 }
 
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
