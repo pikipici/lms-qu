@@ -80,6 +80,7 @@ import { StatusBadge } from '@/components/bab/BabSortableCard';
 import { BabFormDialog } from '@/components/bab/BabFormDialog';
 import { ArchiveBabDialog } from '@/components/bab/ArchiveBabDialog';
 import { DuplicateBabDialog } from '@/components/bab/DuplicateBabDialog';
+import { MateriList } from '@/components/materi/MateriList';
 
 // ---------- Helpers ----------
 
@@ -555,11 +556,11 @@ function GuruBabDetailContent({
 
       {/* Sub-tab content */}
       {tab === 'materi' && (
-        <PlaceholderTab
-          Icon={FileText}
-          title="Materi"
-          body="PDF, YouTube embed, dan markdown. Siswa tandai sudah-baca otomatis saat viewer dibuka."
-          taskRef="Task 3.D.1 (FE Materi guru)"
+        <MateriList
+          kelasID={kelasID}
+          babID={babID}
+          contextLabel={`Materi untuk Bab ${bab.nomor} — ${bab.judul}.`}
+          disabled={archived}
         />
       )}
       {tab === 'soal' && (
