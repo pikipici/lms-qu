@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.3 — **Task 3.D.2 ✅ DONE** 2026-05-21 (commit `d08df3f`; server typecheck + `next build` PASS, 22 static routes). Siswa materi viewer dispatcher shipped — komponen standalone untuk dipakai di Task 3.E.2 page. Files: `frontend/components/materi/{useMarkMateriRead.ts,PdfViewer.tsx,YouTubeEmbed.tsx,MarkdownView.tsx,MateriViewer.tsx}`; extend `frontend/lib/materi-api.ts` (markMateriRead + MarkReadResponse). PDF viewer pakai TanStack Query presigned URL (staleTime 10min, server TTL 15min) + iframe browser-native + debounce 2s mark-read (locked roadmap §3.D.2). YouTube + Markdown fire-on-mount mark-read. Shared `useMarkMateriRead` hook fire-and-forget, retry=false, silent on error by default. **Sub-fase 3.D 2/2 ✅ CLOSED — Materi FE 100%. Fase 3 overall 12/17 task (71%).**
+> Status: v0.9.4 — **Task 3.E.1 ✅ DONE** 2026-05-21 (commit `c0d795a`; server `go vet`/`go build`/`go test ./...` all PASS, siswabab pkg 16 new test cases hijau di 0.013s, materi pkg re-test 0.056s). Siswa bab list + detail + progress fase-3-partial shipped. New endpoints: `GET /api/v1/siswa/kelas/:id/bab` + `GET /api/v1/siswa/bab/:id` mounted under siswaGroup BearerAuth+ForceChangePassword+RoleGuard(siswa). Progress = `materi_read_count / materi_total × 100` (locked #68 + Section 6.4); breakdown `{materi: {pct, w:1.0}}` di Fase 3 — komponen Fase 4-7 land pct=null+w=0 nanti. Files baru: `backend/internal/siswabab/{student,student_test}.go` (paket terpisah karena materi sudah depend ke bab — siswa flow yang butuh dua-duanya tidak bisa hidup di paket bab tanpa import cycle). Repo extension `backend/internal/materi/repo.go`: `CountByBabBatch` + `CountReadByBabBatch` (zero-fill missing groups via pre-allocated map) + `ListReadIDsByBabSiswa`. Authorization defensive: kelas missing → ErrForbidden (no info leak), bab non-published → ErrNotFound (hindari leak draft/archived). **Sub-fase 3.E 1/2 (BE done, FE 3.E.2 berikutnya). Fase 3 overall 13/17 task (76%).**
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 3.D.2 shipped — siswa viewer 3-tipe + auto mark-read; sub-fase 3.D CLOSED)
+> Last updated: 2026-05-21 (Task 3.E.1 shipped — siswa bab list + detail + progress fase-3-partial)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2082,14 +2082,22 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.E Bab Siswa + Progress
 
-**Task 3.E.1 — GET endpoints siswa bab list + bab detail dgn progress**
-- Files: `backend/internal/bab/student.go` (handler + service)
-- Endpoints:
-  - `GET /siswa/kelas/:id/bab` (siswa enrolled di kelas) → list bab WHERE `kelas_id=:id AND status='published'` ORDER BY urutan. Per bab: hitung `progress_persen` Fase-3-partial = `materi_read_count / materi_total` × 100 (locked #68 + formula 6.4 re-normalize). Kalau materi_total=0 → progress_persen=0 + flag `bab_kosong=true`. Response: `{bab: [{id, nomor, judul, deskripsi, progress: {persen, breakdown: {materi: {pct, w}}, bab_kosong}}]}`. **Komponen latihan/ulangan/tugas hide di Fase 3** (pct=null + w=0 di breakdown — FE skip render).
-  - `GET /siswa/bab/:id` → detail bab + materi list (ordered) + read state per materi (boolean `sudah_dibaca`). Return 404 kalau `status != 'published'` atau siswa not enrolled.
-- Service: 1 query batched untuk progress (subquery atau LEFT JOIN ke materi_read scoped siswa_id). Avoid N+1.
-- Verify: handler test + benchmark progress calc untuk 50 bab.
-- Commit: `feat(bab): siswa list bab + detail with progress fase-3-partial`
+**Task 3.E.1 — GET endpoints siswa bab list + bab detail dgn progress** ✅ DONE 2026-05-21 (commit `c0d795a`; server `go vet`/`go build`/`go test ./...` all PASS, siswabab pkg 16 new test cases hijau di 0.013s, materi pkg re-test 0.056s).
+- Files baru: `backend/internal/siswabab/student.go` + `backend/internal/siswabab/student_test.go`. **PAKET TERPISAH** — bukan di `backend/internal/bab/` karena `materi` package udah depend ke `bab` (untuk `bab.Bab` di duplicate flow), jadi `bab` gak bisa import `materi` balik. Siswa flow yang butuh dua-duanya hidup di paket sendiri.
+- Files diubah: `backend/internal/materi/repo.go` (3 method baru: `CountByBabBatch` + `CountReadByBabBatch` + `ListReadIDsByBabSiswa` — single-query group-by per bab id, zero-fill missing groups via pre-allocated map; hindari N+1), `backend/cmd/server/main.go` (mount handler routes + import siswabab package).
+- Endpoint: `GET /api/v1/siswa/kelas/:id/bab` mounted under `siswaGroup` (BearerAuth + ForceChangePassword + RoleGuard(siswa)). Returns `{ items: [SiswaBabItem], total }` dengan progress per bab. Filter implicit `Status=published` (siswa gak lihat draft/archived). Response shape: `{ id, nomor, judul, deskripsi, urutan, status, progress: { persen, breakdown: { materi: { pct, w: 1.0 } }, bab_kosong, materi_read, materi_total } }`. Komponen Fase 4-7 (latihan/ulangan/tugas) belum di-include — landingnya nanti dengan pct=null + w=0 di breakdown.
+- Endpoint: `GET /api/v1/siswa/bab/:id` mounted di route group yang sama. Returns `{ bab: SiswaBabItem, materi: [SiswaMateriCard] }` dengan `sudah_dibaca` per materi. Bab dengan status≠published → 404 `not_found` (hindari leak draft/archived ke siswa).
+- Authorization defensive (Service re-checks meski handler udah RoleGuard supaya unit test gak butuh fiber app):
+  - callerRole MUST be siswa (admin/guru → ErrForbidden)
+  - kelas lookup → kalau missing → ErrForbidden (collapse ke 403 supaya siswa gak bisa probe kelas existence via 404 vs 403)
+  - enrollment MUST be `EnrollmentActive` (missing OR `EnrollmentRemoved` → ErrForbidden)
+  - bab status≠published → ErrNotFound
+- Performance: 1 query untuk `bab.ListByKelas(Status=published)` + 2 batched queries untuk progress (`CountByBabBatch` + `CountReadByBabBatch` group by `bab_id`, zero-fill di Go). GetSiswa pakai `materi.ListByBab` + `materi.ListReadIDsByBabSiswa` (Pluck) — total 4 round trip per detail (Bab.FindByID + enrollment + materi list + read-IDs).
+- Progress formula: `materi_read / materi_total × 100` rounded ke 2 desimal (locked #68 + Section 6.4). Zero-materi → `bab_kosong=true` + `persen=0`. Test coverage: `TestComputeProgress_BoundaryCases` (kosong, all-read, none-read, third 33.33, two thirds 66.67).
+- 16 test cases shipped: Service.ListSiswa happy/non-siswa/non-enrolled/removed-enrollment/missing-kelas (5) + Service.GetSiswa happy/draft-hidden/archived-hidden/non-enrolled (4) + computeProgress 5 sub-cases (1 with 5 sub-tests) + Handler ListSiswa happy/forbidden-guru/invalid-id/unexpected-500 (4) + Handler GetSiswa happy/draft-404 (2).
+- Verify: server `go vet ./...` PASS, `go build ./...` PASS, `go test ./internal/siswabab/...` PASS 16/16 cases di 0.013s. Full repo `go test ./...` PASS.
+- Migration: tidak ada migration baru (re-pakai materi_read table dari 000006_materi).
+- Commit: `c0d795a feat(bab): siswa list bab + detail with progress fase-3-partial`
 
 **Task 3.E.2 — `/siswa/kelas/detail` (list bab + progress) + `/siswa/kelas/detail/bab` (materi viewer)**
 - Files: `frontend/app/(authed)/siswa/kelas/detail/page.tsx`, `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx`. Extend `frontend/lib/siswa-kelas-api.ts`.
@@ -2137,31 +2145,32 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Task 3.D.2 ✅ DONE** 2026-05-21. Siswa materi viewer dispatcher shipped (commit `d08df3f`). Server typecheck + `next build` PASS. **Sub-fase 3.D 2/2 ✅ CLOSED — Materi FE 100%. Fase 3 overall 12/17 task (71%).**
+**Task 3.E.1 ✅ DONE** 2026-05-21. Siswa bab list + detail + progress fase-3-partial shipped (commit `c0d795a`). Server `go vet`/`go build`/`go test ./...` all PASS — siswabab pkg 16 new test cases hijau di 0.013s. **Sub-fase 3.E 1/2 (BE done; FE 3.E.2 berikutnya). Fase 3 overall 13/17 task (76%).**
 
 **Sub-fase progress recap:**
 - 3.A Bab BE 4/4 ✅ CLOSED
 - 3.B Bab FE Guru 2/2 ✅ CLOSED
 - 3.C Materi BE 4/4 ✅ CLOSED (commit `caad20a`)
 - 3.D Materi FE 2/2 ✅ CLOSED (commits `eeca652` + `d08df3f`)
-- 3.E Bab Siswa + Progress 0/2
+- 3.E Bab Siswa + Progress 1/2 (3.E.1 commit `c0d795a`)
 - 3.F Pengumuman 0/3
 
-**Eksekusi berikutnya: Sub-fase 3.E (siswa flow) atau 3.F (pengumuman). Default rekomendasi: 3.E.1 → 3.E.2 dulu karena 3.E.2 page yang menghidupkan komponen viewer 3.D.2 yg udah ship.**
+**Eksekusi berikutnya: Task 3.E.2 (FE siswa pages) dan/atau Sub-fase 3.F (Pengumuman). Default rekomendasi: 3.E.2 dulu — itu yang menghidupkan komponen viewer 3.D.2 yg udah ship + endpoint 3.E.1 yg baru saja.**
 
 Pilihan opsi:
-- **gas 3.E.1 inline** — BE GET endpoints siswa bab list + detail dgn progress fase-3-partial (formula `materi_read_count / materi_total × 100`, locked #68 + Section 6.4). Files: `backend/internal/bab/student.go` (handler + service). Endpoints: `GET /siswa/kelas/:id/bab` (list bab status=published + progress per bab) + `GET /siswa/bab/:id` (detail bab + materi list + read state per materi). Single batched query untuk progress (LEFT JOIN materi_read scoped siswa_id, hindari N+1). Effort sedang.
-- **gas 3.E.2 inline** — pre-req 3.E.1 dulu. Setelah BE ready, FE page `/siswa/kelas/detail` (list bab + progress bar) + `/siswa/kelas/detail/bab` (Tab Materi pakai `<MateriViewer>` dari 3.D.2). Effort medium-besar.
-- **gas 3.F.1 inline (lompat)** — Migration `000007_pengumuman` + Pengumuman model + repo + CRUD endpoints (guru-only create/update/archive, guru+siswa read). Bisa di-attach ke kelas atau bab. Independen dari sub-fase 3.E.
-- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE bener-bener hidup. Sesi ini udah 2 task FE shipped + binary BUILD_OK tapi belum restart.
-- **stop dulu** — save state. Sesi udah heroik: 3.D.1 + 3.D.2 = 14 files / 2382 LOC + 2 docs commits.
+- **gas 3.E.2 inline** — FE page `/siswa/kelas/detail` (list bab + progress bar per bab pakai `<Progress>` indicator + tooltip `materi_read/materi_total`) + `/siswa/kelas/detail/bab` (Tab Materi pakai `<MateriViewer>` 3.D.2). Files: `frontend/app/(authed)/siswa/kelas/detail/page.tsx` + `bab/page.tsx`, plus extend `frontend/lib/` API client untuk `listSiswaBab` + `getSiswaBab`. Effort medium-besar.
+- **gas 3.F.1 inline (lompat)** — Migration `000007_pengumuman` + Pengumuman model + repo + CRUD endpoints. Bisa di-attach ke kelas atau bab. Independen dari sub-fase 3.E.
+- **gas live deploy** — restart `lms-api` di rdpkhorur biar 3.C BE + 3.D.1 FE + 3.E.1 BE bener-bener hidup. Backlog server tree udah cukup banyak (3 task BE + 2 task FE) tapi binary belum di-restart. Sesi ini build BUILD_OK tapi systemctl restart blocked dua kali.
+- **stop dulu** — save state. Sesi ini udah ship 3.D.1 + 3.D.2 + 3.E.1 (3 task) + 3 docs commits dalam 1 sesi.
 
 **Live deploy command** (kapan lu mau):
 ```
 ssh rdpkhorur 'cd /home/ubuntu/lms/backend && set -a && source /home/ubuntu/lms/.env && set +a && go build -o bin/lms-api ./cmd/server && sudo systemctl restart lms-api'
 ```
-Server tree udah di commit `d08df3f` post fetch+reset. Frontend `.next` static export dir udah di-build via `npm run build` di session ini, tapi binary `lms-api` belum di-restart untuk pick up perubahan. Re-run command di atas akan rebuild Go binary + restart systemd; FE static dir di-serve oleh binary yang sama.
+Server tree udah di commit `c0d795a` post fetch+reset. Frontend `.next` static export dir udah di-build via `npm run build` di session ini, tapi binary `lms-api` belum di-restart untuk pick up perubahan. Re-run command di atas akan rebuild Go binary + restart systemd; FE static dir di-serve oleh binary yang sama.
 
-> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `d08df3f`, tapi binary belum di-restart.
+> Catatan eksekusi: pakai inline approach default. **Live restart blocked di sesi ini** — perubahan udah commit + dual-pushed (origin GitHub + server bare repo) + server tree sync ke `c0d795a`, tapi binary belum di-restart.
+
+> Catatan paket layout: siswa flow yang butuh `bab` + `materi` bareng tidak bisa hidup di paket `bab` karena `materi` udah depend ke `bab` (untuk `bab.Bab` di Service.duplicate childCopier). Solusi: paket baru `backend/internal/siswabab/`. Pola yang sama bisa dipakai untuk Fase 4 (tugas) + Fase 5 (soal) kalau hadirnya butuh akses cross-domain.
 
 > Subagent flow note: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
