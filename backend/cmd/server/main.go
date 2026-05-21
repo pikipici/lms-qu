@@ -39,6 +39,7 @@ import (
 	"github.com/pikip/lms/backend/internal/pengumuman"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/storage"
+	"github.com/pikip/lms/backend/internal/tugas"
 	"gorm.io/gorm"
 )
 
@@ -413,6 +414,29 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// reusing the same handler; service.ListByKelas branches by role to
 	// force published-only + enrollment guard for siswa.
 	siswaGroup.Get("/kelas/:id/pengumuman", pengumumanHandler.ListByKelas)
+
+	// Tugas (Task 4.A.2): assignment CRUD per kelas. BabID nullable (locked
+	// #20). Status enum draft|published|archived. Late policy via
+	// IzinkanLate + PenaltyPersen (locked #71). Mirror pola pengumuman:
+	// kelas-scope routes (POST/GET) under kelasGroup, flat routes
+	// (GET/PATCH/DELETE :id) under tugasGroup terbuka untuk siswa enrolled
+	// (service branches by role).
+	tugasRepo := tugas.NewRepo(gdb)
+	tugasSvc := tugas.NewService(tugasRepo, kelasRepo, babRepo, kelasRepo, authRepo)
+	tugasHandler := tugas.NewHandler(tugasSvc)
+	kelasGroup.Post("/:id/tugas", tugasHandler.Create)
+	kelasGroup.Get("/:id/tugas", tugasHandler.ListByKelas)
+	tugasGroup := api.Group("/tugas",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru), string(auth.Siswa)),
+	)
+	tugasGroup.Get("/:id", tugasHandler.Get)
+	tugasGroup.Patch("/:id", tugasHandler.Update)
+	tugasGroup.Delete("/:id", tugasHandler.Delete)
+
+	// Siswa-scope read alias mirror pengumuman pattern.
+	siswaGroup.Get("/kelas/:id/tugas", tugasHandler.ListByKelas)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
