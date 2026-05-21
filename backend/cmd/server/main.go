@@ -36,6 +36,7 @@ import (
 	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/materi"
 	"github.com/pikip/lms/backend/internal/middleware"
+	"github.com/pikip/lms/backend/internal/pengumuman"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/storage"
 	"gorm.io/gorm"
@@ -386,6 +387,32 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	siswaBabHandler := siswabab.NewHandler(siswaBabSvc)
 	siswaGroup.Get("/kelas/:id/bab", siswaBabHandler.ListSiswa)
 	siswaGroup.Get("/bab/:id", siswaBabHandler.GetSiswa)
+
+	// Pengumuman (Task 3.F.1): announcement CRUD per kelas. BabID nullable
+	// — bisa kelas-wide atau bab-scoped. Status enum published|archived
+	// (locked #66 passive timestamp). Kelas-scope routes (POST/GET) under
+	// kelas group; flat routes (GET/PATCH/DELETE :id) under pengumuman group
+	// untuk siswa enrolled + guru pemilik. Mirror pola materi.
+	pengumumanRepo := pengumuman.NewRepo(gdb)
+	pengumumanSvc := pengumuman.NewService(pengumumanRepo, kelasRepo, babRepo, kelasRepo, authRepo)
+	pengumumanHandler := pengumuman.NewHandler(pengumumanSvc)
+	kelasGroup.Post("/:id/pengumuman", pengumumanHandler.Create)
+	kelasGroup.Get("/:id/pengumuman", pengumumanHandler.ListByKelas)
+	pengumumanGroup := api.Group("/pengumuman",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru), string(auth.Siswa)),
+	)
+	pengumumanGroup.Get("/:id", pengumumanHandler.Get)
+	pengumumanGroup.Patch("/:id", pengumumanHandler.Update)
+	pengumumanGroup.Delete("/:id", pengumumanHandler.Delete)
+
+	// Siswa-scope read for kelas pengumuman list — siswa enrolled needs
+	// access to GET /kelas/:id/pengumuman. Above kelas group gates by
+	// admin/guru roles. Add a separate siswa-scope alias under siswaGroup
+	// reusing the same handler; service.ListByKelas branches by role to
+	// force published-only + enrollment guard for siswa.
+	siswaGroup.Get("/kelas/:id/pengumuman", pengumumanHandler.ListByKelas)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
