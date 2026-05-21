@@ -34,6 +34,7 @@ import {
   ChevronRight,
   ClipboardList,
   Clock,
+  Eye,
   FileText,
   MoreVertical,
   Paperclip,
@@ -42,6 +43,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react';
+import Link from 'next/link';
 
 import { ApiError } from '@/lib/api';
 import {
@@ -422,6 +424,14 @@ export function TugasList({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={`/guru/kelas/detail/tugas?id=${kelasID}&tid=${t.id}`}
+                          >
+                            <Eye className="size-4" />
+                            Lihat Submission
+                          </Link>
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => setEditTarget(t)}
                           disabled={disabled}
