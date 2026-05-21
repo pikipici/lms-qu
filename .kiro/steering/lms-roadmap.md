@@ -2222,24 +2222,22 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 4.B Tugas Frontend Guru
 
-**Task 4.B.1 — Tab "Tugas" di kelas detail page (list + filter status + create/edit/archive)** ⏳ PENDING
+**Task 4.B.1 — Tab "Tugas" di kelas detail page + bab page (list + filter status + create/edit/archive + attachment manager)** ✅ DONE (commit `c4acf54`, merged kelas-wide + bab page sekaligus)
 - Files baru:
-  - `frontend/lib/tugas-api.ts` — typed client (listTugas, getTugas, createTugas, updateTugas, deleteTugas, listTugasAttachments, uploadTugasAttachment, deleteTugasAttachment, getTugasAttachmentURL) + `friendlyTugasError(err, action)` Indonesian copy mapping.
-  - `frontend/components/tugas/TugasFormDialog.tsx` — Create+Edit dialog, Zod schema (judul max 200, deskripsi max 5000, deadline ISO datetime nullable, izinkan_late bool, penalty_persen int 0-100, wajib_attachment bool, status enum draft|published).
-  - `frontend/components/tugas/TugasCard.tsx` — list card (judul + deadline relative + status badge + late penalty badge kalau izinkan_late).
-  - `frontend/components/tugas/TugasAttachmentPanel.tsx` — upload + list + delete attachments (drag-drop or click-pick, progress bar, mime hint).
-  - `frontend/components/tugas/ArchiveTugasDialog.tsx` — destructive confirm.
-  - `frontend/components/tugas/TugasListSection.tsx` — orchestrator. useQuery key `['guru','kelas','tugas', kelasID, statusFilter]` staleTime 15s, status filter tabs (all/draft/published/archived), wires dialogs.
-- Files diubah: `frontend/app/(authed)/guru/kelas/detail/page.tsx` — TabKey extended `'tugas'`, TABS array tambah Tugas (urutan: Bab → Tugas → Pengaturan → Siswa → Pengumuman), default tab tetap Bab.
-- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (24+ static routes).
-- Caveats: form deadline pakai `<input type="datetime-local">` (browser native) → convert ke ISO UTC saat submit. Penalty slider/input 0-100 step=5.
-- Commit: `feat(fe-tugas): tab tugas di kelas detail + crud dialogs (Task 4.B.1)`
+  - `frontend/lib/tugas-api.ts` — typed client + helpers (listTugas, listSiswaTugas, getTugas, createTugas, updateTugas, deleteTugas, listAttachments, uploadAttachment, deleteAttachment, getAttachmentURL, formatDeadline, isOverdue) + constants (MAX_TUGAS_DESKRIPSI_BYTES 50KB, MAX_TUGAS_JUDUL_LENGTH 200, MAX_TUGAS_ATTACHMENT_BYTES 20MB, MAX_TUGAS_ATTACHMENTS 5, TUGAS_ATTACHMENT_ACCEPT) + `friendlyTugasError(err, action)` Indonesian copy mapping (16 error codes).
+  - `frontend/components/tugas/TugasComposer.tsx` — Create dialog: judul, deskripsi markdown (reuse MarkdownEditor), deadline picker (datetime-local → ISO UTC saat submit), izinkan_late checkbox, penalty_persen 0-100 conditional, wajib_attachment checkbox, publish-immediately checkbox (default draft). On success: invalidate + auto-open Edit dialog (via `onCreated` callback) supaya guru langsung upload attachment.
+  - `frontend/components/tugas/TugasEditDialog.tsx` — 2-section dialog: (1) Edit metadata + status picker 3-mode (draft/published/archived) + dirty-check submit guard + optimistic concurrency (kirim version snapshot). (2) Attachment manager: list (count badge + filename + mime + size) + Upload button (multipart, mime allowlist, 20MB pre-validate, 5-cap pre-validate) + Buka (presigned 15-min, opens new tab) + Delete (window.confirm guard).
+  - `frontend/components/tugas/TugasList.tsx` — orchestrator card. useQuery key `['guru','tugas','list', kelasID, babID??'kelas-wide', statusFilter]` staleTime 15s. Status filter tabs (all/draft/published/archived), invalidate ALL filter variants on mutation. Card per tugas: chevron expand markdown deskripsi, judul + status badge + "Lewat deadline" red badge kalau overdue+published, attachment count badge, deadline + version + penalty + wajib lampiran meta. Dropdown menu: Edit/Publish (if draft)/Arsipkan (if published)/Aktifkan (if archived)/Hapus (confirm dialog).
+- Files diubah:
+  - `frontend/app/(authed)/guru/kelas/detail/page.tsx` — TabKey extended `'tugas'`, TABS array tambah `{key:'tugas', label:'Tugas', Icon:ClipboardList}` (urutan: Bab → Pengaturan → Siswa → Tugas → Pengumuman), wire `<TugasList kelasID babID={null} contextLabel="Tugas kelas-wide untuk {nama}." disabled={archived} />`.
+  - `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` — placeholder `<PlaceholderTab>` diganti `<TugasList kelasID babID={babID} contextLabel="Tugas untuk Bab {nomor} — {judul}." disabled={archived} />`.
+- Verify: server `npx tsc --noEmit` PASS, `npm run build` PASS (22 static routes — kelas-wide page 258 kB, bab page 261 kB), Go `build ./cmd/server` PASS (binary path = `/home/ubuntu/lms/backend/bin/lms-api`, NOT `/usr/local/bin`).
+- Restart: `sudo systemctl restart lms-api` → active PID 2229459. Smoke: healthz=200, tugas/:id=401, attachments=401, attachments/:attID/url=401 (semua auth-required, bukan 404 routes-not-found). BE 4.A.1-3 + FE 4.B.1 live bersamaan dengan 1× restart.
+- Caveats: shadcn `Checkbox` component belum scaffolded di repo, pakai native `<input type="checkbox" className="size-4 rounded border-input">`. Composer save attachment butuh tugas_id, jadi auto-open Edit dialog setelah create supaya guru langsung bisa upload (UX 1-shot flow).
+- Commit: `feat(fe-tugas): TugasComposer + EditDialog + List + wire 2 pages (Task 4.B.1)` (covers 4.B.2 juga karena bab page sekalian).
 
-**Task 4.B.2 — Tab "Tugas" di bab detail page** ⏳ PENDING
-- Reuse komponen Task 4.B.1 dgn prop `babID`. Files diubah: `frontend/app/(authed)/guru/kelas/detail/bab/page.tsx` — sub-tab Tugas placeholder diganti `<TugasListSection kelasID={kelasID} babID={babID} disabled={archived} />`.
-- Filter UX: kalau `babID` set, query default cuma show tugas yg `bab_id=<babID>`. Tombol "Buat tugas baru" auto-prefill `bab_id` dari prop.
-- Verify: server build + lint clean.
-- Commit: `feat(fe-tugas): tab tugas di bab detail (Task 4.B.2)`
+**Task 4.B.2 — Tab "Tugas" di bab detail page** ✅ DONE (covered by 4.B.1 commit `c4acf54`)
+- Sudah ter-wire bersama 4.B.1: prop `babID={babID}` di bab page = bab-scoped, prop `babID={null}` di kelas page = kelas-wide. Filter & invalidate keys handle 'kelas-wide' vs uuid string. Composer bawa `babID` ke `bab_id` di POST. Tidak butuh commit terpisah.
 
 #### 4.C Submission Backend
 
@@ -2344,18 +2342,19 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **Fase 4 plan ✅ DECOMPOSED 14 task** — locked #70-#74. Roadmap v0.9.0.
 - 4.A Tugas BE: 3/4 ✅ DONE (4.A.1 migration `b6a2cf9`, 4.A.2 CRUD `dc7d237`, 4.A.3 attachment `55fb86a`); 4.A.4 duplicate ⏳ deferable
-- 4.B FE Guru: 0/2 pending
+- 4.B FE Guru: 2/2 ✅ DONE (4.B.1 + 4.B.2 merged commit `c4acf54` — kelas-wide + bab page wired bersamaan)
 - 4.C Submission BE: 0/4 pending
 - 4.D FE Siswa: 0/2 pending
 - 4.E Review FE Guru: 0/2 pending
 
-Cumulative sesi: 4 commit shipped + dual-pushed (origin GitHub + server bare). Server tree synced, DB version 8, lms-api binary belum di-restart untuk pickup tugas endpoints (deferred sampai 4.B.1 ready supaya 1× restart cover BE+FE).
+Cumulative sesi: 6 commit shipped + dual-pushed (origin GitHub + server bare). Server tree synced ke `c4acf54`, DB version 8, lms-api binary live PID 2229459 — BE tugas endpoints (4.A.1-3) + FE guru tab Tugas (4.B.1-2) live bersamaan dengan 1× restart. Smoke: healthz=200, tugas+attachments endpoints return 401 (auth-required, bukan 404 routes-not-found).
 
 **Eksekusi berikutnya: pilih satu**
-- **gas Task 4.A.4 (Tugas duplicate)** — optional, mirror pattern Task 3.A.4 bab duplicate. Estimasi 30-45 menit. Source bab+attachment R2 CopyObject ke uuid baru. Bisa di-defer ke Fase 8 polish kalau time-tight.
-- **gas Task 4.B.1 (FE guru tab Tugas)** — direct value: guru bisa beneran buat tugas dari UI + upload attachment (smoke test E2E). Estimasi 90-120 menit. 4.A.4 di-defer.
-- **stop dulu** — sub-fase 4.A 3/4 (75%), 14 task overall 3/14 (21%). 3 commit + dual-pushed.
+- **gas Task 4.C.1 (Submission BE migration + model + repo)** — masuk ke meat sub-fase Submission. Migration `000009_submission.up.sql` (single-row + version bump per locked #70), GORM struct + repo CRUD. Estimasi 60-90 menit.
+- **gas Task 4.A.4 (Tugas duplicate)** — defer-bisa, mirror pattern bab duplicate. R2 CopyObject untuk attachment. Estimasi 30-45 menit.
+- **smoke E2E tugas dari browser** — login guru, bikin tugas, upload PDF/DOCX, edit, archive, hapus. Verify 4.A+4.B integration sebelum lanjut Submission. Estimasi 15-20 menit.
+- **stop dulu** — Fase 4 progress 5/14 (36%); 4.A 75% + 4.B 100%. 6 commit + dual-pushed + live.
 
-Rekomendasi: **gas 4.B.1** — duplicate bisa nunggu, FE jauh lebih impactful sekarang.
+Rekomendasi: **smoke E2E dulu** sebentar (lu test sendiri dari browser), confirm bug-free, baru gas 4.C.1. Submission BE adalah bagian terpadat Fase 4 — kalau 4.A+4.B ada bug yang ketauan saat smoke, lebih murah fix sekarang sebelum submission FK ke tugas.
 
-> Catatan FE pattern Task 3.F.3: siswa pakai endpoint `/siswa/kelas/:id/pengumuman` (BE force status=published + enrollment guard). FE gak perlu cek role atau filter status — server-side enforced. `expandFirst` prop di /siswa/kelas/detail buat auto-expand pengumuman terbaru supaya siswa langsung lihat update tanpa klik. Badge "Baru" 7-day client-side (locked #66 passive timestamp — no per-siswa read receipt).
+> Catatan FE Tugas (4.B): TugasComposer auto-open TugasEditDialog setelah create (callback `onCreated`) supaya guru bisa langsung upload attachment di flow yang sama. Status mutation invalidate ALL filter variants karena status flip pindah bucket. shadcn `Checkbox` belum di-scaffold; pakai native `<input type="checkbox" className="size-4 rounded border-input">` mirror BabListSection pattern. Binary path systemd: `/home/ubuntu/lms/backend/bin/lms-api` (pakai `go build -o` ke path itu, NOT `/usr/local/bin/lms-api`).
