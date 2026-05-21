@@ -14,6 +14,13 @@
 - Server bare repo (git remote `server`): `rdpkhorur:/home/ubuntu/git-repos/lms.git`
 - SSH alias: `rdpkhorur` (assumed configured)
 - Browser preview tunnel: `ssh -L 8200:127.0.0.1:8200 rdpkhorur` → http://localhost:8200
+- Local shell aliases (Git Bash `~/.bashrc` + PowerShell `profile.ps1`):
+  - `lmstun` — open background SSH tunnel `localhost:8200 → rdpkhorur:8200` (FE+API both served by lms-api binary)
+  - `lmstun-fg` — foreground tunnel (Ctrl+C kills)
+  - `lmstun-open` — open tunnel + auto-launch browser
+  - `lmstun-status` — list active tunnel ssh.exe (PowerShell-backed even in bash)
+  - `lmstun-kill` — kill all 8200 tunnel processes (PowerShell-backed)
+  - `lms-ssh` — `ssh rdpkhorur` shortcut (bash); PowerShell uses `lms-shell rdpkhorur`
 
 ## Server runtime facts
 - PostgreSQL: **port 5435** (bukan default 5432). DB `lms`, user `lms`.
