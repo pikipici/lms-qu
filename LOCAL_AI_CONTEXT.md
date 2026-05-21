@@ -38,8 +38,8 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.9.1 — Fase 3 closed + Fase 4 14/14 = 100% closed: 4.A.4 duplicate `3600188`, 4.D.2 dashboard riwayat `5d160b6`+`9d5eda2`+`6f49e14`, 4.E.2 pending counter `a4f14a4`+`34aff41` (activity feed full deferred Fase 7 locked #39)).
-- 67 locked decisions (v0.9.1: +#75 login rate-limit decay + threshold 5→10 + Fiber memory layer SkipSuccessfulRequests fix `6044d2f`), 10 open decisions, ~7 minggu estimasi.
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.10.0 — Fase 4 ✅ CLOSED 14/14, Fase 5 plan ✅ DECOMPOSED 15 task locked #76-#82).
+- 74 locked decisions (v0.10.0: +#76 sub-fase split 5.A-5.G, +#77 bulk paste pipe-delimited, +#78 image inline 6-slot 5MB resize 1920px, +#79 random pool deterministic seed sha256, +#80 timer expire cron 30s + advisory lock auto-grade, +#81 review gating policy, +#82 coverage gate 70%), 10 open decisions, ~6.5 hari estimasi Fase 5.
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
@@ -47,7 +47,7 @@
 - [x] Fase 2 — Kelas, Enrollment, Bulk Import (DONE 20/20: 2.A.1, 2.A.2, 2.B FULL, 2.C FULL, 2.D FULL 6/6, 2.E FULL FE Admin Import 3/3 DONE 2026-05-21 commit `0f3772e`)
 - [x] Fase 3 — Bab & Materi + Pengumuman (✅ DONE 17/17 = 100% complete; 3.A backend 4/4 DONE, 3.B FE Guru 2/2 DONE, 3.C Materi BE 4/4 CLOSED commit `caad20a`, 3.D Materi FE 2/2 CLOSED commits `eeca652` + `d08df3f`, 3.E Bab Siswa 2/2 CLOSED commits `c0d795a` + `3a69ddb`, 3.F Pengumuman 3/3 CLOSED: 3.F.1 BE commit `cf8c5bc` migration 000007 + CRUD endpoints + 18/18 tests, 3.F.2 + 3.F.3 FE combined commit `1ab48f7` — guru CRUD list+filter+compose+edit+archive+delete + siswa read-only kelas-wide + bab-scoped, lint cleanup `6d3cc6f`)
 - [x] Fase 4 — Tugas (✅ DONE 14/14 = 100% complete; closed in this session: 4.A BE 4/4 ✅ migration `b6a2cf9` + CRUD `dc7d237` + attachment `55fb86a` + duplicate `3600188` (R2 CopyObject mirror bab pattern); 4.B FE Guru 2/2 ✅ `c4acf54`; 4.C BE 4/4 ✅ migration 000009 + repo `55296be` + submit/get/list/grade `6200d16` smoke E2E pass; 4.D FE Siswa 2/2 ✅ `9f8e9d0`+`fe50c66` SubmissionPanel + tugas detail page + `5d160b6`+`9d5eda2` ListMine endpoint + `6f49e14` /siswa/tugas riwayat lintas kelas page; 4.E FE Guru Review 2/2 ✅ `0775ead` SubmissionReviewList + GradeSubmissionDialog + `a4f14a4` pending-counts BE + `34aff41` sidebar badge + dashboard card. Locked #70-#75)
-- [ ] Fase 5 — Soal Bab
+- [ ] Fase 5 — Soal Bab (plan ✅ DECOMPOSED 15 task locked #76-#82, 0/15 ⏳ NEXT 5.A.1 migration 000010 + models + repo skeleton)
 - [ ] Fase 6 — Ulangan Harian
 - [ ] Fase 7 — Rekap Nilai + Activity Feed
 - [ ] Fase 8 — Polish + E2E

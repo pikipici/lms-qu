@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.9.8 — **Fase 4 ✅ DONE 14/14 = 100% complete** 2026-05-21. 4.A.4 tugas duplicate `3600188` (R2 CopyObject + status reset draft); 4.D.2 siswa dashboard riwayat — BE `5d160b6`+`9d5eda2` (ListMine cross-kelas JOIN) + FE `6f49e14` (/siswa/tugas page + sidebar nav); 4.E.2 pending counter — BE `a4f14a4` (GET /guru/pending-counts cumulative across guru-owned kelas) + FE `34aff41` (sidebar badge polled 30s + dashboard card). Activity feed full di-defer Fase 7 (locked #39 cursor pagination).
+> Status: v0.10.0 — **Fase 5 plan DECOMPOSED 7 sub-fase (5.A-5.G)** 2026-05-21. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Fase 4 closed — duplicate + riwayat siswa + pending counter shipped)
+> Last updated: 2026-05-21 (Fase 5 plan decomposed — locked #76-#82, ready to ship 5.A migration)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -106,6 +106,13 @@
 | 73 | Submit transition concurrency | **Pakai `SELECT ... FOR UPDATE` di tx + idempotent guard** mirror locked #43. Submit endpoint: BEGIN → SELECT submission FOR UPDATE → cek `Status NOT IN ('graded','returned')` (kalau graded → 409 `already_graded`, return existing) → cek deadline + IzinkanLate (locked #71) → UPSERT submission row + R2 PutObject attachments + bump Version → audit log → COMMIT. Compensating R2 cleanup di defer kalau tx rollback. Grade endpoint juga pakai `FOR UPDATE` + cek `Status='submitted'` sebelum update ke `graded`. Status enum: `draft` (siswa save draft, optional MVP) | `submitted` (siswa submit, awaiting grade) | `graded` (guru kasih nilai) | `returned` (guru return for revision, optional MVP — defer). |
 | 74 | Tugas attachment policy | **Lampiran soal/instruksi guru** — Tugas optional punya 0..N attachment di R2 `tugas/<uuid>.<ext>`. Allowlist mime ikut locked #46 (tugas: pdf, docx, jpg, png, zip). Cap size 20MB per file. Cap count: max 5 attachment per tugas. Hard delete on Tugas.Delete dgn compensating R2 cleanup (locked #69 pattern). Kalau Tugas di-archive (status=archived, similar bab), attachment tetap ada di R2 — siswa enrolled tetap bisa download via presigned URL untuk submission yg udah grade history. Future cleanup: archive + 1 tahun → hard delete (locked #51 retention). |
 | 75 | Login rate limit decay + threshold | **Threshold 10/15m per (email+IP)** (raised dari initial 5, locked #47 update). **Auto-clear failed attempts on success**: ketika user login sukses, password change sukses, atau admin password reset sukses → DELETE failed `login_attempts` rows for that email dalam window 15 menit. Counter hard-lock akun (`maxCumulativeFailedLogins=10` di `users.failed_login_count`) tetap berlaku untuk attack pattern beneran (cumulative across windows). **Two-layer consistency**: layer DB (`Service.Login` + `failed_login_attempts`) DAN layer Fiber in-memory limiter (`auth.LoginRateLimit`) sama-sama hanya count failed (`SkipSuccessfulRequests=true`); success ga consume budget di mana pun. Rationale: typo + browser autofill old-password + multi-device combine sering trigger lock untuk real users; pola "user proves they know password → counter reset" mirror pattern industri. UX impact: setelah login sukses, retry dari mistype tidak bayar penalty 15 menit. Implemented commits `8ad9f60` (DB layer + threshold) + `6044d2f` (Fiber memory layer). |
+| 76 | Fase 5 sub-fase split | **Decompose Fase 5 jadi 7 sub-fase 5.A-5.G** (mirror Fase 3+4 pattern proven). 5.A migration 000010 + 6 model (SoalBab, UlanganBabSetting, HasilSoalBab, JawabanBab, EventBab, SoalAssignment) + repo skeleton (1 hari). 5.B SoalBab CRUD BE + image upload + bulk paste pipe-delimited (1 hari). 5.C UlanganBabSetting GET/PUT BE + Latihan flow no-nilai (0.5 hari). 5.D Ulangan Bab BE — start (random pool snapshot deterministic seed) + answer save (autosave 5s) + submit (FOR UPDATE + auto-grade tx) + timer-expire cron 30s (1.5 hari). 5.E BE Resume + Remedial reset + Review gating + Hasil rekap guru (0.5 hari). 5.F FE Guru editor + setting + preview + rekap + reset attempt modal (1 hari). 5.G FE Siswa latihan + ulangan lobby + play (timer countdown + autosave + resume banner) + review (1 hari). Total estimasi 6.5 hari. Setiap task ship + verify + commit + push origin+server seperti Fase 4. |
+| 77 | Bulk paste format soal | **Pipe-delimited 1 baris = 1 soal**: `pertanyaan|opsi_a|opsi_b|opsi_c|opsi_d|opsi_e|jawaban|poin|mode`. Kolom `mode` = `latihan` | `ulangan` | `keduanya`. Kolom `jawaban` = `a`/`b`/`c`/`d`/`e` (single-answer MVP, multi-answer defer v0.11). Kolom `poin` = int 1-100 (default 1 kalau kosong). Pipe escape: kalau pertanyaan/opsi mengandung literal `\|`, user pakai `\\|` (backslash-pipe) → backend unescape sebelum parse. Endpoint `POST /api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}` → parse line-by-line, return `{created: int, errors: [{line, reason}]}` partial-success (mirror locked Fase 1 #29 CSV pattern). Tidak ada image di bulk paste (image cuma via UI per-soal). FE: `<textarea>` mono-font + line counter + parse preview client-side sebelum POST. Reject baris dengan kolom < 9 sebagai `invalid_columns`. |
+| 78 | Soal image upload | **Inline 6 slot per soal**: 1 untuk `pertanyaan_image` + 5 untuk `opsi_a..e_image`. Per slot upload via multipart `POST /api/v1/soal-bab/:id/image?slot=<pertanyaan|a|b|c|d|e>` → backend resize ke max 1920px sisi panjang (preserve aspect ratio, JPEG 85% atau PNG passthrough kalau < 1920) → R2 prefix `soalbab/<uuid>.<ext>` → update kolom `<slot>_object_key`. Mime allowlist: `image/jpeg`, `image/png`, `image/webp`. Max size raw upload 5MB pre-resize (locked) — backend reject 413 kalau exceed. Library resize: `github.com/disintegration/imaging` (sudah di deps Fase 2 untuk avatar — verify, kalau tidak tambah). FE: per slot tampil preview thumbnail 100×100 + tombol Ganti/Hapus. Compensating R2 cleanup di soalbab.Delete (locked #69 pattern). Display di siswa: render presigned URL inline ResponseContentDisposition `inline` (locked #62). |
+| 79 | Random pool seed deterministic | **Pool snapshot saat siswa start ulangan**: `seed = sha256(mulai_at_unix_micro || siswa_id_uuid || bab_id_uuid)[:8]` (8 byte → uint64 little-endian) → seed `math/rand.New(rand.NewSource(int64(uint64)))` → shuffle full list soal mode IN ('ulangan','keduanya') → take first N (`UlanganBabSetting.JumlahSoal`). Snapshot disimpan di `HasilSoalBab.SoalIDsJSON` (jsonb array of uuid string, frozen) — lookup tiap GET state pakai snapshot ini, bukan re-shuffle. Rationale: deterministic per attempt → resume bawa pool yang sama persis (anti-cheat: siswa refresh tidak dapat soal beda). Auto-grade pakai snapshot ini juga (cek jawaban tiap soal_id di pool vs JawabanBab). Multi-attempt remedial bikin snapshot baru (mulai_at beda → seed beda → pool baru). |
+| 80 | Timer expire & auto-grade concurrency | **Background cron 30s tick** (`internal/soalbab/timer_cron.go` reuse pattern `go-cleanup-cron-ctx-bound`). Setiap tick: `SELECT id FROM hasil_soal_bab WHERE status='berlangsung' AND deadline_at <= now() FOR UPDATE SKIP LOCKED LIMIT 100` → per row: BEGIN tx → `pg_advisory_xact_lock(hashtext('hasil_soal_bab:' || id))` → reload row → cek status masih `berlangsung` → load jawaban → auto-grade (sum nilai jawaban benar) → UPDATE status='selesai', selesai_at=deadline_at (bukan now, supaya konsisten), nilai_total, jawaban_benar_count → audit `ulangan_bab_auto_graded` → COMMIT. Submit endpoint juga pakai advisory lock dengan key sama → race-safe vs cron. Worker single-instance MVP (lms-api binary punya goroutine ini); future scale-out pakai Postgres LISTEN/NOTIFY atau external scheduler. Idempotent: kalau status sudah `selesai` saat dapat lock, skip. Cron interval 30s tradeoff antara latency siswa lihat hasil (<30s) vs DB load (1 query per 30s = 2880/hari). |
+| 81 | Review gating policy | **Latihan: always reviewable** — siswa boleh re-attempt unlimited + lihat jawaban benar setiap saat (formative, no nilai persist). **Ulangan Bab: gated** — kondisi tampil tombol "Lihat Pembahasan" di FE = `Setting.IzinkanReviewSetelahSubmit=true AND (Setting.WaktuBukaReview IS NULL OR Setting.WaktuBukaReview <= now())`. Kalau `IzinkanReviewSetelahSubmit=false` → review tidak pernah bisa diakses (anti-cheat ulangan rahasia). Kalau `IzinkanReviewSetelahSubmit=true` + `WaktuBukaReview` di masa depan → tombol muncul disabled dengan countdown "Buka pada {tanggal}". Endpoint `GET /api/v1/hasil-soal-bab/:id/review` cek gating server-side (bukan FE-only — defense in depth) → 403 `review_locked` kalau gating belum lewat. Hasil dikembalikan: list soal_id + pertanyaan + opsi + jawaban_benar + jawaban_siswa per soal di snapshot pool. Guru/admin: bypass gating (selalu bisa review). |
+| 82 | Coverage gate Fase 5 | **Backend test coverage minimum 70%** untuk package `internal/soalbab` (lebih ketat dari rata-rata project ~60% karena logic nilai persist + concurrency + remedial state). Verify saat sub-fase 5.E close: `go test -cover ./internal/soalbab/... ./internal/ulanganbab/...` (kalau ada split). Kalau < 70% → tambah test sebelum tandain DONE. FE coverage gak di-gate (UI test out-of-scope MVP, smoke E2E browser cukup). Locked decision soft — kalau dapat ≥65% tapi blocker waktu, dokumentasikan gap di section 18 task entry sebagai TODO defer Fase 8 polish. |
 
 **Open (perlu sesi terpisah):**
 - Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
@@ -2348,25 +2355,172 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ---
 
+### Fase 5 — Soal Bab (Latihan + Ulangan Bab) + Resume + Remedial + Random Pool + Review (5-6 hari)
+
+> Locked decisions: #76 sub-fase split 5.A-5.G | #77 bulk paste pipe-delimited 9-kolom | #78 image upload inline 6-slot 5MB resize 1920px | #79 random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) | #80 timer expire cron 30s + advisory lock auto-grade tx | #81 review gating `IzinkanReviewSetelahSubmit AND (WaktuBukaReview NULL OR <= now())` (Latihan always open) | #82 coverage gate 70% backend.
+> Estimasi: 14-16 task, 6.5 hari. Konvensi sub-fase: 5.A BE migration + model + repo (1 task) | 5.B BE SoalBab CRUD + image + bulk (3 task) | 5.C BE Setting + Latihan flow (2 task) | 5.D BE Ulangan flow + cron (4 task) | 5.E BE Resume + Remedial + Review + Hasil (1 task aggregated) | 5.F FE Guru editor + setting + preview + rekap (2 task) | 5.G FE Siswa latihan + ulangan + review (2 task) = **15 task total**.
+
+#### 5.A Backend Foundation
+
+**Task 5.A.1 — Migration `000010_soalbab.up.sql` + 6 GORM models + repo skeleton** ⏳ NEXT
+- Files: `backend/migrations/000010_soalbab.{up,down}.sql`, `backend/internal/soalbab/{model,repo}.go`, `backend/internal/ulanganbab/{model,repo}.go` (atau gabung di `soalbab/` — keputusan saat ship; default gabung kalau bisa < 600 LOC).
+- Tabel:
+  - `soal_bab(id uuid pk, bab_id FK bab CASCADE, kelas_id FK kelas RESTRICT (denormal untuk query cepat), pertanyaan text, pertanyaan_object_key text null, opsi_a..opsi_e text, opsi_a..e_object_key text null, jawaban text check in ('a','b','c','d','e'), poin smallint default 1 check 1-100, mode text check in ('latihan','ulangan','keduanya') default 'keduanya', urutan int default 0, version int default 1, created_by_id FK users RESTRICT, timestamps)` — index `(bab_id, mode)`, `(bab_id, urutan)`.
+  - `ulangan_bab_setting(id uuid pk, bab_id FK bab CASCADE UNIQUE, jumlah_soal smallint default 10 check 1-200, durasi_menit smallint default 30 check 1-300, batas_attempt smallint default 1 check 1-10, izinkan_review_setelah_submit bool default true, waktu_buka_review timestamptz null, version int default 1, timestamps)` — UNIQUE bab_id (1 setting per bab).
+  - `hasil_soal_bab(id uuid pk, bab_id FK bab RESTRICT, siswa_id FK users RESTRICT, mode text check in ('latihan','ulangan'), status text check in ('berlangsung','selesai','dibatalkan') default 'berlangsung', soal_ids_json jsonb, mulai_at timestamptz, deadline_at timestamptz null (untuk ulangan saja), selesai_at timestamptz null, nilai_total numeric(6,2) null, jawaban_benar_count smallint null, jawaban_total smallint null, attempt_no smallint default 1, timestamps)` — index `(bab_id, siswa_id, mode, status)`, `(status, deadline_at) WHERE status='berlangsung'` (cron sweep).
+  - `jawaban_bab(id uuid pk, hasil_id FK hasil_soal_bab CASCADE, soal_id FK soal_bab RESTRICT, jawaban text null, is_benar bool null, poin_dapat smallint default 0, answered_at timestamptz, UNIQUE(hasil_id, soal_id))` — UNIQUE per (hasil, soal) supaya UPSERT autosave aman.
+  - `event_bab(id uuid pk, hasil_id FK hasil_soal_bab CASCADE, action text, meta jsonb, created_at)` — anti-cheat audit (soal_view, answer_save, submit, timer_expire). Index `(hasil_id, created_at)`.
+  - `soal_assignment(id uuid pk, source_bab_id FK bab RESTRICT, target_bab_id FK bab RESTRICT, copied_count int, created_by_id FK users RESTRICT, created_at)` — audit trail kalau guru duplicate soal antar bab. UNIQUE(source, target) supaya idempotent.
+- `schema_meta` update `'000010_soalbab'`.
+- Repo skeleton: tambah method signature kosong (return `errors.New("not_implemented")`) supaya 5.B-5.E tinggal isi: SoalBab.{Create, FindByID, ListByBab, UpdateBasic (version), Delete (cascade jawaban via FK + return ObjectKeys), BulkCreate}, UlanganBabSetting.{GetByBab, Upsert (version)}, HasilSoalBab.{Create, FindByID, FindActiveByBabSiswaMode, UpdateStatus, ListExpired, ListByBabAdmin}, JawabanBab.{Upsert (UPSERT), ListByHasil}, EventBab.{Append, ListByHasil}, SoalAssignment.{Create, FindByPair}.
+- Verify: migrate up→10 + down→9 + up→10 roundtrip clean, `go vet` + `go build ./...` PASS, schema verify `\d soal_bab` + `\d hasil_soal_bab` di server.
+- Commit: `feat(migrations): 000010 soalbab + ulanganbabsetting + hasilbab + jawabanbab + eventbab + soalassignment` + `feat(soalbab): GORM models + repo skeleton`
+
+#### 5.B SoalBab CRUD + Image + Bulk Paste
+
+**Task 5.B.1 — SoalBab CRUD service + handler (Create/List/Get/Patch/Delete)** ⏳
+- Endpoints (Section 7 + locked #62/#78):
+  - `POST /api/v1/bab/:id/soal` body `{pertanyaan, opsi_a..opsi_e, jawaban, poin?, mode?, urutan?}` — guru/admin owner kelas.
+  - `GET /api/v1/bab/:id/soal?mode=<latihan|ulangan|keduanya>&limit=<int>` — guru/admin full; siswa enrolled hanya kalau bab.status=published, dan siswa view soal harus via flow Latihan/Ulangan (bukan list direct — list direct return 403 untuk siswa, force pakai endpoint flow).
+  - `GET /api/v1/soal-bab/:id` — guru/admin owner only (siswa lewat flow).
+  - `PATCH /api/v1/soal-bab/:id` body `{version, pertanyaan?, opsi_a..opsi_e?, jawaban?, poin?, mode?, urutan?}` — optimistic concurrency #56.
+  - `DELETE /api/v1/soal-bab/:id` — hard delete + compensating R2 cleanup untuk 6 image slot kalau ada. Audit `soalbab_deleted`.
+- Validasi: jawaban harus salah satu kunci yang opsi-nya tidak kosong (e.g. `jawaban='e'` tapi `opsi_e=''` → 400 `jawaban_invalid`). Status archived bab → reject create/patch (mirror tugas 4.A.2).
+- Audit: `soalbab_created`/`soalbab_updated`/`soalbab_deleted`.
+- Verify: handler tests (happy + version conflict + ownership + archived bab + jawaban_invalid + mode invalid).
+- Commit: `feat(soalbab): CRUD service + handler endpoints`
+
+**Task 5.B.2 — SoalBab image upload (6-slot inline) + presigned download** ⏳
+- Endpoint: `POST /api/v1/soal-bab/:id/image?slot=<pertanyaan|a|b|c|d|e>` multipart `file`. Backend: validate mime allowlist (jpeg/png/webp), size ≤ 5MB raw, decode → `imaging.Resize` ke max 1920px sisi panjang preserve aspect → encode JPEG q85 (atau PNG passthrough kalau < 1920) → R2 PutObject `soalbab/<uuid>.<ext>` → UPDATE kolom `<slot>_object_key` + bump version. Old object key (kalau ada) → compensating R2 DeleteObject after tx commit.
+- Endpoint: `DELETE /api/v1/soal-bab/:id/image?slot=<...>` → reset kolom NULL + R2 cleanup.
+- Endpoint: `GET /api/v1/soal-bab/:id/image-url?slot=<...>` → presigned URL TTL 15 menit, ResponseContentDisposition inline (locked #62). Guru/admin owner OR siswa enrolled di kelas pemilik bab + bab.status=published.
+- Verify: handler test (upload happy + size cap + mime reject + slot invalid + ownership).
+- Commit: `feat(soalbab): image upload 6-slot + resize + presigned URL`
+
+**Task 5.B.3 — SoalBab bulk paste endpoint (pipe-delimited)** ⏳
+- Endpoint: `POST /api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}`. Parse line-by-line (skip blank + `#` comments), unescape `\\|` → `|` literal. Validate per baris: 9 kolom, jawaban a-e, poin int 1-100 (default 1), mode latihan/ulangan/keduanya (fallback `mode_default` atau `keduanya`).
+- Response: `{created: int, errors: [{line: int, reason: string}]}` (HTTP 200 partial-success bahkan kalau ada error). Commit dalam tx; kalau seluruh batch error → rollback + `created: 0`.
+- Audit `soalbab_bulk_created` w/ meta `{count, source: 'paste'}`.
+- Verify: handler test (happy multiline + escape + invalid_columns + invalid_jawaban + mixed partial).
+- Commit: `feat(soalbab): bulk paste pipe-delimited endpoint`
+
+#### 5.C UlanganBabSetting + Latihan Flow
+
+**Task 5.C.1 — UlanganBabSetting GET + PUT (upsert)** ⏳
+- Endpoints:
+  - `GET /api/v1/bab/:id/ulangan-setting` — guru/admin owner. Siswa enrolled hanya read subset (durasi_menit, batas_attempt, izinkan_review, waktu_buka_review) — untuk lobby info.
+  - `PUT /api/v1/bab/:id/ulangan-setting` body `{jumlah_soal, durasi_menit, batas_attempt, izinkan_review_setelah_submit, waktu_buka_review?, version?}` — upsert: kalau row belum ada, insert (version=1). Kalau ada, update + check version. Validate jumlah_soal ≤ count(soal mode IN ('ulangan','keduanya')) — 400 `jumlah_soal_exceeds_pool` kalau exceed.
+- Audit `ulangan_setting_updated`.
+- Verify: handler test (upsert insert path + update version conflict + exceeds_pool).
+- Commit: `feat(ulanganbab): setting GET + PUT upsert`
+
+**Task 5.C.2 — Latihan flow BE (start, answer, finish — no nilai persist)** ⏳
+- Endpoints:
+  - `POST /api/v1/bab/:id/latihan/start` — siswa enrolled. Cek bab.status=published. Cek ada soal mode IN ('latihan','keduanya') ≥ 1. Bikin `HasilSoalBab(mode='latihan', status='berlangsung', mulai_at=now, deadline_at=null, soal_ids_json=ALL latihan-eligible shuffled, attempt_no=1)`. Return `{hasil_id, soal_ids: []uuid, total: int}`. Kalau sudah ada `berlangsung` aktif untuk (bab, siswa, latihan) → reuse (resume).
+  - `POST /api/v1/hasil-soal-bab/:id/answer` body `{soal_id, jawaban}` — UPSERT `JawabanBab` (UNIQUE (hasil_id, soal_id)) + langsung `is_benar = (jawaban == soal.jawaban)` + `poin_dapat = is_benar ? soal.poin : 0`. Append `EventBab(action='answer_save')`. Untuk mode latihan, return `{is_benar, jawaban_benar}` immediate (formative feedback). Untuk ulangan defer 5.D — return tanpa is_benar.
+  - `POST /api/v1/hasil-soal-bab/:id/finish` — siswa selesai latihan manual. Set `status='selesai', selesai_at=now`. Latihan: nilai_total NULL (tidak persist nilai). Return summary: `{total, benar, salah}`.
+- Verify: handler test (start happy + reuse berlangsung + answer immediate feedback latihan + finish).
+- Commit: `feat(soalbab): latihan flow start + answer + finish`
+
+#### 5.D Ulangan Bab Flow + Auto-Grade Cron
+
+**Task 5.D.1 — Ulangan Bab start (random pool deterministic seed)** ⏳
+- Endpoint: `POST /api/v1/bab/:id/ulangan/start` — siswa enrolled.
+  - BEGIN tx → cek aktif `(bab, siswa, ulangan, status='berlangsung')` → kalau ada return existing (resume) → kalau tidak: hitung `attempt_no = COUNT(hasil WHERE mode='ulangan') + 1`. Cek `attempt_no ≤ Setting.BatasAttempt` → 403 `batas_attempt_exceeded` kalau exceed.
+  - Build pool: `mulai_at = now()`, `seed = sha256(mulai_at.UnixMicro() bytes || siswa_id_bytes || bab_id_bytes)[:8]` → uint64 LE → `rand.New(rand.NewSource(int64))` → ambil semua soal mode IN ('ulangan','keduanya'), shuffle, take Setting.JumlahSoal. Cek pool ≥ JumlahSoal → 400 `jumlah_soal_exceeds_pool` kalau tidak.
+  - Insert `HasilSoalBab(mode='ulangan', mulai_at, deadline_at = mulai_at + Setting.DurasiMenit minutes, soal_ids_json=pool, attempt_no)`.
+  - Audit `ulangan_bab_started`. Return `{hasil_id, soal_ids, deadline_at, durasi_detik}`.
+- Verify: test (deterministic seed reproducible + batas_attempt + concurrent start race-safe via tx).
+- Commit: `feat(ulanganbab): start endpoint + deterministic random pool`
+
+**Task 5.D.2 — Ulangan Bab answer save (autosave 5s, no immediate feedback)** ⏳
+- Endpoint: `POST /api/v1/hasil-soal-bab/:id/answer` (shared dengan latihan task 5.C.2 — branch by mode). Untuk mode='ulangan': UPSERT JawabanBab dengan `is_benar=null, poin_dapat=0` (delay grading sampai submit). Cek `now() ≤ deadline_at` → 410 `timer_expired` kalau lewat (cron belum keburu). Append `EventBab('answer_save')`. Return `{ok: true}` only (tidak leak is_benar).
+- Verify: test (ulangan tidak return is_benar + timer_expired guard + UPSERT idempotent).
+- Commit: `feat(ulanganbab): answer save autosave`
+
+**Task 5.D.3 — Ulangan Bab submit + auto-grade tx (advisory lock)** ⏳
+- Endpoint: `POST /api/v1/hasil-soal-bab/:id/submit` — siswa pemilik.
+  - BEGIN tx → `pg_advisory_xact_lock(hashtext('hasil_soal_bab:' || id::text))` → reload row → cek `status='berlangsung'` (kalau `selesai` → 409 `already_submitted` return existing) → cek `now() ≤ deadline_at + 5s grace`.
+  - Load semua jawaban + load soal pool (snapshot soal_ids_json) → grade tiap soal: `is_benar = (jawaban == soal.jawaban)`, `poin_dapat = is_benar ? soal.poin : 0`. UPDATE JawabanBab batch.
+  - Hitung `nilai_total = sum(poin_dapat)`, `jawaban_benar_count = count(is_benar)`, `jawaban_total = len(pool)`. UPDATE `HasilSoalBab(status='selesai', selesai_at=now, nilai_total, jawaban_benar_count, jawaban_total)`.
+  - Audit `ulangan_bab_submitted`. COMMIT.
+  - Return `{nilai_total, jawaban_benar_count, jawaban_total, dapat_review_at: <waktu_buka_review or null>}`.
+- Verify: test (submit happy + already_submitted idempotent + race vs cron + nilai correctness).
+- Commit: `feat(ulanganbab): submit + auto-grade tx with advisory lock`
+
+**Task 5.D.4 — Timer expire cron 30s** ⏳
+- File: `backend/internal/soalbab/timer_cron.go`. Pakai pattern skill `go-cleanup-cron-ctx-bound`: `time.NewTicker(30*time.Second)` + ctx-bound goroutine started di `cmd/server/main.go` setelah DB ready, dihentikan saat shutdown signal.
+- Tick: `SELECT id FROM hasil_soal_bab WHERE status='berlangsung' AND mode='ulangan' AND deadline_at <= now() ORDER BY deadline_at LIMIT 100 FOR UPDATE SKIP LOCKED` → per row spawn func: BEGIN tx → advisory lock (sama key dengan submit) → reload → cek status masih berlangsung → auto-grade (sama logika 5.D.3 tapi `selesai_at = deadline_at` bukan now) → UPDATE → audit `ulangan_bab_auto_graded` w/ meta `{reason: 'timer_expired'}` → COMMIT.
+- Idempotent: kalau status sudah selesai saat ambil lock, skip.
+- Logging: `lms-api` log "[timer-cron] swept N expired" tiap tick non-zero.
+- Verify: test integration: insert hasil dengan deadline_at di masa lalu → tunggu 1 tick → cek status='selesai' + nilai correct.
+- Commit: `feat(ulanganbab): timer expire cron 30s with advisory lock auto-grade`
+
+#### 5.E Resume + Remedial + Review + Hasil Rekap
+
+**Task 5.E.1 — Resume + Remedial reset + Review gating + Hasil rekap guru (aggregated)** ⏳
+- Endpoints:
+  - `GET /api/v1/bab/:id/ulangan/state` — siswa. Return:
+    - Tidak ada hasil aktif: `{has_active: false, attempt_count: int, batas_attempt: int, can_start: bool}`.
+    - Ada `berlangsung`: `{has_active: true, hasil_id, soal_ids, deadline_at, jawaban: [{soal_id, jawaban}], remaining_seconds}`.
+    - Sudah submit + masih dalam batas_attempt: `{has_active: false, last_hasil: {id, nilai_total, ...}, can_start: true}`.
+  - `POST /api/v1/hasil-soal-bab/:id/reset` — guru/admin owner kelas. Soft cancel: `status='dibatalkan'` + audit `ulangan_bab_reset` w/ meta `{reason, reset_by_id}`. Setelah reset, `attempt_count` di /state cek hanya count `status IN ('selesai')` (dibatalkan tidak count) → siswa bisa attempt lagi kalau masih < BatasAttempt.
+  - `GET /api/v1/hasil-soal-bab/:id/review` — siswa pemilik OR guru/admin owner.
+    - Cek gating siswa: latihan always OK. Ulangan: `Setting.IzinkanReviewSetelahSubmit AND (Setting.WaktuBukaReview IS NULL OR Setting.WaktuBukaReview <= now())` → 403 `review_locked` w/ meta `{buka_at}` kalau gate.
+    - Return: `{hasil: {...}, soal_pembahasan: [{soal_id, pertanyaan, opsi_a..e, image_keys, jawaban_benar, jawaban_siswa, is_benar, poin_dapat}]}`.
+  - `GET /api/v1/bab/:id/hasil-soal-bab` — guru/admin owner. Query `?mode=latihan|ulangan&siswa_id=&status=`. Return list rekap untuk dashboard guru.
+- Audit lengkap: `ulangan_bab_reset`, `review_accessed`.
+- Verify: test (state transitions + reset menghasilkan can_start lagi + review_locked vs open + hasil rekap filter).
+- Test coverage check: `go test -cover ./internal/soalbab/...` ≥ 70% (locked #82). Kalau < 70% tambah test sebelum mark DONE.
+- Commit: `feat(soalbab): resume + remedial reset + review gating + hasil rekap guru`
+
+#### 5.F Frontend Guru — Editor + Setting + Preview + Rekap
+
+**Task 5.F.1 — FE Guru: SoalBab editor + bulk paste + image manager** ⏳
+- Files: `frontend/lib/soalbab-api.ts` (typed client list/get/create/update/delete/uploadImage/deleteImage/bulkCreate + friendly error mapper), `frontend/components/soalbab/SoalBabEditDialog.tsx` (form react-hook-form + zod, 5 opsi + jawaban radio + poin + mode + 6 image slots dengan upload preview), `frontend/components/soalbab/BulkPasteDialog.tsx` (textarea mono-font + line counter + parse preview client-side + result toast partial-success).
+- Page: tab "Soal" di `/guru/kelas/detail?id=:id` bab detail (atau page baru `/guru/kelas/[id]/bab/[bab]/soal` — keputusan saat ship). List card per soal dengan thumbnail kalau ada image, dropdown Edit/Hapus, filter mode tab (semua/latihan/ulangan/keduanya), tombol Tambah + Bulk Paste.
+- Optimistic concurrency #56: kirim version, 409 → invalidate + re-sync.
+- Verify: `npx tsc --noEmit` PASS, `npm run build` PASS.
+- Commit: `feat(fe-soalbab): editor + bulk paste + image manager`
+
+**Task 5.F.2 — FE Guru: Setting + Preview + Rekap Hasil + Reset Attempt** ⏳
+- Components: `UlanganBabSettingForm.tsx` (form jumlah_soal/durasi/batas_attempt/izinkan_review/waktu_buka_review dgn validation jumlah_soal ≤ pool count), `SoalPreviewDialog.tsx` (lihat soal dari pov siswa + tampilkan jawaban benar highlighted), `RekapHasilTable.tsx` (TanStack Query list hasil per bab dengan filter mode+status+siswa, sort by nilai/waktu, kolom: siswa, mode, attempt_no, status, nilai_total, dapat_review, action Reset Attempt).
+- ResetAttemptDialog.tsx: konfirmasi destructive + alasan optional → POST reset → toast.
+- Verify: tsc + build PASS.
+- Commit: `feat(fe-soalbab): setting + preview + rekap hasil + reset attempt`
+
+#### 5.G Frontend Siswa — Latihan + Ulangan + Review
+
+**Task 5.G.1 — FE Siswa: Latihan flow (start, play, finish, formative feedback)** ⏳
+- Page: `/siswa/kelas/[id]/bab/[bab]/latihan`. List soal one-by-one navigation (next/prev) atau scroll list — keputusan UX saat ship; default scroll list dengan auto-save per radio change.
+- Behavior: start → reuse berlangsung kalau ada, atau create baru. Tiap pilih jawaban → POST answer → tampilkan banner hijau/merah immediate (`is_benar` + `jawaban_benar`). Tombol "Selesai" → POST finish → result page dengan summary.
+- Verify: tsc + build PASS.
+- Commit: `feat(fe-soalbab): siswa latihan flow`
+
+**Task 5.G.2 — FE Siswa: Ulangan Bab lobby + play (timer + autosave + resume) + review** ⏳
+- Page: `/siswa/kelas/[id]/bab/[bab]/ulangan`.
+  - Lobby: tampilkan setting (durasi, jumlah_soal, batas_attempt), riwayat attempt (nilai per attempt), tombol "Mulai" (disabled kalau exceed batas_attempt). Kalau ada `berlangsung` → tombol "Lanjutkan".
+  - Play: timer countdown dari `deadline_at - now` (auto-submit di 0). Autosave per perubahan radio (debounce 1s, retry on 5xx). Resume banner kalau ada perubahan offline → reload state. NO immediate is_benar feedback (mode ulangan).
+  - Submit confirm dialog → POST submit → result page dengan nilai_total + tombol "Lihat Pembahasan" (gated by review policy locked #81 — kalau locked tampil "Buka {tanggal}" disabled + countdown).
+  - Review page: `/siswa/kelas/[id]/bab/[bab]/ulangan/review/[hasil_id]` — load `/review` endpoint, render per soal: pertanyaan + opsi (highlight jawaban_siswa kuning + jawaban_benar hijau), poin_dapat per soal.
+- Verify: tsc + build PASS.
+- Commit: `feat(fe-soalbab): siswa ulangan lobby + play + review`
+
+---
+
 ### Current Next Step (Section 18)
 
-**Fase 3 ✅ CLOSED 17/17.** Live deploy verified 2026-05-21 (commit `aca38e4`).
+**Fase 4 ✅ CLOSED 14/14 = 100%.** Live deploy verified 2026-05-21 (commit `bd482f4`).
 
-**Fase 4 plan ✅ DECOMPOSED 14 task** — locked #70-#74. Roadmap v0.9.0.
-- 4.A Tugas BE: 3/4 ✅ DONE (4.A.1 migration `b6a2cf9`, 4.A.2 CRUD `dc7d237`, 4.A.3 attachment `55fb86a`); 4.A.4 duplicate ⏳ deferable
-- 4.B FE Guru: 2/2 ✅ DONE (4.B.1 + 4.B.2 merged commit `c4acf54` — kelas-wide + bab page wired bersamaan)
-- 4.C Submission BE: 0/4 pending
-- 4.D FE Siswa: 0/2 pending
-- 4.E Review FE Guru: 0/2 pending
+**Fase 5 plan ✅ DECOMPOSED 15 task** — locked #76-#82. Roadmap v0.10.0.
+- 5.A BE foundation: 0/1 ⏳ NEXT (migration 000010 + 6 model + repo skeleton)
+- 5.B BE SoalBab CRUD + image + bulk: 0/3
+- 5.C BE Setting + Latihan: 0/2
+- 5.D BE Ulangan + cron: 0/4
+- 5.E BE Resume + Remedial + Review + Hasil: 0/1
+- 5.F FE Guru editor + setting + rekap: 0/2
+- 5.G FE Siswa latihan + ulangan + review: 0/2
 
-Cumulative sesi: 6 commit shipped + dual-pushed (origin GitHub + server bare). Server tree synced ke `c4acf54`, DB version 8, lms-api binary live PID 2229459 — BE tugas endpoints (4.A.1-3) + FE guru tab Tugas (4.B.1-2) live bersamaan dengan 1× restart. Smoke: healthz=200, tugas+attachments endpoints return 401 (auth-required, bukan 404 routes-not-found).
+**Eksekusi berikutnya: gas Task 5.A.1** — Migration `000010_soalbab.up.sql` + 6 GORM models (SoalBab, UlanganBabSetting, HasilSoalBab, JawabanBab, EventBab, SoalAssignment) + repo skeleton method signatures (return errNotImplemented). Verify migrate up→10 + down→9 + up→10 roundtrip + go vet + go build PASS. Estimasi 60-90 menit.
 
-**Eksekusi berikutnya: pilih satu**
-- **gas Task 4.C.1 (Submission BE migration + model + repo)** — masuk ke meat sub-fase Submission. Migration `000009_submission.up.sql` (single-row + version bump per locked #70), GORM struct + repo CRUD. Estimasi 60-90 menit.
-- **gas Task 4.A.4 (Tugas duplicate)** — defer-bisa, mirror pattern bab duplicate. R2 CopyObject untuk attachment. Estimasi 30-45 menit.
-- **smoke E2E tugas dari browser** — login guru, bikin tugas, upload PDF/DOCX, edit, archive, hapus. Verify 4.A+4.B integration sebelum lanjut Submission. Estimasi 15-20 menit.
-- **stop dulu** — Fase 4 progress 5/14 (36%); 4.A 75% + 4.B 100%. 6 commit + dual-pushed + live.
-
-Rekomendasi: **smoke E2E dulu** sebentar (lu test sendiri dari browser), confirm bug-free, baru gas 4.C.1. Submission BE adalah bagian terpadat Fase 4 — kalau 4.A+4.B ada bug yang ketauan saat smoke, lebih murah fix sekarang sebelum submission FK ke tugas.
-
-> Catatan FE Tugas (4.B): TugasComposer auto-open TugasEditDialog setelah create (callback `onCreated`) supaya guru bisa langsung upload attachment di flow yang sama. Status mutation invalidate ALL filter variants karena status flip pindah bucket. shadcn `Checkbox` belum di-scaffold; pakai native `<input type="checkbox" className="size-4 rounded border-input">` mirror BabListSection pattern. Binary path systemd: `/home/ubuntu/lms/backend/bin/lms-api` (pakai `go build -o` ke path itu, NOT `/usr/local/bin/lms-api`).
+> Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
