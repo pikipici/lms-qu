@@ -22,6 +22,7 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/kelas"
+	"github.com/pikip/lms/backend/internal/storage"
 )
 
 // Sentinel errors yang di-mapping ke HTTP status di handler. ErrVersionConflict
@@ -77,12 +78,17 @@ type Service struct {
 	kelas kelasLookup
 	bab   babLookup
 	audit auditLogger
+	store storage.Storage
 	now   func() time.Time
 }
 
-// NewService wires materi Repo + kelas + bab lookup + audit logger.
-func NewService(repo materiRepo, kelas kelasLookup, bab babLookup, audit auditLogger) *Service {
-	return &Service{repo: repo, kelas: kelas, bab: bab, audit: audit, now: time.Now}
+// NewService wires materi Repo + kelas + bab lookup + audit logger +
+// optional object store. The store is used by Upload (Task 3.C.3) for
+// PutObject and by Delete for compensating R2 cleanup of tipe='pdf'
+// rows (locked #69). Pass nil to disable upload/cleanup paths — used in
+// 3.C.2-only test fixtures and main.go before R2 is configured.
+func NewService(repo materiRepo, kelas kelasLookup, bab babLookup, audit auditLogger, store storage.Storage) *Service {
+	return &Service{repo: repo, kelas: kelas, bab: bab, audit: audit, store: store, now: time.Now}
 }
 
 // CreateInput holds fields for POST /kelas/:id/materi (youtube + markdown).
@@ -312,11 +318,14 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 	return fresh, nil
 }
 
-// Delete hard-deletes a materi row. For PDF tipe the returned ObjectKey
-// must be cleaned up by the caller via R2 DeleteObject (Task 3.C.3 wires
-// this in). In Task 3.C.2 (youtube/markdown only) ObjectKey is always nil.
+// Delete hard-deletes a materi row. For PDF tipe the R2 ObjectKey is also
+// removed via store.DeleteObject (locked #69). Compensating semantics:
+//   - DB delete failure → no R2 call, return error.
+//   - DB delete success + R2 delete failure → log audit.materi_r2_orphan,
+//     return success (DB row already gone; R2 orphan toleransi per #69).
 //
-// Returns ErrNotFound if the row is missing.
+// For non-pdf tipe (youtube/markdown) ObjectKey is nil and no R2 call is
+// made. Returns ErrNotFound if the row is missing.
 func (s *Service) Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Materi, *string, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -337,12 +346,32 @@ func (s *Service) Delete(ctx context.Context, id, callerID uuid.UUID, callerRole
 		return nil, nil, fmt.Errorf("materi delete: %w", err)
 	}
 
-	s.logAudit(ctx, "materi_deleted", &callerID, callerRole, &id, &existing.KelasID, ip, userAgent, map[string]any{
+	// Compensating R2 cleanup for tipe='pdf' (locked #69). Best-effort —
+	// DB row is already gone; an R2 orphan is acceptable, audit logs the
+	// drift so an operator can purge later.
+	r2OrphanKey := ""
+	if existing.Tipe == TipePDF && objectKey != nil && *objectKey != "" && s.store != nil {
+		if derr := s.store.DeleteObject(ctx, *objectKey); derr != nil {
+			r2OrphanKey = *objectKey
+			s.logAudit(ctx, "materi_r2_orphan", &callerID, callerRole, &id, &existing.KelasID, ip, userAgent, map[string]any{
+				"materi_id":  id.String(),
+				"object_key": *objectKey,
+				"reason":     "delete_object_failed",
+				"err":        derr.Error(),
+			})
+		}
+	}
+
+	meta := map[string]any{
 		"materi_id":  id.String(),
 		"judul":      existing.Judul,
 		"tipe":       string(existing.Tipe),
 		"object_key": objectKeyStr(objectKey),
-	})
+	}
+	if r2OrphanKey != "" {
+		meta["r2_orphan"] = true
+	}
+	s.logAudit(ctx, "materi_deleted", &callerID, callerRole, &id, &existing.KelasID, ip, userAgent, meta)
 	return existing, objectKey, nil
 }
 

@@ -337,20 +337,23 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	babGroup.Post("/:id/archive", babHandler.Archive)
 	babGroup.Post("/:id/duplicate", babHandler.Duplicate)
 
-	// Materi (Task 3.C.2): learning content CRUD per kelas. youtube +
-	// markdown only — PDF upload + presigned download di Task 3.C.3, siswa
-	// mark-as-read di Task 3.C.4.
+	// Materi (Task 3.C.2 + 3.C.3): learning content CRUD per kelas.
+	// youtube + markdown via JSON (3.C.2); PDF via multipart upload (3.C.3
+	// — mime sniff, 20MB cap, compensating R2 delete on DB fail/Delete).
+	// MarkRead siswa flow di Task 3.C.4.
 	materiRepo := materi.NewRepo(gdb)
-	materiSvc := materi.NewService(materiRepo, kelasRepo, babRepo, authRepo)
+	materiSvc := materi.NewService(materiRepo, kelasRepo, babRepo, authRepo, objectStore)
 	materiHandler := materi.NewHandler(materiSvc)
 	kelasGroup.Get("/:id/materi", materiHandler.ListByKelas)
 	kelasGroup.Post("/:id/materi", materiHandler.Create)
+	kelasGroup.Post("/:id/materi/upload", materiHandler.Upload)
 	materiGroup := api.Group("/materi",
 		middleware.BearerAuth(authSvc),
 		middleware.ForceChangePassword(),
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
 	)
 	materiGroup.Get("/:id", materiHandler.Get)
+	materiGroup.Get("/:id/file-url", materiHandler.FileURL)
 	materiGroup.Patch("/:id", materiHandler.Update)
 	materiGroup.Delete("/:id", materiHandler.Delete)
 

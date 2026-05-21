@@ -18,11 +18,13 @@ import (
 )
 
 type stubSvc struct {
-	createFn func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Materi, error)
-	listFn   func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ListInput) ([]Materi, error)
-	getFn    func(ctx context.Context, id, callerID uuid.UUID, role string) (*Materi, error)
-	updateFn func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Materi, error)
-	deleteFn func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Materi, *string, error)
+	createFn  func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Materi, error)
+	listFn    func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in ListInput) ([]Materi, error)
+	getFn     func(ctx context.Context, id, callerID uuid.UUID, role string) (*Materi, error)
+	updateFn  func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Materi, error)
+	deleteFn  func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Materi, *string, error)
+	uploadFn  func(ctx context.Context, kelasID, callerID uuid.UUID, role string, in UploadInput, ip, ua string) (*Materi, error)
+	presignFn func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*FileURLResult, error)
 }
 
 func (s *stubSvc) Create(ctx context.Context, kelasID, callerID uuid.UUID, role string, in CreateInput, ip, ua string) (*Materi, error) {
@@ -39,6 +41,12 @@ func (s *stubSvc) Update(ctx context.Context, id, callerID uuid.UUID, role strin
 }
 func (s *stubSvc) Delete(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Materi, *string, error) {
 	return s.deleteFn(ctx, id, callerID, role, ip, ua)
+}
+func (s *stubSvc) Upload(ctx context.Context, kelasID, callerID uuid.UUID, role string, in UploadInput, ip, ua string) (*Materi, error) {
+	return s.uploadFn(ctx, kelasID, callerID, role, in, ip, ua)
+}
+func (s *stubSvc) PresignFileURL(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*FileURLResult, error) {
+	return s.presignFn(ctx, id, callerID, role, ip, ua)
 }
 
 func newApp(t *testing.T, h *Handler, role string, userID uuid.UUID) *fiber.App {
