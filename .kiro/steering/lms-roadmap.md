@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.5 — **Fase 5.D 1/4** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.6 — **Fase 5.D 2/4** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 5.D.1 ✅ DONE — Ulangan Bab start deterministic seed + advisory lock, commits `0346609`+`32f63ae`+`d822d46`; Fase 5 progress 6/15)
+> Last updated: 2026-05-22 (Task 5.D.2 ✅ DONE — Ulangan Bab answer save delayed grade + dispatcher branching, commit `5067f0a`; Fase 5 progress 7/15)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2451,10 +2451,13 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Bug fix selama implementasi: pgx infer args sebagai int4 → cast `?::bigint`. 2-arg `pg_advisory_xact_lock(int4,int4)` overload gak ada untuk bigint — gunakan single-arg form.
 - Commits: `0346609 feat(soalbab): Ulangan Bab start (Task 5.D.1)` + `32f63ae fix(soalbab): cast advisory_lock keys to bigint` + `d822d46 fix(soalbab): use single-arg pg_advisory_xact_lock(bigint)`
 
-**Task 5.D.2 — Ulangan Bab answer save (autosave 5s, no immediate feedback)** ⏳
-- Endpoint: `POST /api/v1/hasil-soal-bab/:id/answer` (shared dengan latihan task 5.C.2 — branch by mode). Untuk mode='ulangan': UPSERT JawabanBab dengan `is_benar=null, poin_dapat=0` (delay grading sampai submit). Cek `now() ≤ deadline_at` → 410 `timer_expired` kalau lewat (cron belum keburu). Append `EventBab('answer_save')`. Return `{ok: true}` only (tidak leak is_benar).
-- Verify: test (ulangan tidak return is_benar + timer_expired guard + UPSERT idempotent).
-- Commit: `feat(ulanganbab): answer save autosave`
+**Task 5.D.2 — Ulangan Bab answer save (autosave 5s, no immediate feedback)** ✅ DONE 2026-05-22 commit `5067f0a`
+- File baru: `backend/internal/soalbab/attempt_answer_handler.go` (`AttemptAnswerHandler`) — dispatcher peek `hasil.mode` lalu route ke `LatihanHandler.Answer` (immediate is_benar feedback per locked #81) atau `UlanganHandler.Answer` (delayed grade per locked #76).
+- Tambah `UlanganService.Answer` di `ulangan.go`: validasi ownership + mode=ulangan + status=berlangsung + `now() ≤ deadline_at`. Anti-cheat: soal_id ∈ `hasil.SoalIDsJSON` snapshot. UPSERT `JawabanBab(jawaban=letter, is_benar=NULL, poin_dapat=0)` — grading delayed sampai submit (5.D.3) atau cron auto-grade (5.D.4). Append `EventBab(action='answer_save', mode='ulangan')`. Return `{ok: true}` only — TIDAK leak is_benar/jawaban_benar.
+- Sentinel baru: `ErrUlanganTimerExpired` → HTTP 410 Gone code `timer_expired`. Mapping juga `ErrSoalNotInPool` 400, `ErrHasilNotOwned` 403, `ErrHasilModeInvalid` 409, `ErrHasilAlreadyFinished` 409, `ErrHasilCancelled` 409 di `mapUlanganErr`.
+- Wiring `main.go`: route `POST /siswa/hasil-soal-bab/:id/answer` switch dari `LatihanHandler.Answer` → `AttemptAnswerHandler.Answer` (single endpoint, dispatch internal). Latihan & Ulangan handler tetap individual untuk testability.
+- Smoke E2E hijau (19 cases): start ulangan → answer happy 200 `{ok:true}` (no is_benar leak) + overwrite UPSERT idempotent + soal_not_in_pool 400 + siswa2 not-owner 403 + invalid jawaban "z" 400 + empty body 400 + invalid uuid 400 + non-existent hasil 404 + SQL probe `jawaban='b', is_benar=NULL, poin_dapat=0` (delayed grade confirmed) + EventBab `answer_save` mode=ulangan + expire deadline via SQL → 410 `timer_expired` + cancel via SQL → 409 `hasil_cancelled` + latihan branch sanity (still leaks is_benar+jawaban_benar+poin_dapat per #81 — dispatcher branching works).
+- Commit: `5067f0a feat(soalbab): Ulangan Bab answer save (Task 5.D.2)`
 
 **Task 5.D.3 — Ulangan Bab submit + auto-grade tx (advisory lock)** ⏳
 - Endpoint: `POST /api/v1/hasil-soal-bab/:id/submit` — siswa pemilik.
