@@ -7,15 +7,14 @@
  * force-change-password gate; this file adds:
  *   - Role guard (guru only).
  *   - Persistent sidebar nav.
+ *   - Pending submissions badge (Task 4.E.2 — polled 30s).
  *   - Header strip with user dropdown (Profil + Logout).
- *
- * Nav items match Phase 2 plan §18 — only Kelas exists for now; Tugas/
- * Materi/Pengumuman come in later tasks.
  */
 
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   GraduationCap,
@@ -26,6 +25,7 @@ import {
 
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
+import { getPendingCounts } from '@/lib/guru-api';
 import { RoleGuard } from '@/lib/role-guard';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -43,10 +43,12 @@ interface NavItem {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
+  /** When set, shows a badge next to the label with the resolved value. */
+  badgeKey?: 'ungraded';
 }
 
 const NAV: NavItem[] = [
-  { href: '/guru', label: 'Dashboard', Icon: LayoutDashboard },
+  { href: '/guru', label: 'Dashboard', Icon: LayoutDashboard, badgeKey: 'ungraded' },
   { href: '/guru/kelas', label: 'Kelas', Icon: GraduationCap },
 ];
 
@@ -62,6 +64,22 @@ function GuruShell({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const refresh = useAuthStore((s) => s.refresh);
   const clear = useAuthStore((s) => s.clear);
+
+  // Pending counters — polled every 30s while guru navigates (Task 4.E.2).
+  const pendingQ = useQuery({
+    queryKey: ['guru', 'pending-counts'],
+    queryFn: getPendingCounts,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+  const ungraded = pendingQ.data?.ungraded_submissions ?? 0;
+
+  const badgeFor = (key?: NavItem['badgeKey']): number | undefined => {
+    if (!key) return undefined;
+    if (key === 'ungraded') return ungraded > 0 ? ungraded : undefined;
+    return undefined;
+  };
 
   const onLogout = async () => {
     try {
@@ -98,8 +116,9 @@ function GuruShell({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
           <nav className="flex-1 space-y-1 p-2">
-            {NAV.map(({ href, label, Icon }) => {
+            {NAV.map(({ href, label, Icon, badgeKey }) => {
               const active = isActive(pathname, href);
+              const badge = badgeFor(badgeKey);
               return (
                 <Link
                   key={href}
@@ -112,7 +131,12 @@ function GuruShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   <Icon className="size-4" />
-                  <span>{label}</span>
+                  <span className="flex-1">{label}</span>
+                  {badge !== undefined && (
+                    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:text-rose-300">
+                      {badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -127,8 +151,9 @@ function GuruShell({ children }: { children: React.ReactNode }) {
           <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
             {/* Mobile nav (compact) */}
             <nav className="flex gap-1 overflow-x-auto md:hidden">
-              {NAV.map(({ href, label, Icon }) => {
+              {NAV.map(({ href, label, Icon, badgeKey }) => {
                 const active = isActive(pathname, href);
+                const badge = badgeFor(badgeKey);
                 return (
                   <Link
                     key={href}
@@ -142,6 +167,11 @@ function GuruShell({ children }: { children: React.ReactNode }) {
                   >
                     <Icon className="size-3.5" />
                     {label}
+                    {badge !== undefined && (
+                      <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-rose-500/15 px-1 text-[10px] font-semibold text-rose-700 dark:text-rose-300">
+                        {badge}
+                      </span>
+                    )}
                   </Link>
                 );
               })}

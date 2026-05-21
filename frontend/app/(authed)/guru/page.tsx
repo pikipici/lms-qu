@@ -11,9 +11,10 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, GraduationCap, Plus, Users } from 'lucide-react';
+import { ArrowRight, ClipboardCheck, GraduationCap, Plus, Users } from 'lucide-react';
 
 import { listKelas } from '@/lib/kelas-api';
+import { getPendingCounts } from '@/lib/guru-api';
 import { useAuthStore } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,8 +34,16 @@ export default function GuruDashboardPage() {
     staleTime: 15_000,
   });
 
+  const pendingQ = useQuery({
+    queryKey: ['guru', 'pending-counts'],
+    queryFn: getPendingCounts,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
   const items = recentKelas.data?.items ?? [];
   const total = recentKelas.data?.total ?? 0;
+  const ungraded = pendingQ.data?.ungraded_submissions ?? 0;
 
   return (
     <div className="space-y-6">
@@ -72,7 +81,40 @@ export default function GuruDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="flex flex-col sm:col-span-2 lg:col-span-2">
+        <Card className="flex flex-col">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Tugas perlu dinilai</CardTitle>
+              <CardDescription>
+                Submission siswa yang masih nunggu lu kasih nilai (lintas kelas).
+              </CardDescription>
+            </div>
+            <ClipboardCheck className="size-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="mt-auto flex items-end justify-between gap-2">
+            {pendingQ.isPending ? (
+              <div className="h-7 w-12 animate-pulse rounded bg-muted" />
+            ) : (
+              <span
+                className={
+                  ungraded > 0
+                    ? 'text-2xl font-semibold text-rose-600'
+                    : 'text-2xl font-semibold'
+                }
+              >
+                {ungraded}
+              </span>
+            )}
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/guru/kelas">
+                Cek kelas
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col sm:col-span-2 lg:col-span-1">
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <div className="space-y-1">
               <CardTitle className="text-base">Bikin Kelas Baru</CardTitle>
