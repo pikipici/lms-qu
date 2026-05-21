@@ -82,6 +82,32 @@ export interface SubmissionListResponse {
   total: number;
 }
 
+/** Row item dari GET /siswa/submissions — flat DTO siswa lintas kelas. */
+export interface MySubmissionItem {
+  submission_id: string;
+  tugas_id: string;
+  kelas_id: string;
+  bab_id?: string | null;
+  judul: string;
+  deadline?: string | null;
+  izinkan_late: boolean;
+  penalty_persen: number;
+  status: SubmissionStatus;
+  is_late: boolean;
+  nilai_asli?: number | null;
+  penalty_persen_applied?: number | null;
+  nilai_setelah_penalty?: number | null;
+  feedback: string;
+  graded_at?: string | null;
+  submitted_at: string;
+  version: number;
+}
+
+export interface MySubmissionListResponse {
+  items: MySubmissionItem[];
+  total: number;
+}
+
 export interface GradeBody {
   nilai_asli: number;
   feedback?: string;
@@ -113,6 +139,21 @@ export async function getMySubmission(
   tugasID: string,
 ): Promise<MySubmissionResponse> {
   return api<MySubmissionResponse>(`/siswa/tugas/${tugasID}/submission`);
+}
+
+/**
+ * Siswa: GET /siswa/submissions?limit= — semua submission siswa lintas kelas
+ * (Task 4.D.2). JOIN-backed, tugas snapshot di-include per row.
+ */
+export async function listMySubmissions(
+  opts: { limit?: number } = {},
+): Promise<MySubmissionListResponse> {
+  const q = new URLSearchParams();
+  if (opts.limit) q.set('limit', String(opts.limit));
+  const qs = q.toString();
+  return api<MySubmissionListResponse>(
+    `/siswa/submissions${qs ? `?${qs}` : ''}`,
+  );
 }
 
 /**

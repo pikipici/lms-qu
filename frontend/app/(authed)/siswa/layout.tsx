@@ -19,6 +19,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   KeyRound,
+  ClipboardList,
   LogOut,
   ShieldAlert,
   UserCog,
@@ -47,6 +48,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { href: '/siswa', label: 'Dashboard', Icon: LayoutDashboard },
+  { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList },
   { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound },
 ];
 
