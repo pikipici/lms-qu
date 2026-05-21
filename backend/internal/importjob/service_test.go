@@ -65,6 +65,19 @@ func (s *stubStore) DeleteObject(ctx context.Context, key string) error {
 	return nil
 }
 
+func (s *stubStore) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	body, ok := s.objects[srcKey]
+	if !ok {
+		return storage.ErrObjectNotFound
+	}
+	cp := make([]byte, len(body))
+	copy(cp, body)
+	s.objects[dstKey] = cp
+	return nil
+}
+
 func (s *stubStore) ObjectExists(ctx context.Context, key string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

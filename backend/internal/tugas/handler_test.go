@@ -500,6 +500,7 @@ type stubSvc struct {
 	getFn             func(ctx context.Context, id, callerID uuid.UUID, role string) (*Tugas, error)
 	updateFn          func(ctx context.Context, id, callerID uuid.UUID, role string, in UpdateInput, ip, ua string) (*Tugas, error)
 	deleteFn          func(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Tugas, []string, error)
+	duplicateFn       func(ctx context.Context, srcID, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Tugas, error)
 	uploadAttFn       func(ctx context.Context, tugasID, callerID uuid.UUID, role string, in UploadAttachmentInput, ip, ua string) (*Attachment, error)
 	deleteAttFn       func(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, role, ip, ua string) error
 	presignAttURLFn   func(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, role, ip, ua string) (*AttachmentURLResult, error)
@@ -520,6 +521,12 @@ func (s *stubSvc) Update(ctx context.Context, id, callerID uuid.UUID, role strin
 }
 func (s *stubSvc) Delete(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Tugas, []string, error) {
 	return s.deleteFn(ctx, id, callerID, role, ip, ua)
+}
+func (s *stubSvc) Duplicate(ctx context.Context, srcID, callerID uuid.UUID, role string, in DuplicateInput, ip, ua string) (*Tugas, error) {
+	if s.duplicateFn == nil {
+		return nil, ErrNotFound
+	}
+	return s.duplicateFn(ctx, srcID, callerID, role, in, ip, ua)
 }
 func (s *stubSvc) UploadAttachment(ctx context.Context, tugasID, callerID uuid.UUID, role string, in UploadAttachmentInput, ip, ua string) (*Attachment, error) {
 	if s.uploadAttFn == nil {
