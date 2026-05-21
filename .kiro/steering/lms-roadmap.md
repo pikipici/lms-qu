@@ -2198,14 +2198,18 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: build/vet/test + handler tests (happy + version conflict 409 + ownership 403 + archived kelas reject + deadline_in_past warning + penalty_persen out of range).
 - Commit: `feat(tugas): CRUD service + handler + audit log (Task 4.A.2)`
 
-**Task 4.A.3 — Tugas attachment upload endpoint (multipart)** ⏳ PENDING
-- Files: `backend/internal/tugas/attachment_handler.go` (+ handler_test).
-- Endpoint: `POST /tugas/:id/attachments` (multipart form, field `file`) — guru/admin owner. Validate via locked #46 (mime sniff via `http.DetectContentType` 512 byte, allowlist `pdf, docx, jpg, png, zip`), cap size 20MB per file (locked #74), cap count 5 per tugas (cek `len(existing)+1 <= 5` else 400 `attachment_limit_reached`), filename sanitize (locked #58). Object key `tugas/<uuid>.<ext>`.
-- Flow: BEGIN tx → cek tugas exists + ownership + count attachment → R2 PutObject (atomic, before DB insert) → INSERT tugas_attachment → COMMIT. Kalau DB INSERT fail post-PutObject → defer `s3.DeleteObject` compensating cleanup + audit `tugas_attachment_orphan`.
-- `DELETE /tugas/:id/attachments/:attID` — guru/admin owner. Hard delete + R2 DeleteObject compensating. Audit `tugas_attachment_deleted` w/ meta `{tugas_id, object_key}`.
-- `GET /tugas/:id/attachments/:attID/url` — guru/admin owner OR siswa enrolled + tugas published. Presigned GET TTL `R2_PRESIGN_TTL_SECONDS` (15m default), `ResponseContentDisposition='attachment; filename="<original>"'`. Audit `file_url_issued` (locked #62) untuk file sensitif.
-- Verify: handler tests (mime allowlist + size cap + count cap + ownership 403 + presigned URL TTL + R2 orphan compensating).
-- Commit: `feat(tugas): attachment upload + presigned download (Task 4.A.3)`
+**Task 4.A.3 — Tugas attachment upload endpoint (multipart)** ✅ DONE 2026-05-21 (commit `55fb86a`; server `go vet` PASS, `go build ./...` PASS, `go test ./internal/tugas/... -v` 23/23 PASS, full repo `go test ./...` ALL PASS).
+- Files shipped: `backend/internal/tugas/{attachment,attachment_handler}.go`. Service signature refactored: `NewService(repo, kelas, bab, enroll, audit, store)` — store optional (nil = disable upload path), all 17 test calls bumped to 6 args.
+- Endpoints (4 total) wired ke `tugasGroup` (siswa role allowed, service branches by role):
+  - `POST /tugas/:id/attachments` (multipart `file`) — guru/admin owner only. Validate via locked #46 (mime sniff via `http.DetectContentType` 512-byte, allowlist `pdf, docx (sniffs as application/zip), jpg, png, zip`), cap 20MB per file, cap 5 per tugas (count+1>5 → 400 attachment_limit_reached). Object key `tugas/<uuid>.<ext>`. R2 PutObject → DB insert → compensating R2 DeleteObject if DB fails (locked #62 + #69 pattern). Audit `tugas_attachment_uploaded` + `tugas_attachment_orphan`.
+  - `GET /tugas/:id/attachments` — guru/admin owner OR siswa enrolled + tugas published.
+  - `DELETE /tugas/:id/attachments/:attID` — guru/admin owner. Hard delete + R2 DeleteObject compensating cleanup. Audit `tugas_attachment_deleted` + orphan log if R2 fail.
+  - `GET /tugas/:id/attachments/:attID/url` — guru/admin owner OR siswa enrolled + tugas published. Presigned GET TTL 15m, attachment disposition. Audit `tugas_attachment_url_issued`.
+- Error mapping: 400 invalid_id/missing_file/attachment_limit_reached, 403 forbidden, 404 not_found, 409 kelas_archived, 413 payload_too_large, 415 unsupported_mime, 500 r2_put_failed, 503 r2_unavailable.
+- Constants: `MaxTugasAttachmentBytes=20MB`, `MaxAttachmentsPerTugas=5`, `PresignTTL=15min`.
+- Note docx detection: stdlib `http.DetectContentType` returns `application/zip` for both .zip and .docx (DOCX = ZIP container). Allowlist accepts both — original filename extension preserved separately for download UX.
+- Verify: server `go vet` clean, `go build ./...` PASS, 23/23 tests PASS dalam 0.015s, full repo `go test ./...` PASS.
+- Caveats: integration test untuk R2 PutObject path butuh real R2 atau mock — tests yang aktif sekarang cover service logic (sentinel errors + audit log) tapi gak end-to-end PutObject. Real upload smoke ditunda ke saat 4.B.1 FE guru udah bisa hit endpoint dari browser.
 
 **Task 4.A.4 — Tugas duplicate endpoint** ⏳ PENDING (optional, defer kalau time-tight)
 - Files: `backend/internal/tugas/duplicate.go` (+ handler test).
@@ -2336,14 +2340,22 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**Fase 3 ✅ CLOSED 17/17.** Live deploy verified 2026-05-21 (commit `aca38e4`, lms-api PID 1749012, healthz/readyz 200, 3 endpoints smoke 401 = handlers active, migration version 7).
+**Fase 3 ✅ CLOSED 17/17.** Live deploy verified 2026-05-21 (commit `aca38e4`).
 
-**Fase 4 plan ✅ DECOMPOSED 14 task** — sub-fase 4.A (BE 4) + 4.B (FE Guru 2) + 4.C (Submission BE 4) + 4.D (FE Siswa 2) + 4.E (Review FE Guru 2). Locked decisions baru #70-#74 (resubmit single-row, late hard-block, attachment policy, FOR UPDATE concurrency, tugas attachment policy). Roadmap version → v0.9.0.
+**Fase 4 plan ✅ DECOMPOSED 14 task** — locked #70-#74. Roadmap v0.9.0.
+- 4.A Tugas BE: 3/4 ✅ DONE (4.A.1 migration `b6a2cf9`, 4.A.2 CRUD `dc7d237`, 4.A.3 attachment `55fb86a`); 4.A.4 duplicate ⏳ deferable
+- 4.B FE Guru: 0/2 pending
+- 4.C Submission BE: 0/4 pending
+- 4.D FE Siswa: 0/2 pending
+- 4.E Review FE Guru: 0/2 pending
 
-**Eksekusi berikutnya: Task 4.A.2 (Tugas CRUD service + handler)**
-- Pattern proven: mirror Task 3.A.2 (bab) + 3.F.1 (pengumuman) — service + handler + ownership guard + audit log + handler tests.
-- Endpoints: POST `/kelas/:id/tugas`, GET `/kelas/:id/tugas`, GET `/tugas/:id`, PATCH `/tugas/:id`, DELETE `/tugas/:id`.
-- Build/test gate: server `go vet`, `go build ./...`, `go test ./internal/tugas/... -v` PASS w/ 14+ test cases (happy + 409 + 403 + 400 + ownership).
-- Estimated: 60-90 menit (service logic + handler tests + main.go wiring).
+Cumulative sesi: 4 commit shipped + dual-pushed (origin GitHub + server bare). Server tree synced, DB version 8, lms-api binary belum di-restart untuk pickup tugas endpoints (deferred sampai 4.B.1 ready supaya 1× restart cover BE+FE).
+
+**Eksekusi berikutnya: pilih satu**
+- **gas Task 4.A.4 (Tugas duplicate)** — optional, mirror pattern Task 3.A.4 bab duplicate. Estimasi 30-45 menit. Source bab+attachment R2 CopyObject ke uuid baru. Bisa di-defer ke Fase 8 polish kalau time-tight.
+- **gas Task 4.B.1 (FE guru tab Tugas)** — direct value: guru bisa beneran buat tugas dari UI + upload attachment (smoke test E2E). Estimasi 90-120 menit. 4.A.4 di-defer.
+- **stop dulu** — sub-fase 4.A 3/4 (75%), 14 task overall 3/14 (21%). 3 commit + dual-pushed.
+
+Rekomendasi: **gas 4.B.1** — duplicate bisa nunggu, FE jauh lebih impactful sekarang.
 
 > Catatan FE pattern Task 3.F.3: siswa pakai endpoint `/siswa/kelas/:id/pengumuman` (BE force status=published + enrollment guard). FE gak perlu cek role atau filter status — server-side enforced. `expandFirst` prop di /siswa/kelas/detail buat auto-expand pengumuman terbaru supaya siswa langsung lihat update tanpa klik. Badge "Baru" 7-day client-side (locked #66 passive timestamp — no per-siswa read receipt).
