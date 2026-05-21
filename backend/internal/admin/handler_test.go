@@ -233,6 +233,10 @@ func (s *stubRepo) RevokeAllRefreshByUser(ctx context.Context, userID uuid.UUID,
 	return 0, nil
 }
 
+func (s *stubRepo) ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error {
+	return nil
+}
+
 func (s *stubRepo) CountAdmins(ctx context.Context) (int64, error) {
 	s.countAdminsCalls++
 	if s.countAdminsFn != nil {

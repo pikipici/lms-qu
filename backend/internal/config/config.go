@@ -152,7 +152,7 @@ func Load() (*Config, error) {
 
 	cfg.RateLimit = RateLimitConfig{
 		GlobalPerMin:    getInt("RATE_LIMIT_GLOBAL_PER_MIN", 120),
-		LoginPer15Min:   getInt("RATE_LIMIT_LOGIN_PER_15MIN", 5),
+		LoginPer15Min:   getInt("RATE_LIMIT_LOGIN_PER_15MIN", 10),
 		RefreshPerMin:   getInt("RATE_LIMIT_REFRESH_PER_MIN", 10),
 		KelasJoinPerMin: getInt("RATE_LIMIT_KELAS_JOIN_PER_MIN", 10),
 		UploadPerMin:    getInt("RATE_LIMIT_UPLOAD_PER_MIN", 30),

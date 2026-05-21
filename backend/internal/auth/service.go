@@ -34,6 +34,7 @@ type authRepo interface {
 	ListUserSessions(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error)
 	LogLoginAttempt(ctx context.Context, attempt *LoginAttempt) error
 	CountRecentFailedAttempts(ctx context.Context, email string, ip *string, since time.Time) (int64, error)
+	ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error
 	LogAudit(ctx context.Context, entry *AuditLog) error
 }
 
@@ -153,6 +154,10 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 	}
 
 	_ = s.repo.ResetFailedLogin(ctx, user.ID)
+	// UX fix: clear the rate-limit counter on success so a user who fumbled
+	// their password 1-2x doesn't stay blocked for 15 minutes when they
+	// finally type it right.
+	_ = s.repo.ClearRecentFailedAttempts(ctx, email, now.Add(-15*time.Minute))
 
 	accessToken, accessExpiresAt, err := IssueAccess(s.cfg.JWT, user.ID, user.Role)
 	if err != nil {
@@ -405,6 +410,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, currentP
 	if err := s.repo.UpdateUserPassword(ctx, user.ID, newHash); err != nil {
 		return fmt.Errorf("auth: update password: %w", err)
 	}
+
+	// Clear rate-limit counter: user provably knows their password now.
+	_ = s.repo.ClearRecentFailedAttempts(ctx, user.Email, now.Add(-15*time.Minute))
 
 	// Conservative default: revoke all refresh tokens, including this device,
 	// because the endpoint is authenticated by access token without refresh JTI.

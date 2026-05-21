@@ -968,6 +968,10 @@ func (m *mockRepo) CountRecentFailedAttempts(ctx context.Context, email string, 
 	return m.failedCount, nil
 }
 
+func (m *mockRepo) ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error {
+	return nil
+}
+
 func (m *mockRepo) LogAudit(ctx context.Context, entry *AuditLog) error {
 	m.audits = append(m.audits, entry)
 	return nil

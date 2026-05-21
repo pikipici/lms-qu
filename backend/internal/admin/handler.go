@@ -42,6 +42,7 @@ type userRepo interface {
 	UnsuspendUser(ctx context.Context, id uuid.UUID) error
 	UnlockUser(ctx context.Context, id uuid.UUID) error
 	RevokeAllRefreshByUser(ctx context.Context, userID uuid.UUID, reason auth.RevokedReason) (int64, error)
+	ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error
 	CountAdmins(ctx context.Context) (int64, error)
 	LogAudit(ctx context.Context, entry *auth.AuditLog) error
 }
@@ -665,6 +666,13 @@ func (h *Handler) ResetUserPassword(c *fiber.Ctx) error {
 	} else if err != nil {
 		slog.Error("admin reset user password failed", slog.String("err", err.Error()))
 		return adminError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+
+	// Clear rate-limit counter so user can immediately log in with the new
+	// password without waiting for the 15-minute window to expire.
+	target, ferr := h.repo.FindUserByID(c.UserContext(), targetID)
+	if ferr == nil && target != nil {
+		_ = h.repo.ClearRecentFailedAttempts(c.UserContext(), target.Email, time.Now().Add(-15*time.Minute))
 	}
 
 	if _, err := h.repo.RevokeAllRefreshByUser(c.UserContext(), targetID, auth.AdminReset); err != nil {

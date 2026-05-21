@@ -396,6 +396,17 @@ func (r *Repo) CountRecentFailedAttempts(ctx context.Context, email string, ip *
 	return count, err
 }
 
+// ClearRecentFailedAttempts deletes failed login_attempts rows for an email
+// within the given window. Used to clear the rate-limit counter after a
+// successful login, password change, or admin password reset — so users who
+// briefly fumbled their password don't stay locked out for 15 minutes when
+// their credentials are now provably correct (UX fix; locked decision tweak).
+func (r *Repo) ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error {
+	return r.db.WithContext(ctx).
+		Where("email = ? AND success = ? AND at >= ?", email, false, since).
+		Delete(&LoginAttempt{}).Error
+}
+
 // LogAudit inserts an audit log entry.
 func (r *Repo) LogAudit(ctx context.Context, entry *AuditLog) error {
 	return r.db.WithContext(ctx).Create(entry).Error
