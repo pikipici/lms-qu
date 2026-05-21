@@ -2297,7 +2297,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 4.D Submission Frontend Siswa
 
-**Task 4.D.1 — Tab "Tugas" di siswa bab detail (list tugas published) + halaman submit** ⏳ PENDING
+**Task 4.D.1 — Tab "Tugas" di siswa bab detail (list tugas published) + halaman submit** ✅ DONE (commits `9f8e9d0` + `fe50c66`)
 - Files baru:
   - `frontend/lib/submission-api.ts` — typed client (getMySubmission, submitTugas multipart, getMySubmissionAttachmentURL).
   - `frontend/components/siswa/SiswaTugasCard.tsx` — list card (judul + deadline + status badge: belum-submit/submitted/graded + nilai kalau graded + late badge).
