@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.3 — **Fase 5.C 1/2** + 5.B 3/3 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.4 — **Fase 5.C 2/2 ✅ DONE** + 5.B 3/3 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Task 5.C.1 ✅ DONE — UlanganBabSetting GET+PUT upsert, commit `7b9edd5`; Fase 5 progress 4/15)
+> Last updated: 2026-05-21 (Task 5.C.2 ✅ DONE — Latihan flow BE start+answer+finish, commit `d6c808d`; Fase 5 progress 5/15; sub-fase 5.C closed 2/2)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2426,13 +2426,16 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Smoke E2E hijau: GET default no-row + PUT pool_empty + seed 3 soal + PUT exceed_pool + PUT happy insert v=1 + PUT update v=1→2 + PUT stale v=1 (409) + 4 bounds (durasi 0, attempt 11, jumlah 0, RFC3339 invalid) + version-required-on-update + siswa not-enrolled 403 + join → siswa lobby trim 200 + siswa PUT 403 (role guard) + invalid_id + not_found + empty body 400 + siswa2 not-enrolled via guru endpoint 403.
 - Commit: `7b9edd5 feat(soalbab): UlanganBabSetting GET + PUT upsert (Task 5.C.1)`
 
-**Task 5.C.2 — Latihan flow BE (start, answer, finish — no nilai persist)** ⏳
-- Endpoints:
-  - `POST /api/v1/bab/:id/latihan/start` — siswa enrolled. Cek bab.status=published. Cek ada soal mode IN ('latihan','keduanya') ≥ 1. Bikin `HasilSoalBab(mode='latihan', status='berlangsung', mulai_at=now, deadline_at=null, soal_ids_json=ALL latihan-eligible shuffled, attempt_no=1)`. Return `{hasil_id, soal_ids: []uuid, total: int}`. Kalau sudah ada `berlangsung` aktif untuk (bab, siswa, latihan) → reuse (resume).
-  - `POST /api/v1/hasil-soal-bab/:id/answer` body `{soal_id, jawaban}` — UPSERT `JawabanBab` (UNIQUE (hasil_id, soal_id)) + langsung `is_benar = (jawaban == soal.jawaban)` + `poin_dapat = is_benar ? soal.poin : 0`. Append `EventBab(action='answer_save')`. Untuk mode latihan, return `{is_benar, jawaban_benar}` immediate (formative feedback). Untuk ulangan defer 5.D — return tanpa is_benar.
-  - `POST /api/v1/hasil-soal-bab/:id/finish` — siswa selesai latihan manual. Set `status='selesai', selesai_at=now`. Latihan: nilai_total NULL (tidak persist nilai). Return summary: `{total, benar, salah}`.
-- Verify: handler test (start happy + reuse berlangsung + answer immediate feedback latihan + finish).
-- Commit: `feat(soalbab): latihan flow start + answer + finish`
+**Task 5.C.2 — Latihan flow BE (start, answer, finish — no nilai persist)** ✅ DONE 2026-05-21 commit `d6c808d`
+- Endpoints (all siswa-only, BearerAuth + RoleGuard(siswa)):
+  - `POST /api/v1/siswa/bab/:id/latihan/start` — siswa enrolled + bab `status=published`. Pool = soal mode IN ('latihan','keduanya') Fisher-Yates shuffle, snapshot `soal_ids_json`. Resume: kalau ada `HasilSoalBab(mode='latihan',status='berlangsung')` aktif untuk (bab,siswa), return existing dengan prefilled `jawaban` map (200 OK). New: insert hasil + AppendEvent `latihan_started` (201 Created). 400 `latihan_pool_empty` kalau pool kosong.
+  - `POST /api/v1/siswa/hasil-soal-bab/:id/answer` body `{soal_id, jawaban}` — UPSERT JawabanBab via ON CONFLICT (hasil_id,soal_id) DO UPDATE. Latihan: resolve `is_benar = (jawaban == soal.jawaban)` + `poin_dapat = is_benar ? soal.poin : 0` server-side. Return formative feedback `{is_benar, jawaban_benar, poin_dapat, jawaban_tersimpan}`. AppendEvent `answer_save` (mode=latihan).
+  - `POST /api/v1/siswa/hasil-soal-bab/:id/finish` — set status=selesai + selesai_at; nilai_total NULL (formative). Idempotent on already selesai. Return `{total, benar, salah, skip, status}`.
+- Anti-cheat: `soal_id ∈ pool snapshot` enforced (locked #79 idea applied to latihan juga). Cross-mode protection: ulangan hasil hit answer/finish lewat endpoint ini → 409 `hasil_mode_invalid`. Ownership: hasil.siswa_id ≠ caller → 403 `forbidden`. Cancelled remedial → 409 `hasil_cancelled`.
+- Sentinels: `latihan_pool_empty` 400, `soal_not_in_pool` 400, `invalid_jawaban` 400, `invalid_soal_id` 400, `invalid_body` 400, `forbidden` 403, `not_found` 404 (incl. bab draft/archived hidden), `hasil_mode_invalid` 409, `hasil_already_finished` 409, `hasil_cancelled` 409.
+- Audit: `latihan_started` (total + bab_id) + `answer_save` (soal_id, jawaban, is_benar, mode) + `latihan_finished` (total, benar, salah, skip).
+- Smoke E2E hijau (18 cases): empty pool 400 + seed 3 soal (latihan+keduanya+ulangan, ulangan excluded dari pool) + start happy 201 (total=2) + start lagi 200 resume + answer benar (poin=10) + answer salah + re-answer overwrite (UPSERT) + anti-cheat soal ulangan 400 soal_not_in_pool + siswa2 not-owned 403 + invalid jawaban "z" 400 + empty body 400 + finish (benar=2 salah=0 skip=0) + answer-after-finish 409 + start-after-finish 201 NEW attempt (re-attempt unlimited) + finish empty attempt (skip=2) + guru hit start 403 (role guard) + draft bab 404 + non-existent hasil 404.
+- Commit: `d6c808d feat(soalbab): Latihan flow start + answer + finish (Task 5.C.2)`
 
 #### 5.D Ulangan Bab Flow + Auto-Grade Cron
 
