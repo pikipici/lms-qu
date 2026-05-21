@@ -38,8 +38,8 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.9.0 — Fase 3 closed + Fase 4 decomposed 14 task).
-- 67 locked decisions (v0.9.1: +#75 login rate-limit decay + threshold 5→10), 10 open decisions, ~7 minggu estimasi.
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.9.1 — Fase 3 closed + Fase 4 decomposed 14 task; Fase 4 progress 5/14 = 36%).
+- 67 locked decisions (v0.9.1: +#75 login rate-limit decay + threshold 5→10 + Fiber memory layer SkipSuccessfulRequests fix `6044d2f`), 10 open decisions, ~7 minggu estimasi.
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
