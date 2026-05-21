@@ -250,6 +250,87 @@ func (r *Repo) CountByBab(ctx context.Context, babID uuid.UUID) (int64, error) {
 	return n, nil
 }
 
+// CountByBabBatch returns total materi count per bab id, in a single query.
+// Pre-allocates the result map and zero-fills for ids that have no materi
+// (`SELECT COUNT(*) GROUP BY bab_id` only returns rows for non-zero groups).
+//
+// Used by the siswa bab list endpoint (Task 3.E.1) — denominator for the
+// progress fase-3-partial formula. Avoid N+1 by passing all bab ids at once.
+func (r *Repo) CountByBabBatch(ctx context.Context, babIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := make(map[uuid.UUID]int64, len(babIDs))
+	for _, id := range babIDs {
+		out[id] = 0
+	}
+	if len(babIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		BabID uuid.UUID `gorm:"column:bab_id"`
+		N     int64     `gorm:"column:n"`
+	}
+	var rows []row
+	if err := r.db.WithContext(ctx).
+		Table("materi").
+		Select("bab_id, COUNT(*) AS n").
+		Where("bab_id IN ?", babIDs).
+		Group("bab_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.BabID] = r.N
+	}
+	return out, nil
+}
+
+// CountReadByBabBatch returns the number of materi the given siswa has
+// marked as read, grouped by bab id, in a single query. Zero-fills missing
+// bab ids in the result map (`GROUP BY` doesn't emit zero rows).
+//
+// Used by the siswa bab list endpoint (Task 3.E.1) — numerator for progress.
+func (r *Repo) CountReadByBabBatch(ctx context.Context, babIDs []uuid.UUID, siswaID uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := make(map[uuid.UUID]int64, len(babIDs))
+	for _, id := range babIDs {
+		out[id] = 0
+	}
+	if len(babIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		BabID uuid.UUID `gorm:"column:bab_id"`
+		N     int64     `gorm:"column:n"`
+	}
+	var rows []row
+	if err := r.db.WithContext(ctx).
+		Table("materi_read AS mr").
+		Joins("JOIN materi AS m ON m.id = mr.materi_id").
+		Select("m.bab_id AS bab_id, COUNT(*) AS n").
+		Where("m.bab_id IN ? AND mr.siswa_id = ?", babIDs, siswaID).
+		Group("m.bab_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.BabID] = r.N
+	}
+	return out, nil
+}
+
+// ListReadIDsByBabSiswa returns the materi ids in a bab that the siswa
+// has marked as read. Used by the siswa bab detail endpoint (Task 3.E.1)
+// to flag each materi card as read/unread without per-materi round trips.
+func (r *Repo) ListReadIDsByBabSiswa(ctx context.Context, babID, siswaID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	if err := r.db.WithContext(ctx).
+		Table("materi_read AS mr").
+		Joins("JOIN materi AS m ON m.id = mr.materi_id").
+		Where("m.bab_id = ? AND mr.siswa_id = ?", babID, siswaID).
+		Pluck("mr.materi_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // DB returns the underlying gorm.DB so callers can run a transaction (e.g.
 // reorder under tx, future bulk operations). Mirrors bab.Repo.DB pattern.
 func (r *Repo) DB() *gorm.DB { return r.db }

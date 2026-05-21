@@ -36,6 +36,7 @@ import (
 	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/materi"
 	"github.com/pikip/lms/backend/internal/middleware"
+	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/storage"
 	"gorm.io/gorm"
 )
@@ -375,6 +376,16 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// Enrollment guard inside Service.MarkRead — no extra rate limit needed
 	// (idempotent + cheap upsert).
 	siswaGroup.Post("/materi/:id/read", materiHandler.MarkRead)
+
+	// Siswa bab list + detail (Task 3.E.1): published-only + progress
+	// fase-3-partial (materi_read / materi_total). Enrollment guard inside
+	// siswabab.Service.ListSiswa/GetSiswa. Lives in its own package to
+	// avoid an import cycle: materi → bab + kelas, jadi siswa-bab harus
+	// di luar bab.
+	siswaBabSvc := siswabab.NewService(babRepo, kelasRepo, kelasRepo, materiRepo)
+	siswaBabHandler := siswabab.NewHandler(siswaBabSvc)
+	siswaGroup.Get("/kelas/:id/bab", siswaBabHandler.ListSiswa)
+	siswaGroup.Get("/bab/:id", siswaBabHandler.GetSiswa)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
