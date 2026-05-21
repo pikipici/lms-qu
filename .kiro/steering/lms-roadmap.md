@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.8.5 — **Task 3.A.4 ✅ DONE** 2026-05-21 (commit `fcbf532`; live E2E smoke 8/8 PASS). Bab duplicate endpoint shipped: POST `/bab/:id/duplicate` body `{judul?}`, default suffix " (Salinan)", new bab status=draft + version=1 + urutan=max+1. MVP scope = bab-only (copy nomor+judul+deskripsi); Materi+Pengumuman child copy di-defer via `Service.SetChildCopier()` extension point — siap plug in pas Task 3.C.1 + 3.F.1 selesai. Guards: source 404, source archived 409, kelas archived 409, non-owner 403. Audit `bab_duplicated` w/ meta source_bab_id+new_bab_id+materi_count+pengumuman_count verified live. 7 new handler tests (total bab=30 PASS). **Sub-fase 3.A FULL DONE 4/4 (24% Fase 3).** Berikutnya: Task 3.B.1 (Bab FE Guru — tab list+DnD reorder+CRUD dialogs).
+> Status: v0.8.6 — **Task 3.B.1 ✅ DONE** 2026-05-21 (commits `97d7b28` + `4cc70dc` deps + `c474a36` lint fix; server build/typecheck/lint PASS). Tab "Bab" di kelas detail page guru shipped: list dgn DnD reorder (@dnd-kit), Create/Edit/Archive/Duplicate dialogs (react-hook-form + zod), status badge (Draft/Published/Diarsipkan), toggle "Tampilkan yang diarsipkan". Tab "Bab" jadi default (sebelum Pengaturan/Siswa/Pengumuman). DnD pakai optimistic mutation + rollback-on-error + invalidate-on-settled; reorder kirim full versions map per locked #56. Kelas archived → list read-only (drag handle hidden, no actions). Bundle /guru/kelas/detail naik dari ~14 kB → 26.9 kB (DnD lib + 6 komponen). Build static export 21/21 PASS. **Sub-fase 3.B 1/2 (29% Fase 3).** Berikutnya: Task 3.B.2 (`/guru/kelas/detail/bab` shell page sub-tabs Materi/Pengumuman/Pengaturan).
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Fase 3 planning — 7 locked decisions appended Section 0 #63-#69; Section 4/6/7/10 propagated; Section 18 Fase 3 task-by-task expanded 17 tasks split 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman; estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding 3.A.1+3.A.2+3.C.1+3.C.2+3.F.1)
+> Last updated: 2026-05-21 (Task 3.B.1 shipped — FE Guru tab Bab + DnD reorder + CRUD dialogs)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -1963,12 +1963,24 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 3.B Bab Frontend Guru
 
-**Task 3.B.1 — Tab "Bab" di kelas detail page (list + DnD reorder + create/edit/archive/duplicate)**
-- Files: `frontend/lib/bab-api.ts` (typed client), `frontend/app/(authed)/guru/kelas/detail/page.tsx` (extend tab nav, sebelumnya placeholder dari 2.B.4), tambah komponen `frontend/components/bab/{BabList,BabCard,BabDialog,ReorderProvider}.tsx`.
-- Install `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` di frontend (locked #67).
-- UI: tab Bab di kelas detail. List bab dgn drag handle, status badge (`Draft/Published/Archived`), button create. Dialog create/edit pakai react-hook-form + zod (judul wajib, deskripsi opsional, status select). Edit form kirim `version`; 409 → toast + invalidate. Archive button konfirmasi destructive. Duplicate button → input judul_baru opsional → success router push ke detail bab baru (Task 3.B.2 page).
-- DnD reorder: optimistic update pakai `useMutation` + `onMutate` (urutan local re-sort) + `onError` rollback + `onSettled` invalidate. Versions map collected dari current state, dikirim ke `/reorder`.
-- Verify: typecheck + `npm run build` static export 19+ pages + manual click smoke.
+**Task 3.B.1 — Tab "Bab" di kelas detail page (list + DnD reorder + create/edit/archive/duplicate)** ✅ DONE 2026-05-21 (commits `97d7b28` feat + `4cc70dc` chore deps + `c474a36` lint fix; server build/typecheck/lint PASS).
+- New deps: `@dnd-kit/core@6.1.0` + `@dnd-kit/sortable@8.0.0` + `@dnd-kit/utilities@3.2.2`. package-lock.json + next-env.d.ts pulled dari server post-install.
+- New files:
+  - `frontend/lib/bab-api.ts` — typed client (listBab, createBab, getBab, updateBab, archiveBab, duplicateBab, reorderBab) + `friendlyBabError(err, action)` helper untuk Indonesian copy mapping (invalid_body, version_conflict, forbidden, not_found, already_archived, kelas_archived, reorder_missing_bab, etc).
+  - `frontend/components/bab/BabSortableCard.tsx` — sortable card w/ GripVertical handle (left, listener-bound), CardBody (nomor + judul + StatusBadge + truncated deskripsi), ActionsMenu dropdown (Edit/Duplikat/Arsipkan). Plus exported `BabCardReadOnly` untuk archived-kelas case.
+  - `frontend/components/bab/BabReorderList.tsx` — DnD list w/ @dnd-kit (DndContext + SortableContext + verticalListSortingStrategy + PointerSensor distance=4 + KeyboardSensor). Optimistic mutation: onMutate cancel+snapshot+setQueryData, onError rollback + 409 invalidate, onSettled invalidate.
+  - `frontend/components/bab/BabFormDialog.tsx` — reusable Create+Edit dialog. Zod schema: nomor int 1-999, judul max 200, deskripsi max 2000, status enum 'draft'|'published' (archive via dedicated dialog). Re-sync defaults on open. Edit kirim version + invalidate on 409.
+  - `frontend/components/bab/ArchiveBabDialog.tsx` — destructive confirm. 409 already_archived → informative toast (non-destructive variant) + invalidate + close.
+  - `frontend/components/bab/DuplicateBabDialog.tsx` — input judul opsional, placeholder show "<src> (Salinan)" preview. Toast w/ new bab nomor+urutan.
+  - `frontend/components/bab/BabListSection.tsx` — orchestrator. useQuery key `['guru','kelas','bab', kelasID, includeArchived]` staleTime 15s, computes `nextNomor = max(items.nomor)+1` (useMemo'd), wires 4 dialogs, toggle "Tampilkan yang diarsipkan", refresh button, kelas-archived banner.
+- Modified `frontend/app/(authed)/guru/kelas/detail/page.tsx`:
+  - `TabKey` extended `'bab' | 'pengaturan' | 'siswa' | 'pengumuman'`.
+  - TABS array: Bab → Pengaturan → Siswa → Pengumuman (Bab default).
+  - Initial state: `useState<TabKey>('bab')`.
+  - Render slot: `{tab === 'bab' && <BabListSection kelasID={kelas.id} archived={archived} />}`.
+- Server verify: `npm install` added 6 packages, `tsc --noEmit` clean, `next build` static export 21/21 PASS, `next lint` clean for new files (1 pre-existing role-guard warning unchanged).
+- Bundle impact: `/guru/kelas/detail` 14 kB → 26.9 kB (DnD + 6 komponen + react-hook-form forms; akseptabel).
+- Caveats: BabFormDialog status select hanya expose draft/published (un-archive bukan MVP — re-create from duplicate kalau perlu). Archive dialog idempotent terhadap 409 already_archived (informative, bukan error). Reorder pakai versions map dari current cache snapshot — kalau race vs guru lain, 409 akan rollback + force refresh sesuai locked #56.
 - Commit: `feat(fe-guru): tab bab di kelas detail + dnd reorder + crud dialogs`
 
 **Task 3.B.2 — `/guru/kelas/detail/bab` shell page (sub-tabs Materi/Pengumuman/Pengaturan, Soal+Tugas placeholder)**
@@ -2100,23 +2112,19 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 ### Current Next Step (Section 18)
 
-**FASE 3 PLANNING DONE — siap eksekusi 2026-05-21.** Section 0 lock 7 decisions baru (#63-#69), Section 4/6/10 propagated, Section 18 expanded 17 task (3.A.1 .. 3.F.3) split sub-fase 3.A Bab BE / 3.B Bab FE Guru / 3.C Materi BE / 3.D Materi FE / 3.E Bab Siswa+Progress / 3.F Pengumuman. Estimasi 8-10 hari inline atau 4-5 hari dengan delegasi codex untuk CRUD scaffolding (3.A.1 + 3.A.2 + 3.C.1 + 3.C.2 + 3.F.1).
+**Task 3.B.1 ✅ DONE** 2026-05-21. Tab Bab guru shipped (list + DnD reorder + Create/Edit/Archive/Duplicate dialogs); Bab jadi default tab di kelas detail. Server build/typecheck/lint PASS, 21/21 static pages generated, bundle /guru/kelas/detail 26.9 kB.
 
-**Eksekusi berikutnya: Task 3.B.1 — Tab "Bab" di kelas detail page (FE Guru: list + DnD reorder + create/edit/archive/duplicate).**
+**Eksekusi berikutnya: Task 3.B.2 — `/guru/kelas/detail/bab` shell page (sub-tabs Materi/Pengumuman/Pengaturan, Soal+Tugas placeholder).**
 
-**Sub-fase 3.A — Bab Backend FULL DONE 4/4 (✅ 3.A.1, 3.A.2, 3.A.3, 3.A.4)**. Endpoints live: POST `/kelas/:id/bab` (create), GET `/kelas/:id/bab` (list), POST `/kelas/:id/bab/reorder` (bulk reorder), GET `/bab/:id` (detail), PATCH `/bab/:id` (update), POST `/bab/:id/archive`, POST `/bab/:id/duplicate`. 30 handler tests PASS, audit actions: `bab_created`, `bab_updated`, `bab_status_changed`, `bab_archived`, `bab_reordered`, `bab_duplicated` semua verified live.
+Sub-fase 3.B (Bab Frontend Guru) progress 1/2 (50%). Fase 3 overall 5/17 task (29%).
 
-Approach options:
-1. **Inline** — gua kerjain di chat: tulis migration SQL + Go model/repo + tests, push ke workspace, verify migrate up + go test, lalu commit. Best untuk task pertama ini biar pattern-nya bersih dan konsisten.
-2. **Delegasi codex** — pas untuk batch CRUD scaffolding (3.A.1 + 3.A.2 sekali jalan, atau 3.C.1+3.C.2+3.F.1). Catatan: Codex `--full-auto` fail di Windows (CreateProcessWithLogonW 1056) — pakai `--yolo`. Codex kadang post-commit tweak kosmetik (em-dash dll), kita amend untuk fix konsistensi (Option B pattern).
-
-**Default rekomen gue: opsi 1 (inline) untuk 3.A.1**, karena schema decision-nya butuh nuance (e.g. archived_at vs Status='archived' decision di Section 6.1 line 478, updated_at column tambah, indexes, trigger). Setelah pattern Bab BE solid (3.A.1 + 3.A.2), batch 3.C.1+3.C.2+3.F.1 boleh delegasi codex.
+Task 3.B.2 scope: page baru `/guru/kelas/detail/bab?id=<kelas>&bid=<bab>` (query-param routing, static-export-friendly mirror 2.B.4 pattern). Header bab + breadcrumb + Refresh/Edit/Archive/Duplicate buttons (REUSE BabFormDialog/ArchiveBabDialog/DuplicateBabDialog dari 3.B.1 — major payoff dari solo execution). Sub-tabs: Materi (placeholder pointer ke 3.D) | Soal (placeholder Fase 5) | Tugas (placeholder Fase 4) | Pengumuman (placeholder pointer ke 3.F.2) | Pengaturan (form edit basic fields + status switch). Pengaturan tab = mini-version dari BabFormDialog body.
 
 **Pilihan jawaban:**
-- "inline 3.A.1" → gua langsung kerjain Task 3.A.1.
-- "delegasi codex 3.A.1+3.A.2" → gua siapin prompt codex untuk batch.
-- "review plan dulu" → gua tampilin ringkasan 17 task untuk lu cek sebelum eksekusi.
-- "pause planning, start later" → gue tutup sesi, save state.
+- "gas 3.B.2" → gua langsung kerjain Task 3.B.2 inline (codex auth masih invalidated; inline fallback sudah proven 3.B.1).
+- "delegasi codex 3.B.2" → siapin prompt + minta lu re-login codex dulu.
+- "skip 3.B FE, gas 3.C.1 backend" → pivot ke Materi backend (migration 000006_materi). Risk: 3.B.2 jadi backlog tapi skip layout jadi gak ada blocker.
+- "stop dulu" → save state, lanjut next session.
 
 > Catatan: admin password sementara `Smoke-2D5-Tmp!`. Lu reset balik via `./bin/reset-admin --email admin@sekolah.id --password '<your-pwd>'` atau login + ganti di /me/security.
 
