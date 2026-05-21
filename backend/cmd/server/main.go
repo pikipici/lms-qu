@@ -435,6 +435,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	tugasGroup.Get("/:id", tugasHandler.Get)
 	tugasGroup.Patch("/:id", tugasHandler.Update)
 	tugasGroup.Delete("/:id", tugasHandler.Delete)
+	tugasGroup.Post("/:id/duplicate", tugasHandler.Duplicate)
 
 	// Attachment endpoints (Task 4.A.3): multipart upload + presigned download.
 	// Allowlist mime locked #46 (pdf, docx, jpg, png, zip), cap 5×20MB

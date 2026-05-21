@@ -32,6 +32,7 @@ type tugasService interface {
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*Tugas, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Tugas, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Tugas, []string, error)
+	Duplicate(ctx context.Context, srcID, callerID uuid.UUID, callerRole string, in DuplicateInput, ip, userAgent string) (*Tugas, error)
 	UploadAttachment(ctx context.Context, tugasID, callerID uuid.UUID, callerRole string, in UploadAttachmentInput, ip, userAgent string) (*Attachment, error)
 	DeleteAttachment(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, callerRole, ip, userAgent string) error
 	PresignAttachmentURL(ctx context.Context, tugasID, attachmentID, callerID uuid.UUID, callerRole, ip, userAgent string) (*AttachmentURLResult, error)
@@ -278,6 +279,43 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"tugas_id": t.ID,
 	})
+}
+
+type duplicateRequest struct {
+	Judul string `json:"judul"`
+}
+
+// Duplicate handles POST /api/v1/tugas/:id/duplicate.
+//
+// Body: { judul?: string } — optional override; default appends " (Salinan)"
+// to the source tugas judul. Response 201 + { tugas: <new_tugas> }.
+//
+// Mirror pola bab.Duplicate (Task 3.A.4): copy fields ke status=draft baru
+// + R2 CopyObject untuk attachment + audit `tugas_duplicated`.
+func (h *Handler) Duplicate(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid tugas id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+
+	var req duplicateRequest
+	// Body optional — empty body is fine (auto-suffix).
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&req); err != nil {
+			return errResp(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+		}
+	}
+
+	t, err := h.svc.Duplicate(c.UserContext(), id, callerID, role, DuplicateInput{Judul: req.Judul}, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"tugas": t})
 }
 
 func mapServiceErr(c *fiber.Ctx, err error) error {

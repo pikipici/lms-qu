@@ -144,6 +144,30 @@ func (r *R2Client) DeleteObject(ctx context.Context, key string) error {
 	return nil
 }
 
+// CopyObject implements Storage via S3 server-side copy. CopySource format
+// is "<bucket>/<urlEncodedKey>" — the SDK does NOT pre-escape, so we run
+// url.PathEscape on the key first to handle any path segments that contain
+// special chars (the LMS keeps "<kategori>/<uuid>.<ext>" so this is mostly
+// belt-and-suspenders).
+func (r *R2Client) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	if srcKey == "" || dstKey == "" {
+		return errors.New("storage: empty src/dst key")
+	}
+	source := fmt.Sprintf("%s/%s", r.bucket, srcKey)
+	_, err := r.s3.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(r.bucket),
+		Key:        aws.String(dstKey),
+		CopySource: aws.String(source),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return fmt.Errorf("%w: %s", ErrObjectNotFound, srcKey)
+		}
+		return fmt.Errorf("storage: CopyObject %s -> %s: %w", srcKey, dstKey, err)
+	}
+	return nil
+}
+
 // ObjectExists implements Storage via HeadObject.
 func (r *R2Client) ObjectExists(ctx context.Context, key string) (bool, error) {
 	_, err := r.s3.HeadObject(ctx, &s3.HeadObjectInput{

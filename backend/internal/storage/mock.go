@@ -118,6 +118,30 @@ func (m *MockStorage) DeleteObject(ctx context.Context, key string) error {
 	return nil
 }
 
+// CopyObject implements Storage by deep-copying body bytes from src to dst.
+// Returns ErrObjectNotFound if src is missing.
+func (m *MockStorage) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if srcKey == "" || dstKey == "" {
+		return fmt.Errorf("storage: empty src/dst key")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	src, ok := m.objects[srcKey]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrObjectNotFound, srcKey)
+	}
+	cp := make([]byte, len(src.body))
+	copy(cp, src.body)
+	m.objects[dstKey] = mockObject{
+		body:        cp,
+		contentType: src.contentType,
+	}
+	return nil
+}
+
 // ObjectExists implements Storage.
 func (m *MockStorage) ObjectExists(ctx context.Context, key string) (bool, error) {
 	if err := ctx.Err(); err != nil {

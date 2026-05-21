@@ -94,6 +94,12 @@ type Storage interface {
 	// missing key is NOT an error.
 	DeleteObject(ctx context.Context, key string) error
 
+	// CopyObject server-side copies the object at srcKey to dstKey within
+	// the same bucket. Used by duplicate flows (tugas/bab) so we don't
+	// have to GET+PUT the entire body through the LMS process. Returns
+	// ErrObjectNotFound if srcKey does not exist.
+	CopyObject(ctx context.Context, srcKey, dstKey string) error
+
 	// ObjectExists reports whether the key currently exists.
 	ObjectExists(ctx context.Context, key string) (bool, error)
 
