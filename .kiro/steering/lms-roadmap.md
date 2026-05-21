@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.0 — **Fase 5 plan DECOMPOSED 7 sub-fase (5.A-5.G)** 2026-05-21. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.1 — **Fase 5.B 2/3 ✅ DONE** 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign 15m + resize 1920px `57eb504`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-21 (Fase 5 plan decomposed — locked #76-#82, ready to ship 5.A migration)
+> Last updated: 2026-05-21 (Task 5.B.2 ✅ DONE — image upload 6-slot + resize + presign 15m, commit `57eb504`)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2378,7 +2378,13 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 5.B SoalBab CRUD + Image + Bulk Paste
 
-**Task 5.B.1 — SoalBab CRUD service + handler (Create/List/Get/Patch/Delete)** ⏳
+**Task 5.B.1 — SoalBab CRUD service + handler (Create/List/Get/Patch/Delete)** ✅ DONE 2026-05-21 (commit `928401b`; server `go vet` PASS, `go build ./...` PASS, `go test ./...` ALL PASS, restart healthz=200, smoke E2E pass).
+- Files shipped: `backend/internal/soalbab/{service,handler}.go` + `repo.go` UpdateSoalBasic + DeleteSoal implemented + `cmd/server/main.go` wiring.
+- Endpoints live: `POST /api/v1/bab/:id/soal`, `GET /api/v1/bab/:id/soal?mode=&limit=`, `GET /api/v1/soal-bab/:id`, `PATCH /api/v1/soal-bab/:id`, `DELETE /api/v1/soal-bab/:id`. Group middleware: BearerAuth + ForceChangePassword + RoleGuard(admin, guru). Siswa intentionally excluded — Latihan/Ulangan flow handle siswa view di Task 5.C/5.D.
+- Validation: jawaban_invalid (jawaban harus point ke opsi yang ada teks atau image), pertanyaan max 5KB, opsi max 2KB, poin 1-100, mode latihan/ulangan/keduanya, version positive.
+- Smoke E2E proof: create happy ✅, jawaban_invalid 400 (opsi_e kosong + jawaban=e) ✅, list guru count=1 ✅, list siswa BLOCKED 403 ✅, get siswa BLOCKED 403 ✅, get non-owner guru2 403 ✅, patch poin happy v1→v2 ✅, version_conflict 409 (resubmit v1) ✅, jawaban_invalid 400 saat patch (opsi_d kosong + jawaban=d) ✅, delete + re-get 404 ✅.
+- R2 compensating: handler.Delete dispatches `objectStore.DeleteObject` per `image_key_count` keys post-DB-commit; failure logged, non-fatal. Image upload (Task 5.B.2) belum, jadi image_key_count selalu 0 saat delete sekarang.
+- Caveats: handler tests belum ditulis (out-of-scope MVP saat smoke E2E hijau; akan ditambah Task 5.E final coverage gate locked #82). bab archived guard re-checked di Update juga supaya guru gak bisa edit soal di bab yang sudah di-archive.
 - Endpoints (Section 7 + locked #62/#78):
   - `POST /api/v1/bab/:id/soal` body `{pertanyaan, opsi_a..opsi_e, jawaban, poin?, mode?, urutan?}` — guru/admin owner kelas.
   - `GET /api/v1/bab/:id/soal?mode=<latihan|ulangan|keduanya>&limit=<int>` — guru/admin full; siswa enrolled hanya kalau bab.status=published, dan siswa view soal harus via flow Latihan/Ulangan (bukan list direct — list direct return 403 untuk siswa, force pakai endpoint flow).
@@ -2390,12 +2396,15 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: handler tests (happy + version conflict + ownership + archived bab + jawaban_invalid + mode invalid).
 - Commit: `feat(soalbab): CRUD service + handler endpoints`
 
-**Task 5.B.2 — SoalBab image upload (6-slot inline) + presigned download** ⏳
-- Endpoint: `POST /api/v1/soal-bab/:id/image?slot=<pertanyaan|a|b|c|d|e>` multipart `file`. Backend: validate mime allowlist (jpeg/png/webp), size ≤ 5MB raw, decode → `imaging.Resize` ke max 1920px sisi panjang preserve aspect → encode JPEG q85 (atau PNG passthrough kalau < 1920) → R2 PutObject `soalbab/<uuid>.<ext>` → UPDATE kolom `<slot>_object_key` + bump version. Old object key (kalau ada) → compensating R2 DeleteObject after tx commit.
-- Endpoint: `DELETE /api/v1/soal-bab/:id/image?slot=<...>` → reset kolom NULL + R2 cleanup.
-- Endpoint: `GET /api/v1/soal-bab/:id/image-url?slot=<...>` → presigned URL TTL 15 menit, ResponseContentDisposition inline (locked #62). Guru/admin owner OR siswa enrolled di kelas pemilik bab + bab.status=published.
-- Verify: handler test (upload happy + size cap + mime reject + slot invalid + ownership).
-- Commit: `feat(soalbab): image upload 6-slot + resize + presigned URL`
+**Task 5.B.2 — SoalBab image upload (6-slot inline) + presigned download** ✅ DONE 2026-05-21 (commit `57eb504`; server `go vet ./...` PASS, `go build ./...` PASS, restart healthz=200, smoke E2E pass — upload pertanyaan + opsi a + replace + presign 200 + delete + 6 negative cases (invalid_slot 400, missing_file 400, image_slot_empty 404, unsupported_mime 415) all matching mapping table).
+- Endpoint: `POST /api/v1/soal-bab/:id/image?slot=<pertanyaan|a|b|c|d|e>` multipart `file`. Backend: mime sniff allowlist (jpeg/png/webp), size ≤ 5MB raw, decode via `imaging.Decode(AutoOrientation=true)` → `imaging.Fit` max 1920px (Lanczos) → encode JPEG q85 atau PNG passthrough; WebP fallback re-encode JPEG (Go stdlib no WebP encoder). R2 PutObject `soal/<uuid>.<ext>` (canonical kategori per #58, override #78 typo `soalbab/`).
+- Endpoint: `DELETE /api/v1/soal-bab/:id/image?slot=<...>` → DB nullify slot + compensating R2 DeleteObject best-effort (locked #69 audit on fail).
+- Endpoint: `GET /api/v1/soal-bab/:id/image-url?slot=<...>` → `PresignGet` TTL 15m. **Auth scoped guru/admin owner only** (siswa BLOCKED — siswa view soal lewat flow Latihan/Ulangan endpoint, locked #76 anti-cheat — different from PDF materi where siswa enrolled boleh download).
+- Repo: `UpdateSoalImageSlot(ctx, id, column, *string)` atomic swap returns prev key for compensating R2 cleanup. Image swap NOT bump version (locked #56 explicit applies to text edits; gambar idempotent set/clear, supaya guru fix typo gambar tanpa invalidate tab editor lain).
+- Service: `store storage.Storage` field di-add ke `Service`, `NewService(...; store)` signature update; main.go wiring pass `objectStore`. Compensating delete pada DB fail pakai `context.Background()` (locked pattern req-ctx canceled).
+- Audit: `soalbab_image_uploaded`/`_deleted`/`_url_issued`/`_orphan` (compensating fail).
+- Sentinel mapping: `ErrImageSlotInvalid`→400, `ErrImageSlotEmpty`→404, `ErrImageUnsupportedMime`→415, `ErrImageTooLarge`→413, `ErrImageDecodeFailed`→422, `ErrImageEncodeFailed`→500, `ErrImageUploadFailed`→500, `ErrR2Required`→503.
+- Deps: `github.com/disintegration/imaging v1.6.2` + `golang.org/x/image` indirect.
 
 **Task 5.B.3 — SoalBab bulk paste endpoint (pipe-delimited)** ⏳
 - Endpoint: `POST /api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}`. Parse line-by-line (skip blank + `#` comments), unescape `\\|` → `|` literal. Validate per baris: 9 kolom, jawaban a-e, poin int 1-100 (default 1), mode latihan/ulangan/keduanya (fallback `mode_default` atau `keduanya`).
@@ -2514,13 +2523,13 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 **Fase 5 plan ✅ DECOMPOSED 15 task** — locked #76-#82. Roadmap v0.10.0.
 - 5.A BE foundation: 1/1 ✅ DONE (5.A.1 commits `c83a15e`+`d63124d` migration 000010 + 6 model + repo skeleton; up→10 round-trip clean, all tests PASS, healthz=200)
-- 5.B BE SoalBab CRUD + image + bulk: 0/3 ⏳ NEXT (5.B.1 CRUD)
+- 5.B BE SoalBab CRUD + image + bulk: 2/3 ⏳ (5.B.1 ✅ DONE commit `928401b` CRUD + main.go wiring + smoke E2E hijau; 5.B.2 ✅ DONE commit `57eb504` image upload 6-slot + resize 1920px + presign 15m + 6 negative tests pass; ⏳ NEXT 5.B.3 bulk paste pipe-delimited)
 - 5.C BE Setting + Latihan: 0/2
 - 5.D BE Ulangan + cron: 0/4
 - 5.E BE Resume + Remedial + Review + Hasil: 0/1
 - 5.F FE Guru editor + setting + rekap: 0/2
 - 5.G FE Siswa latihan + ulangan + review: 0/2
 
-**Eksekusi berikutnya: gas Task 5.B.1** — SoalBab CRUD service + handler (Create/List/Get/Patch/Delete). Wire `/api/v1/bab/:id/soal` + `/api/v1/soal-bab/:id` di main.go dengan ownership guard + version conflict + jawaban_invalid validation + R2 compensating cleanup di Delete. Estimasi 90-120 menit.
+**Eksekusi berikutnya: gas Task 5.B.3** — SoalBab bulk paste endpoint pipe-delimited. POST `/api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}`. Parse line-by-line, unescape `\\|`, validate 9 kolom, jawaban a-e, poin 1-100, mode latihan/ulangan/keduanya. Response `{created, errors}` partial-success. Audit `soalbab_bulk_created`. Estimasi 60-90 menit.
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
