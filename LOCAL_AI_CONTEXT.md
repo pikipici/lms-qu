@@ -38,7 +38,7 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.9.1 — Fase 3 closed + Fase 4 decomposed 14 task; Fase 4 progress 6/14 = 43%).
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.9.1 — Fase 3 closed + Fase 4 decomposed 14 task; Fase 4 progress 9/14 = 64%).
 - 67 locked decisions (v0.9.1: +#75 login rate-limit decay + threshold 5→10 + Fiber memory layer SkipSuccessfulRequests fix `6044d2f`), 10 open decisions, ~7 minggu estimasi.
 
 ## Phase tracker
@@ -46,7 +46,7 @@
 - [x] Fase 1 — Auth & Admin Panel (DONE: 1.A-1.H + 1.I, backend admin domain CLOSED, FE auth/admin shell/pengguna/audit-log/login-attempts shipped)
 - [x] Fase 2 — Kelas, Enrollment, Bulk Import (DONE 20/20: 2.A.1, 2.A.2, 2.B FULL, 2.C FULL, 2.D FULL 6/6, 2.E FULL FE Admin Import 3/3 DONE 2026-05-21 commit `0f3772e`)
 - [x] Fase 3 — Bab & Materi + Pengumuman (✅ DONE 17/17 = 100% complete; 3.A backend 4/4 DONE, 3.B FE Guru 2/2 DONE, 3.C Materi BE 4/4 CLOSED commit `caad20a`, 3.D Materi FE 2/2 CLOSED commits `eeca652` + `d08df3f`, 3.E Bab Siswa 2/2 CLOSED commits `c0d795a` + `3a69ddb`, 3.F Pengumuman 3/3 CLOSED: 3.F.1 BE commit `cf8c5bc` migration 000007 + CRUD endpoints + 18/18 tests, 3.F.2 + 3.F.3 FE combined commit `1ab48f7` — guru CRUD list+filter+compose+edit+archive+delete + siswa read-only kelas-wide + bab-scoped, lint cleanup `6d3cc6f`)
-- [ ] Fase 4 — Tugas (plan ✅ DECOMPOSED 14 task v0.9.0; progress 6/14 = 43%: 4.A BE 3/4 ✅ DONE migration `b6a2cf9` + CRUD `dc7d237` + attachment `55fb86a`, 4.A.4 duplicate ⏳ deferable, 4.B FE Guru 2/2 ✅ DONE merged commit `c4acf54` kelas-wide+bab page; 4.C BE 1/4 ✅ DONE 4.C.1 migration 000009 + model + repo `55296be`; locked #70-#74; NEXT: Task 4.C.2 Submit endpoint)
+- [ ] Fase 4 — Tugas (plan ✅ DECOMPOSED 14 task v0.9.0; progress 9/14 = 64%: 4.A BE 3/4 ✅ DONE migration `b6a2cf9` + CRUD `dc7d237` + attachment `55fb86a`, 4.A.4 duplicate ⏳ deferable, 4.B FE Guru 2/2 ✅ DONE merged commit `c4acf54` kelas-wide+bab page; 4.C BE 4/4 ✅ DONE 4.C.1 migration 000009 + model + repo `55296be` + 4.C.2/4.C.3/4.C.4 submit/get/list/grade `6200d16` smoke E2E pass; locked #70-#74; NEXT: Task 4.D Submission FE Siswa)
 - [ ] Fase 5 — Soal Bab
 - [ ] Fase 6 — Ulangan Harian
 - [ ] Fase 7 — Rekap Nilai + Activity Feed

@@ -2252,7 +2252,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: migrate up applied dev DB → `\d submission` + `\d submission_attachment` confirm UNIQUE constraint + FK CASCADE.
 - Commit: `feat(migrations): 000009 submission + attachment`, `feat(submission): GORM model + repo + FOR UPDATE`
 
-**Task 4.C.2 — Submission Submit endpoint (siswa upload + late detection)** ⏳ PENDING
+**Task 4.C.2 — Submission Submit endpoint (siswa upload + late detection)** ✅ DONE (commit `6200d16`)
 - Files: `backend/internal/submission/{service,handler,handler_test}.go`. Wire di `cmd/server/main.go` group `/api/v1/siswa`.
 - Endpoint: `POST /siswa/tugas/:id/submit` (multipart form, fields `catatan`, `files[]`) — RoleGuard(siswa) + EnrollmentGuard(via tugas.KelasID).
 - Flow (locked #73):
@@ -2273,7 +2273,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: handler tests (happy + late accept w/ flag + late hard-block + already_graded + wajib_attachment + attachment cap + resubmit version bump + R2 compensating on rollback).
 - Commit: `feat(submission): submit endpoint w/ late + idempotent + FOR UPDATE (Task 4.C.2)`
 
-**Task 4.C.3 — Submission Get/List + presigned attachment URL** ⏳ PENDING
+**Task 4.C.3 — Submission Get/List + presigned attachment URL** ✅ DONE (commit `6200d16`)
 - Endpoints:
   - `GET /siswa/tugas/:id/submission` — siswa, return own submission (kalau ada) atau 404 + tugas info (deadline, izinkan_late, penalty_persen) untuk pre-fill UI.
   - `GET /tugas/:id/submissions?status=` — guru/admin owner, list submission per tugas (rekap untuk grading).
@@ -2283,7 +2283,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Verify: handler tests (siswa hanya lihat own + guru lihat semua di kelas + cross-kelas 403 + 404 untuk submission yg gak ada).
 - Commit: `feat(submission): get + list + presigned URL (Task 4.C.3)`
 
-**Task 4.C.4 — Submission Grade endpoint (guru kasih nilai + penalty calc)** ⏳ PENDING
+**Task 4.C.4 — Submission Grade endpoint (guru kasih nilai + penalty calc)** ✅ DONE (commit `6200d16`)
 - Endpoint: `POST /submission/:id/grade` — guru/admin owner. Body `{nilai_asli (0-100, decimal-2), feedback?, version}`.
 - Flow (locked #71/#73):
   - BEGIN tx → SELECT submission FOR UPDATE → cek `Status='submitted'` (kalau `graded` → 409 `already_graded`, kalau `returned` → 400 `cannot_grade_returned` defer MVP) + version match
