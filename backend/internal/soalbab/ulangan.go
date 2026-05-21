@@ -134,7 +134,7 @@ func (s *UlanganService) Start(ctx context.Context, babID, siswaID uuid.UUID, ip
 		}
 	}()
 
-	if err := tx.Exec("SELECT pg_advisory_xact_lock(?, ?)", k1, k2).Error; err != nil {
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(?::bigint, ?::bigint)", k1, k2).Error; err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("soalbab ulangan advisory lock: %w", err)
 	}
