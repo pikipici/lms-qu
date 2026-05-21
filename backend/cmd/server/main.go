@@ -442,6 +442,16 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	siswaGroup.Post("/hasil-soal-bab/:id/answer", soalbabLatihanHandler.Answer)
 	siswaGroup.Post("/hasil-soal-bab/:id/finish", soalbabLatihanHandler.Finish)
 
+	// Task 5.D.1 — Ulangan Bab start (random pool deterministic seed).
+	// Pool snapshot via sha256(mulai_at_micro || siswa || bab)[:8] LE
+	// → math/rand source (locked #79). Single-flight per (bab, siswa)
+	// via pg_advisory_xact_lock — concurrent Start calls return same
+	// hasil. attempt_no enforced ≤ Setting.BatasAttempt (locked #76).
+	// Answer/submit/cron land in 5.D.2-5.D.4.
+	soalbabUlanganSvc := soalbab.NewUlanganService(soalbabRepo, babRepo, kelasRepo, authRepo)
+	soalbabUlanganHandler := soalbab.NewUlanganHandler(soalbabUlanganSvc)
+	siswaGroup.Post("/bab/:id/ulangan/start", soalbabUlanganHandler.Start)
+
 	// Pengumuman (Task 3.F.1): announcement CRUD per kelas. BabID nullable
 	// — bisa kelas-wide atau bab-scoped. Status enum published|archived
 	// (locked #66 passive timestamp). Kelas-scope routes (POST/GET) under
