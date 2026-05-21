@@ -40,6 +40,7 @@ import {
   BookOpen,
   ClipboardCheck,
   ClipboardCopy,
+  ClipboardList,
   Copy,
   Megaphone,
   RotateCcw,
@@ -88,6 +89,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { BabListSection } from '@/components/bab/BabListSection';
 import { PengumumanList } from '@/components/pengumuman/PengumumanList';
+import { TugasList } from '@/components/tugas/TugasList';
 
 // ---------- Schema & helpers ----------
 
@@ -795,12 +797,13 @@ function SiswaTab({ kelasID }: { kelasID: string }) {
 
 // ---------- Page ----------
 
-type TabKey = 'bab' | 'pengaturan' | 'siswa' | 'pengumuman';
+type TabKey = 'bab' | 'pengaturan' | 'siswa' | 'pengumuman' | 'tugas';
 
 const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'bab', label: 'Bab', Icon: BookOpen },
   { key: 'pengaturan', label: 'Pengaturan', Icon: Settings },
   { key: 'siswa', label: 'Siswa', Icon: Users },
+  { key: 'tugas', label: 'Tugas', Icon: ClipboardList },
   { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
 ];
 
@@ -979,6 +982,15 @@ function GuruKelasDetailContent({ id }: { id: string }) {
       )}
 
       {tab === 'siswa' && <SiswaTab kelasID={kelas.id} />}
+
+      {tab === 'tugas' && (
+        <TugasList
+          kelasID={kelas.id}
+          babID={null}
+          contextLabel={`Tugas kelas-wide untuk ${kelas.nama}.`}
+          disabled={archived}
+        />
+      )}
 
       {tab === 'pengumuman' && (
         <PengumumanList

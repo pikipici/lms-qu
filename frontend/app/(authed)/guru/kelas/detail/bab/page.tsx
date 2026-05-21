@@ -82,6 +82,7 @@ import { ArchiveBabDialog } from '@/components/bab/ArchiveBabDialog';
 import { DuplicateBabDialog } from '@/components/bab/DuplicateBabDialog';
 import { MateriList } from '@/components/materi/MateriList';
 import { PengumumanList } from '@/components/pengumuman/PengumumanList';
+import { TugasList } from '@/components/tugas/TugasList';
 
 // ---------- Helpers ----------
 
@@ -573,11 +574,11 @@ function GuruBabDetailContent({
         />
       )}
       {tab === 'tugas' && (
-        <PlaceholderTab
-          Icon={ClipboardList}
-          title="Tugas"
-          body="Tugas per bab dengan deadline. Submit lewat upload file/link."
-          taskRef="Fase 4 (Tugas)"
+        <TugasList
+          kelasID={kelasID}
+          babID={babID}
+          contextLabel={`Tugas untuk Bab ${bab.nomor} — ${bab.judul}.`}
+          disabled={archived}
         />
       )}
       {tab === 'pengumuman' && (
