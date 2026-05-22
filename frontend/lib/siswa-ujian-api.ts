@@ -88,31 +88,40 @@ export interface UjianAttemptItem {
   // is_benar deliberately absent untuk ulangan (delayed grade #76).
 }
 
+/**
+ * Live items payload — flat shape from BE Items handler (no envelope).
+ * Mirror backend ItemsResult struct (ujian/items.go).
+ */
 export interface UjianAttemptItemsResult {
   hasil_id: string;
   ujian_id: string;
   status: SiswaUjianHasilStatus;
+  attempt_no: number;
   mulai_at: string;
   deadline_at?: string | null;
-  durasi_detik: number;
+  total: number;
   items: UjianAttemptItem[];
 }
 
+/**
+ * Start payload — fields mirror backend StartResult.
+ * Note: NO ujian_id wrap; soal_ids[] full pool snapshot.
+ */
 export interface UjianStartResult {
   hasil_id: string;
   ujian_id: string;
-  attempt_no: number;
-  status: SiswaUjianHasilStatus;
+  soal_ids: string[];
+  total: number;
   mulai_at: string;
   deadline_at: string;
   durasi_detik: number;
-  soal_total: number;
+  attempt_no: number;
   resume: boolean;
 }
 
 export interface UjianAnswerInput {
   soal_id: string;
-  jawaban: UjianSoalJawaban | null;
+  jawaban: UjianSoalJawaban;
 }
 
 export interface UjianAnswerResult {
@@ -120,33 +129,35 @@ export interface UjianAnswerResult {
   // ulangan: TIDAK return is_benar / jawaban_benar (locked #76)
 }
 
+/**
+ * Submit payload — fields mirror backend SubmitResult.
+ * Wrapped sebagai {"summary": ...} di response.
+ */
 export interface UjianSubmitResult {
   hasil_id: string;
-  ujian_id: string;
   nilai_total: number;
   jawaban_benar_count: number;
   jawaban_total: number;
   selesai_at: string;
+  dapat_review_at?: string | null;
   izinkan_review: boolean;
-  waktu_buka_review?: string | null;
   already_submitted: boolean;
 }
 
 export interface UjianReviewItem {
   soal_id: string;
-  urutan: number;
   pertanyaan: string;
   opsi_a: string;
   opsi_b: string;
   opsi_c: string;
   opsi_d: string;
   opsi_e: string;
-  poin: number;
   jawaban_benar: UjianSoalJawaban;
   jawaban_siswa?: UjianSoalJawaban | null;
   is_benar?: boolean | null;
-  poin_dapat?: number | null;
-  images?: UjianSoalImageSlot[];
+  poin_dapat: number;
+  poin_maksimal: number;
+  urutan: number;
 }
 
 export interface UjianReviewResult {
@@ -212,10 +223,14 @@ export async function startSiswaUjian(
   });
 }
 
+/**
+ * BE handler returns flat ItemsResult (no envelope) — distinct dari Start
+ * yang wrapped {"hasil": ...}. Mirror SoalBab pattern.
+ */
 export async function getSiswaUjianItems(
   hasilID: string,
-): Promise<{ items: UjianAttemptItemsResult }> {
-  return api<{ items: UjianAttemptItemsResult }>(
+): Promise<UjianAttemptItemsResult> {
+  return api<UjianAttemptItemsResult>(
     `/siswa/hasil-ujian/${hasilID}/items`,
   );
 }
@@ -230,10 +245,11 @@ export async function postSiswaUjianAnswer(
   });
 }
 
+/** BE wraps as {"summary": SubmitResult}. */
 export async function submitSiswaUjian(
   hasilID: string,
-): Promise<{ hasil: UjianSubmitResult }> {
-  return api<{ hasil: UjianSubmitResult }>(
+): Promise<{ summary: UjianSubmitResult }> {
+  return api<{ summary: UjianSubmitResult }>(
     `/siswa/hasil-ujian/${hasilID}/submit`,
     { method: 'POST', body: {} },
   );
