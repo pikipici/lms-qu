@@ -38,8 +38,8 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.11.14 — Fase 0-6 ✅ ALL CLOSED, head `8620e1b`).
-  - Fase 4 14/14, Fase 5 15/15 + UX/QA pass `22d2095`, **🎉 Fase 6 15/15** smoke E2E 416/416 hijau.
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.11.15 — Fase 0-6 ✅ ALL CLOSED + UX/QA pass `6e10888`, head `6e10888`).
+  - Fase 4 14/14, Fase 5 15/15 + UX/QA pass `22d2095`, **🎉 Fase 6 15/15 + UX/QA pass `6e10888`** smoke E2E 367/368 hijau (1 unrelated bank-pool fixture flake) + boundary regression 9/9.
 - 88 locked decisions (v0.10.0 add #76-#82 Fase 5; v0.11.0 add #83-#88 Fase 6: sub-fase split 6.A-6.G, BankSoal per-guru, source mode manual/random + SourceConfigJSON, deterministic seed pool, cron 30s + advisory lock reuse SoalBab, coverage gate ≥70% defer Fase 8). 10 open decisions.
 - Next focus: **Fase 7 — Rekap Nilai + Activity Feed** (cross-fase aggregate Tugas + SoalBab + Ujian + activity timeline).
 
