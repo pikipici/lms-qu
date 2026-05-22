@@ -289,9 +289,19 @@ func (r *Repo) ScanExpiredHasilIDs(ctx context.Context, now time.Time, limit int
 // JawabanUjian persistence
 // ---------------------------------------------------------------------------
 
-// UpsertJawaban — implemented in 6.D.2.
+// UpsertJawaban inserts or updates a jawaban_ujian row keyed on
+// (hasil_id, soal_id). Used by 6.D.2 answer save (delayed grade —
+// is_benar=NULL, poin_dapat=0 sampai submit/cron locked #87).
 func (r *Repo) UpsertJawaban(ctx context.Context, j *JawabanUjian) error {
-	return errNotImplemented
+	return r.db.WithContext(ctx).Exec(`
+		INSERT INTO jawaban_ujian (id, hasil_id, soal_id, jawaban, is_benar, poin_dapat, answered_at)
+		VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (hasil_id, soal_id) DO UPDATE SET
+			jawaban = EXCLUDED.jawaban,
+			is_benar = EXCLUDED.is_benar,
+			poin_dapat = EXCLUDED.poin_dapat,
+			answered_at = EXCLUDED.answered_at
+	`, j.HasilID, j.SoalID, j.Jawaban, j.IsBenar, j.PoinDapat, j.AnsweredAt).Error
 }
 
 // ListJawabanByHasil loads all jawaban rows for an attempt — used

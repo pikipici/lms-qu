@@ -475,6 +475,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	ujianRepo := ujian.NewRepo(gdb)
 	ujianSvc := ujian.NewService(ujianRepo, kelasRepo, bankSoalRepo, authRepo)
 	ujianHandler := ujian.NewHandler(ujianSvc)
+	ujianFlowSvc := ujian.NewFlowService(ujianRepo, bankSoalRepo, kelasRepo, authRepo)
+	ujianItemsSvc := ujian.NewItemsService(ujianRepo, bankSoalRepo, objectStore)
+	ujianFlowHandler := ujian.NewFlowHandler(ujianFlowSvc, ujianItemsSvc)
 
 	// guruGroup belum di-register di sini — register di bawah setelah
 	// pendingHandler block. Wire route di sana supaya satu group definition.
@@ -660,6 +663,15 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	ujianStaffGroup.Post("/:id/source/preview", ujianHandler.PreviewSource)
 	ujianStaffGroup.Patch("/:id", ujianHandler.Update)
 	ujianStaffGroup.Delete("/:id", ujianHandler.Delete)
+
+	// Task 6.D.1 — Ujian flow start + items (siswa).
+	// Start: POST /siswa/ujian/:id/start (deterministic seed locked #86,
+	//        single-flight via pg_advisory_xact_lock(ujian_id||siswa_id),
+	//        single-attempt enforcement via partial-unique index).
+	// Items: GET /siswa/hasil-ujian/:id/items (anti-cheat — strip
+	//        jawaban_benar; presigned image slots TTL 15m).
+	siswaGroup.Post("/ujian/:id/start", ujianFlowHandler.Start)
+	siswaGroup.Get("/hasil-ujian/:id/items", ujianFlowHandler.Items)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
