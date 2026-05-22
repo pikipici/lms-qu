@@ -45,11 +45,11 @@ interface NavItem {
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
   /** When set, shows a badge next to the label with the resolved value. */
-  badgeKey?: 'ungraded';
+  badgeKey?: 'ungraded' | 'review_ulangan' | 'review_ujian' | 'pending_total';
 }
 
 const NAV: NavItem[] = [
-  { href: '/guru', label: 'Dashboard', Icon: LayoutDashboard, badgeKey: 'ungraded' },
+  { href: '/guru', label: 'Dashboard', Icon: LayoutDashboard, badgeKey: 'pending_total' },
   { href: '/guru/kelas', label: 'Kelas', Icon: GraduationCap },
   { href: '/guru/bank-soal', label: 'Bank Soal', Icon: Library },
 ];
@@ -67,7 +67,8 @@ function GuruShell({ children }: { children: React.ReactNode }) {
   const refresh = useAuthStore((s) => s.refresh);
   const clear = useAuthStore((s) => s.clear);
 
-  // Pending counters — polled every 30s while guru navigates (Task 4.E.2).
+  // Pending counters — polled every 30s while guru navigates (Task 4.E.2 +
+  // Task 7.D consolidated locked #93 — 3 counters cross-kelas).
   const pendingQ = useQuery({
     queryKey: ['guru', 'pending-counts'],
     queryFn: getPendingCounts,
@@ -76,10 +77,16 @@ function GuruShell({ children }: { children: React.ReactNode }) {
     refetchIntervalInBackground: false,
   });
   const ungraded = pendingQ.data?.ungraded_submissions ?? 0;
+  const reviewUlangan = pendingQ.data?.pending_review_ulangan ?? 0;
+  const reviewUjian = pendingQ.data?.pending_review_ujian ?? 0;
+  const pendingTotal = ungraded + reviewUlangan + reviewUjian;
 
   const badgeFor = (key?: NavItem['badgeKey']): number | undefined => {
     if (!key) return undefined;
     if (key === 'ungraded') return ungraded > 0 ? ungraded : undefined;
+    if (key === 'review_ulangan') return reviewUlangan > 0 ? reviewUlangan : undefined;
+    if (key === 'review_ujian') return reviewUjian > 0 ? reviewUjian : undefined;
+    if (key === 'pending_total') return pendingTotal > 0 ? pendingTotal : undefined;
     return undefined;
   };
 

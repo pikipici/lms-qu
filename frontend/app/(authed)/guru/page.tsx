@@ -11,7 +11,13 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, ClipboardCheck, GraduationCap, Plus, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  ClipboardCheck,
+  GraduationCap,
+  ListChecks,
+  ScrollText,
+} from 'lucide-react';
 
 import { listKelas } from '@/lib/kelas-api';
 import { getPendingCounts } from '@/lib/guru-api';
@@ -45,6 +51,8 @@ export default function GuruDashboardPage() {
   const items = recentKelas.data?.items ?? [];
   const total = recentKelas.data?.total ?? 0;
   const ungraded = pendingQ.data?.ungraded_submissions ?? 0;
+  const reviewUlangan = pendingQ.data?.pending_review_ulangan ?? 0;
+  const reviewUjian = pendingQ.data?.pending_review_ujian ?? 0;
 
   return (
     <div className="space-y-6">
@@ -58,7 +66,7 @@ export default function GuruDashboardPage() {
         </p>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="flex flex-col">
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <div className="space-y-1">
@@ -87,7 +95,7 @@ export default function GuruDashboardPage() {
             <div className="space-y-1">
               <CardTitle className="text-base">Tugas perlu dinilai</CardTitle>
               <CardDescription>
-                Submission siswa yang masih nunggu lu kasih nilai (lintas kelas).
+                Submission tugas yang masih nunggu nilai.
               </CardDescription>
             </div>
             <ClipboardCheck className="size-5 text-muted-foreground" />
@@ -108,29 +116,74 @@ export default function GuruDashboardPage() {
             )}
             <Button asChild variant="ghost" size="sm">
               <Link href="/guru/kelas">
-                Cek kelas
+                Cek
                 <ArrowRight className="size-4" />
               </Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card className="flex flex-col sm:col-span-2 lg:col-span-1">
+        <Card className="flex flex-col">
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <div className="space-y-1">
-              <CardTitle className="text-base">Bikin Kelas Baru</CardTitle>
+              <CardTitle className="text-base">Review ulangan bab</CardTitle>
               <CardDescription>
-                Generate kode invite, atur bobot soal vs tugas, undang siswa
-                lewat kode atau bulk import.
+                Hasil ulangan bab siap dibuka untuk siswa.
               </CardDescription>
             </div>
-            <Users className="size-5 text-muted-foreground" />
+            <ListChecks className="size-5 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="mt-auto">
-            <Button asChild size="sm">
+          <CardContent className="mt-auto flex items-end justify-between gap-2">
+            {pendingQ.isPending ? (
+              <div className="h-7 w-12 animate-pulse rounded bg-muted" />
+            ) : (
+              <span
+                className={
+                  reviewUlangan > 0
+                    ? 'text-2xl font-semibold text-amber-600'
+                    : 'text-2xl font-semibold'
+                }
+              >
+                {reviewUlangan}
+              </span>
+            )}
+            <Button asChild variant="ghost" size="sm">
               <Link href="/guru/kelas">
-                <Plus className="size-4" />
-                Buat / lihat kelas
+                Cek
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Review ujian</CardTitle>
+              <CardDescription>
+                Hasil ulangan harian / ujian yang siap dibuka.
+              </CardDescription>
+            </div>
+            <ScrollText className="size-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="mt-auto flex items-end justify-between gap-2">
+            {pendingQ.isPending ? (
+              <div className="h-7 w-12 animate-pulse rounded bg-muted" />
+            ) : (
+              <span
+                className={
+                  reviewUjian > 0
+                    ? 'text-2xl font-semibold text-amber-600'
+                    : 'text-2xl font-semibold'
+                }
+              >
+                {reviewUjian}
+              </span>
+            )}
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/guru/kelas">
+                Cek
+                <ArrowRight className="size-4" />
               </Link>
             </Button>
           </CardContent>
