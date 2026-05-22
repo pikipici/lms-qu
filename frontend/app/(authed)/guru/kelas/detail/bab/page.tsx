@@ -82,6 +82,7 @@ import { ArchiveBabDialog } from '@/components/bab/ArchiveBabDialog';
 import { DuplicateBabDialog } from '@/components/bab/DuplicateBabDialog';
 import { MateriList } from '@/components/materi/MateriList';
 import { PengumumanList } from '@/components/pengumuman/PengumumanList';
+import { SoalBabList } from '@/components/soalbab/SoalBabList';
 import { TugasList } from '@/components/tugas/TugasList';
 
 // ---------- Helpers ----------
@@ -566,11 +567,10 @@ function GuruBabDetailContent({
         />
       )}
       {tab === 'soal' && (
-        <PlaceholderTab
-          Icon={BookOpen}
-          title="Soal"
-          body="Bank soal per bab untuk latihan dan ulangan. Diatur per bab supaya siswa fokus."
-          taskRef="Fase 5 (Soal Bab)"
+        <SoalBabList
+          babID={babID}
+          contextLabel={`Bank soal untuk Bab ${bab.nomor} — ${bab.judul}.`}
+          disabled={archived}
         />
       )}
       {tab === 'tugas' && (
