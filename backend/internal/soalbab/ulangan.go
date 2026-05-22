@@ -518,16 +518,8 @@ func (s *UlanganService) Submit(ctx context.Context, hasilID, siswaID uuid.UUID,
 		return nil, errors.New("soalbab ulangan submit: empty pool snapshot")
 	}
 
-	// Load soals + answers (in-tx for snapshot consistency).
-	var soals []SoalBab
-	if err := tx.Where("id IN ?", pool).Find(&soals).Error; err != nil {
-		tx.Rollback()
-		return nil, fmt.Errorf("soalbab ulangan submit soals: %w", err)
-	}
-	soalByID := make(map[uuid.UUID]*SoalBab, len(soals))
-	for i := range soals {
-		soalByID[soals[i].ID] = &soals[i]
-	}
+	// Load answers (snapshot via tx). Soals dimuat di gradeAttemptInTx
+	// supaya cron auto-grade (5.D.4) bisa pakai helper sama.
 	var jawabans []JawabanBab
 	if err := tx.Where("hasil_id = ?", hasilID).Find(&jawabans).Error; err != nil {
 		tx.Rollback()
@@ -535,40 +527,10 @@ func (s *UlanganService) Submit(ctx context.Context, hasilID, siswaID uuid.UUID,
 	}
 
 	// Re-grade. UPDATE per row dalam tx — pool max 200 (locked bound).
-	var benar int16
-	var nilaiTotal float64
-	for i := range jawabans {
-		j := &jawabans[i]
-		soal, ok := soalByID[j.SoalID]
-		if !ok {
-			// Soal deleted post-snapshot; treat as wrong (defensive).
-			falseVal := false
-			j.IsBenar = &falseVal
-			j.PoinDapat = 0
-		} else if j.Jawaban == nil || *j.Jawaban == "" {
-			falseVal := false
-			j.IsBenar = &falseVal
-			j.PoinDapat = 0
-		} else {
-			isBenar := Jawaban(*j.Jawaban) == soal.Jawaban
-			j.IsBenar = &isBenar
-			if isBenar {
-				j.PoinDapat = soal.Poin
-				benar++
-				nilaiTotal += float64(soal.Poin)
-			} else {
-				j.PoinDapat = 0
-			}
-		}
-		if err := tx.Model(&JawabanBab{}).
-			Where("id = ?", j.ID).
-			Updates(map[string]any{
-				"is_benar":   j.IsBenar,
-				"poin_dapat": j.PoinDapat,
-			}).Error; err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("soalbab ulangan submit grade jawaban: %w", err)
-		}
+	benar, nilaiTotal, err := gradeAttemptInTx(tx, hasilID, pool, jawabans)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
 	}
 	jumlahTotal := int16(len(pool))
 	now := s.now()
@@ -678,6 +640,60 @@ func hasilLockKey(hasilID uuid.UUID) int64 {
 	h.Write(hb)
 	d := h.Sum(nil)
 	return int64(binary.LittleEndian.Uint64(d[:8])) //nolint:gosec
+}
+
+// gradeAttemptInTx loads soals for the snapshot pool and grades each
+// jawaban in-place inside the supplied tx. Returns (benar_count,
+// nilai_total). Shared helper antara Submit (5.D.3) and cron
+// auto-grade (5.D.4) supaya logika sama persis.
+//
+// Behavior:
+//   - Loads SoalBab rows by `pool` ids using the tx (snapshot consistency).
+//   - For each jawaban: missing/empty jawaban string OR soal removed
+//     post-snapshot → is_benar=false, poin=0 (defensive).
+//   - Otherwise: is_benar = jawaban == soal.jawaban,
+//     poin = soal.poin if benar else 0.
+//   - UPDATE per row in tx; max 200 rows per locked bound.
+func gradeAttemptInTx(tx *gorm.DB, hasilID uuid.UUID, pool []uuid.UUID, jawabans []JawabanBab) (int16, float64, error) {
+	var soals []SoalBab
+	if err := tx.Where("id IN ?", pool).Find(&soals).Error; err != nil {
+		return 0, 0, fmt.Errorf("soalbab grade: load soals: %w", err)
+	}
+	soalByID := make(map[uuid.UUID]*SoalBab, len(soals))
+	for i := range soals {
+		soalByID[soals[i].ID] = &soals[i]
+	}
+
+	var benar int16
+	var nilaiTotal float64
+	falseVal := false
+	for i := range jawabans {
+		j := &jawabans[i]
+		soal, ok := soalByID[j.SoalID]
+		if !ok || j.Jawaban == nil || *j.Jawaban == "" {
+			j.IsBenar = &falseVal
+			j.PoinDapat = 0
+		} else {
+			isBenar := Jawaban(*j.Jawaban) == soal.Jawaban
+			j.IsBenar = &isBenar
+			if isBenar {
+				j.PoinDapat = soal.Poin
+				benar++
+				nilaiTotal += float64(soal.Poin)
+			} else {
+				j.PoinDapat = 0
+			}
+		}
+		if err := tx.Model(&JawabanBab{}).
+			Where("id = ?", j.ID).
+			Updates(map[string]any{
+				"is_benar":   j.IsBenar,
+				"poin_dapat": j.PoinDapat,
+			}).Error; err != nil {
+			return 0, 0, fmt.Errorf("soalbab grade jawaban: %w", err)
+		}
+	}
+	return benar, nilaiTotal, nil
 }
 
 // requireSiswaBabAccess enforces (siswa enrolled active) ∩ (bab published).

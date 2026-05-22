@@ -454,6 +454,14 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// hasil_id). Idempotent: row sudah selesai balikin existing rekap.
 	siswaGroup.Post("/hasil-soal-bab/:id/submit", soalbabUlanganHandler.Submit)
 
+	// Task 5.D.4 — Timer expire cron 30s. Periodic sweep mark hasil
+	// 'berlangsung' yang sudah lewat deadline_at jadi 'selesai' +
+	// auto-grade. Share advisory lock key dengan Submit (per hasil_id)
+	// jadi siswa klik submit dan cron sweep mutually exclusive. Initial
+	// sweep on boot catches downtime backlog. Cancellable via rootCtx.
+	timerCron := soalbab.NewTimerCron(soalbabRepo)
+	go timerCron.Run(rootCtx)
+
 	// Task 5.D.2 — Answer endpoint dispatcher. Latihan dapat immediate
 	// is_benar feedback (locked #81), Ulangan delayed grade dengan
 	// is_benar=NULL + 410 timer_expired guard (locked #76). FE hit satu
