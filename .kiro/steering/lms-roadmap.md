@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.8 — **Fase 5.D 4/4 ✅** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21..22. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3` + 5.D.4 Timer expire cron 30s `2587526`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.9 — **Fase 5.D 4/4 ✅** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 + **5.E 1/1 ✅** DONE 2026-05-21..22. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3` + 5.D.4 Timer expire cron 30s `2587526` + 5.E.1 Hasil review+list+cancel+rekap consolidated `8c55651`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Task 5.D.4 ✅ DONE — Timer expire cron 30s with auto-grade tx; Fase 5.D 4/4 ✅; Fase 5 progress 9/15)
+> Last updated: 2026-05-22 (Task 5.E.1 ✅ DONE — Hasil review+list+cancel+rekap consolidated; Fase 5.E 1/1 ✅; Fase 5 progress 10/15 — BE complete!)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2487,21 +2487,36 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 5.E Resume + Remedial + Review + Hasil Rekap
 
-**Task 5.E.1 — Resume + Remedial reset + Review gating + Hasil rekap guru (aggregated)** ⏳
-- Endpoints:
-  - `GET /api/v1/bab/:id/ulangan/state` — siswa. Return:
-    - Tidak ada hasil aktif: `{has_active: false, attempt_count: int, batas_attempt: int, can_start: bool}`.
-    - Ada `berlangsung`: `{has_active: true, hasil_id, soal_ids, deadline_at, jawaban: [{soal_id, jawaban}], remaining_seconds}`.
-    - Sudah submit + masih dalam batas_attempt: `{has_active: false, last_hasil: {id, nilai_total, ...}, can_start: true}`.
-  - `POST /api/v1/hasil-soal-bab/:id/reset` — guru/admin owner kelas. Soft cancel: `status='dibatalkan'` + audit `ulangan_bab_reset` w/ meta `{reason, reset_by_id}`. Setelah reset, `attempt_count` di /state cek hanya count `status IN ('selesai')` (dibatalkan tidak count) → siswa bisa attempt lagi kalau masih < BatasAttempt.
-  - `GET /api/v1/hasil-soal-bab/:id/review` — siswa pemilik OR guru/admin owner.
-    - Cek gating siswa: latihan always OK. Ulangan: `Setting.IzinkanReviewSetelahSubmit AND (Setting.WaktuBukaReview IS NULL OR Setting.WaktuBukaReview <= now())` → 403 `review_locked` w/ meta `{buka_at}` kalau gate.
-    - Return: `{hasil: {...}, soal_pembahasan: [{soal_id, pertanyaan, opsi_a..e, image_keys, jawaban_benar, jawaban_siswa, is_benar, poin_dapat}]}`.
-  - `GET /api/v1/bab/:id/hasil-soal-bab` — guru/admin owner. Query `?mode=latihan|ulangan&siswa_id=&status=`. Return list rekap untuk dashboard guru.
-- Audit lengkap: `ulangan_bab_reset`, `review_accessed`.
-- Verify: test (state transitions + reset menghasilkan can_start lagi + review_locked vs open + hasil rekap filter).
-- Test coverage check: `go test -cover ./internal/soalbab/...` ≥ 70% (locked #82). Kalau < 70% tambah test sebelum mark DONE.
-- Commit: `feat(soalbab): resume + remedial reset + review gating + hasil rekap guru`
+**Task 5.E.1 — Hasil review + list + cancel + rekap consolidated** ✅ DONE 2026-05-22 commit `8c55651`
+- 4 endpoint baru:
+  - `GET /api/v1/siswa/hasil-soal-bab/:id/review` — review jawaban siswa setelah submit. Latihan always reviewable. Ulangan gated locked #81: status=selesai + setting.IzinkanReviewSetelahSubmit + (setting.WaktuBukaReview NULL OR ≤ now). Response: hasil meta + items[] (pertanyaan + opsi a..e + jawaban_benar + jawaban_siswa + is_benar + poin_dapat + poin_maksimal). Pool snapshot delete-tolerant — kalau soal dihapus guru post-snapshot, tampilin placeholder "(soal sudah dihapus guru)".
+  - `GET /api/v1/siswa/bab/:id/hasil` — siswa list hasil sendiri di bab (latihan + ulangan, semua status), sorted mulai_at DESC. Aggregate: nilai_terbaik + nilai_terakhir + attempt_count (hanya count ulangan status=selesai).
+  - `POST /api/v1/hasil-soal-bab/:id/cancel` — guru pemilik kelas (atau admin) soft-cancel attempt mode=ulangan untuk remedial reset. Status='dibatalkan' (locked #76 — tidak count terhadap batas_attempt → siswa boleh start fresh attempt dengan attempt_no = uncancelled_count + 1). Idempotent: status sudah dibatalkan → return existing 200. Mode=latihan → 400 `cancel_latihan` (latihan tidak count anyway). EventBab `ulangan_bab_cancelled` + audit `ulangan_bab_cancelled` w/ meta `{prev_status, prev_attempt, cancelled_at, reason: "remedial"}`.
+  - `GET /api/v1/bab/:id/hasil-rekap` — guru pemilik kelas (atau admin) rekap dashboard. List per-siswa attempts ulangan, with: siswa_name + siswa_email (via authRepo.FindUserByID), attempt_count (excl. dibatalkan), cancelled_count, nilai_terbaik (max selesai), nilai_terakhir (most recent mulai_at), status_terakhir, hasil_terakhir_id, mulai_terakhir_at. Sort: nilai_terbaik DESC nulls last + siswa_name ASC. Top-level: total + rata_rata (avg nilai_terbaik per siswa, skip nil).
+- Implementation:
+  - `backend/internal/soalbab/hasil.go` — `HasilService` (Review, ListSiswaHasil, Cancel, Rekap) + sentinels `ErrReviewLocked`, `ErrReviewDisabled`, `ErrHasilNotFinished`, `ErrCancelLatihan`. `userLookup` interface untuk hydrate nama siswa di rekap (auth.Repo satisfies).
+  - `backend/internal/soalbab/hasil_handler.go` — `HasilHandler` 4 routes + `mapHasilErr` (review_locked 403, review_disabled 403, hasil_not_finished 409, cancel_latihan 400, forbidden 403, not_found 404).
+  - `backend/internal/soalbab/repo.go` — implement `ListHasilByBab` (filter Mode/SiswaID/Status/Limit, order siswa_id+attempt_no ASC) + `ListHasilBySiswaBab` (siswa+bab order mulai_at DESC).
+  - `backend/cmd/server/main.go` — wire siswa routes review+list di siswaGroup, rekap GET di babGroup, cancel POST di new `hasilGuruGroup` (BearerAuth + ForceChangePassword + RoleGuard admin|guru).
+- Verify: `go vet ./...` clean + `go build ./...` clean (local + server). lms-api restart healthz 200.
+- Smoke E2E hijau **28/28** (script `/tmp/smoke5e1.sh`):
+  - T1 review siswa1 happy 200 + items.length=3 + benar count=2 + nilai_total=20 + jawaban_benar exposed
+  - T2 review siswa2 not-owner 403
+  - T3 review attempt belum selesai 409 hasil_not_finished
+  - T4 setting izinkan_review=false → 403 `review_disabled`
+  - T5 setting waktu_buka_review future +1d → 403 `review_locked`
+  - T6 list siswa hasil 200 + attempt_count=1 + nilai_terbaik=20
+  - T7 cancel by guru 200 + status=dibatalkan
+  - T8 cancel idempotent 200 (call lagi return same)
+  - T9 cancel by siswa 403 (RoleGuard admin|guru)
+  - T10 siswa2 start fresh attempt setelah cancel 201 + attempt_no=1 (locked #76 — cancelled tidak count)
+  - T11 rekap guru 200 + total=2 + top siswa nilai_terbaik=20 (siswa1 sort DESC) + siswa2 cancelled_count=1 + rata_rata=15
+  - T12 rekap by siswa 403 (RoleGuard)
+  - T13 review invalid uuid 400
+  - T14 cancel non-existent 404
+- Commit: `8c55651 feat(soalbab): hasil review + list + cancel + rekap consolidated (Task 5.E.1)`
+
+---
 
 #### 5.F Frontend Guru — Editor + Setting + Preview + Rekap
 
@@ -2544,12 +2559,12 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 **Fase 5 plan ✅ DECOMPOSED 15 task** — locked #76-#82. Roadmap v0.10.0.
 - 5.A BE foundation: 1/1 ✅ DONE (5.A.1 commits `c83a15e`+`d63124d` migration 000010 + 6 model + repo skeleton; up→10 round-trip clean, all tests PASS, healthz=200)
 - 5.B BE SoalBab CRUD + image + bulk: 3/3 ✅ DONE (5.B.1 ✅ commit `928401b` CRUD + handler + smoke E2E; 5.B.2 ✅ commit `57eb504` image upload 6-slot + resize 1920px + presign 15m; 5.B.3 ✅ commit `dabbdf1` bulk paste pipe-delimited + 8 reason codes + 6 hard preconditions + escape `\\|` verified)
-- 5.C BE Setting + Latihan: 0/2
-- 5.D BE Ulangan + cron: 0/4
-- 5.E BE Resume + Remedial + Review + Hasil: 0/1
-- 5.F FE Guru editor + setting + rekap: 0/2
+- 5.C BE Setting + Latihan: 2/2 ✅ DONE (5.C.1 ✅ commit `7b9edd5` UlanganBabSetting GET+PUT upsert; 5.C.2 ✅ commit `d6c808d` Latihan flow start/answer/finish)
+- 5.D BE Ulangan flow + cron: 4/4 ✅ DONE (5.D.1 ✅ start deterministic seed `0346609`+`32f63ae`+`d822d46`; 5.D.2 ✅ answer save delayed grade `5067f0a`; 5.D.3 ✅ submit + auto-grade tx `d262ea3`; 5.D.4 ✅ timer cron 30s `2587526`)
+- 5.E BE Resume + Remedial + Review + Hasil: **1/1 ✅ DONE** (5.E.1 ✅ commit `8c55651` review+list+cancel+rekap consolidated 4 endpoints; smoke E2E 28/28 hijau; **Fase 5 BE COMPLETE 10/10**)
+- 5.F FE Guru editor + setting + rekap: 0/2 ⏳ NEXT
 - 5.G FE Siswa latihan + ulangan + review: 0/2
 
-**Eksekusi berikutnya: gas Task 5.C.1** — UlanganBabSetting GET + PUT (upsert). `GET /api/v1/bab/:id/ulangan-setting` (guru full / siswa subset durasi+batas+izinkan_review+waktu_buka_review buat lobby), `PUT /api/v1/bab/:id/ulangan-setting` body `{jumlah_soal, durasi_menit, batas_attempt, izinkan_review_setelah_submit, waktu_buka_review?, version?}` upsert — kalau row belum ada insert (version=1), kalau ada update + check version. Validate `jumlah_soal ≤ count(soal mode IN ('ulangan','keduanya'))` — 400 `jumlah_soal_exceeds_pool` kalau exceed. Audit `ulangan_setting_updated`. Estimasi 60 menit.
+**Eksekusi berikutnya: gas Task 5.F.1** — FE Guru SoalBab editor + bulk paste + image manager. `frontend/lib/soalbab-api.ts` typed client (list/get/create/update/delete/uploadImage/deleteImage/bulkCreate + friendly error mapper) + `SoalBabEditDialog.tsx` form react-hook-form+zod 5 opsi + jawaban radio + 6 image slots, `BulkPasteDialog.tsx` textarea + line counter + parse preview + result toast. Page: tab "Soal" di bab detail dengan list card + thumbnail + filter mode + tombol Tambah + Bulk Paste. Optimistic concurrency #56. Estimasi 90 menit.
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
