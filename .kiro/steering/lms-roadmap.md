@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.11.0 — **Fase 5 ✅ CLOSED 15/15 + UX/QA pass `22d2095`** + **Fase 6 plan ✅ DECOMPOSED 15 task locked #83-#88**, 2026-05-22. Fase 6 Ulangan Harian (cross-bab): Bank Soal per-guru + Ujian manual/random source + flow mirror Fase 5. Fase 5 history: 5.A 1/1 + 5.B 3/3 + 5.C 2/2 + 5.D 4/4 + 5.E 1/1 + 5.F 2/2 + **5.G 2/2 ✅**. UX/QA pass `22d2095`: durasi bound 360→300, presign URL refresh 12m, autosave retry 2x exp backoff, dead `'expired'` HasilStatus dropped. HTTP smoke 49/50 + extra 8/8 hijau. 5.G.2 FE Siswa Ulangan flow `6c10d19`. 5.G.1 `1716fab` Latihan + BE Items `e0fcb66`. Sebelumnya: 5.B.1 CRUD `928401b` + 5.B.2 image upload `57eb504` + 5.B.3 bulk paste `dabbdf1` + 5.C.1 Setting `7b9edd5` + 5.C.2 Latihan BE `d6c808d` + 5.D.1 Ulangan start `0346609`+`32f63ae`+`d822d46` + 5.D.2 answer `5067f0a` + 5.D.3 submit `d262ea3` + 5.D.4 timer cron `2587526` + 5.E.1 Hasil consolidated `8c55651` + 5.F.1 FE editor `8c74e38` + 5.F.2 FE setting/rekap `4195efa`. Locked decisions baru #76-#88 (Fase 5 #76-#82 + Fase 6 #83-#88). Soal Bab covers Latihan + Ulangan Bab; Ujian (Fase 6) covers cross-bab assessment. Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.11.1 — **Fase 5 ✅ CLOSED 15/15 + UX/QA pass `22d2095`** + **Fase 6 plan ✅ DECOMPOSED 15 task locked #83-#88 + 6.A.1 ✅ DONE `3371e30`**, 2026-05-22. Fase 6 Ulangan Harian (cross-bab): foundation migration 000011 + 6 tables (bank_soal, ujian, ujian_soal, hasil_ujian, jawaban_ujian, event_ujian) + 17 indexes hijau, schema_version `000011_ujian`. Lanjut 6.B.1.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Fase 6 plan ✅ DECOMPOSED 15 task — Bank Soal + Ujian cross-bab; locked decisions #83-#88; mirror Fase 5 sub-fase split. Roadmap v0.11.0.)
+> Last updated: 2026-05-22 (Fase 6.A.1 ✅ DONE commit `3371e30` — foundation migration 000011 + 7 model + repo skeleton, schema_meta `000011_ujian`. Roadmap v0.11.1.)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2625,10 +2625,10 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 🎉 **Fase 5 ✅ CLOSED 15/15 = 100%** — semua acceptance criteria locked #76-#82 met. BE 10/10 + Items addon, FE 5/5 (Guru 2 + Siswa 2 + 1 sub-tab orchestrator). Smoke E2E happy path verified per task. Anti-cheat #76 enforced di `/items` endpoint (jawaban_benar strip) + ulangan answer (no is_benar response). Deterministic seed #79 verified resume tidak shuffle ulang. Cron 30s + advisory lock #80 mutex submit/cron tested di 5.D.4. Review gating #81 enforced di `/review` endpoint dan FE lobby/result reviewable check.
 
-**Eksekusi berikutnya: Fase 6 plan ✅ DECOMPOSED 15 task — locked #83-#88 added. Roadmap v0.11.0.**
+**Eksekusi berikutnya: Fase 6 plan ✅ DECOMPOSED 15 task — locked #83-#88. 6.A.1 ✅ DONE commit `3371e30`. Lanjut 6.B.1.**
 
 **Fase 6 — Ulangan Harian (cross-bab) — 15 task, estimasi 7 hari:**
-- 6.A BE foundation: 1/1 — 6.A.1 migration 000011 + 7 model (BankSoal, Soal, Ujian, UjianSoal, HasilUjian, JawabanUjian, EventUjian, HasilUjianSoalAssignment) + repo skeleton + up→11 round-trip + go test PASS + healthz=200
+- 6.A BE foundation: **1/1 ✅ DONE** — 6.A.1 ✅ commit `3371e30` migration 000011 + 7 model + repo skeleton (BankSoal, Ujian, UjianSoal, HasilUjian, JawabanUjian, EventUjian — 6 tables 17 indexes). go vet/build clean. up→11 (95ms) + down round-trip + up (71ms). schema_version `000011_ujian`. bin/lms-api restart healthz=200.
 - 6.B BE BankSoal CRUD + image + bulk: 3/3 — 6.B.1 CRUD + tag mapel/tingkat/topik (mirror 5.B.1 commit `928401b`), 6.B.2 image upload 6-slot R2 prefix `soal-bank/` + resize 1920px (mirror 5.B.2 commit `57eb504`), 6.B.3 bulk paste pipe-delimited + tag default + 8 reason codes (mirror 5.B.3 commit `dabbdf1`)
 - 6.C BE Ujian setup: 2/2 — 6.C.1 Ujian CRUD + duplicate (R2 CopyObject pattern locked #67), 6.C.2 source mode dispatch manual/random (locked #85) + preview filter
 - 6.D BE Ujian flow + cron: 4/4 — 6.D.1 start deterministic seed locked #86 (mirror 5.D.1 commits `0346609`+`32f63ae`+`d822d46`), 6.D.2 answer save delayed grade (mirror 5.D.2 commit `5067f0a`), 6.D.3 submit + auto-grade tx + advisory lock locked #87 (mirror 5.D.3 commit `d262ea3`), 6.D.4 timer cron 30s reuse goroutine SoalBab — extend `timer_cron.go` second sweep block (mirror 5.D.4 commit `2587526`)
