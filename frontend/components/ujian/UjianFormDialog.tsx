@@ -7,7 +7,7 @@
  *
  * Fields:
  *   - judul + deskripsi
- *   - durasi_menit (1-360)
+ *   - durasi_menit (1-300)
  *   - waktu_mulai / waktu_selesai (datetime-local optional, locked TZ user)
  *   - izinkan_review_setelah_submit toggle + waktu_buka_review optional
  *   - status: draft | published (archived dimanaged via tombol terpisah)
@@ -139,8 +139,8 @@ export function UjianFormDialog({
     if (form.deskripsi.length > 2000) {
       e.deskripsi = 'Maksimal 2000 karakter.';
     }
-    if (form.durasi_menit < 1 || form.durasi_menit > 360) {
-      e.durasi_menit = 'Durasi 1-360 menit.';
+    if (form.durasi_menit < 1 || form.durasi_menit > 300) {
+      e.durasi_menit = 'Durasi 1-300 menit.';
     }
     if (form.waktu_mulai && form.waktu_selesai) {
       if (
@@ -306,7 +306,7 @@ export function UjianFormDialog({
                 id="durasi"
                 type="number"
                 min={1}
-                max={360}
+                max={300}
                 value={form.durasi_menit}
                 onChange={(e) =>
                   setForm((f) => ({

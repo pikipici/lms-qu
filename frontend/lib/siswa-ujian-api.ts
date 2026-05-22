@@ -292,7 +292,7 @@ export function friendlySiswaUjianError(
       return 'Kelas sudah diarsipkan; ujian tidak bisa dimulai.';
     case 'ujian_not_published':
       return 'Ujian belum dipublish guru.';
-    case 'ujian_not_started':
+    case 'ujian_window_not_open':
       return 'Ujian belum dibuka. Tunggu sampai waktu mulai tiba.';
     case 'ujian_window_closed':
       return 'Jendela waktu ujian sudah lewat.';
@@ -313,7 +313,6 @@ export function friendlySiswaUjianError(
     case 'hasil_already_cancelled':
       return 'Attempt sudah dibatalkan.';
     case 'ujian_timer_expired':
-    case 'timer_expired':
       return 'Waktu ujian sudah habis. Refresh untuk lihat hasil.';
     case 'submit_after_grace':
       return 'Submit ditolak karena lewat batas waktu. Cron akan auto-grade attempt ini.';

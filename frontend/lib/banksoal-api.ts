@@ -301,7 +301,6 @@ export function friendlyBankSoalError(
     case 'invalid_id':
       return 'ID soal tidak valid.';
     case 'invalid_body':
-    case 'invalid_input':
       return (
         err.message || 'Input tidak valid. Periksa kembali data yang lu kirim.'
       );
@@ -315,12 +314,18 @@ export function friendlyBankSoalError(
       return 'Lu tidak punya akses ke soal ini (hanya pemilik yang bisa edit).';
     case 'not_found':
       return 'Soal tidak ditemukan (mungkin sudah dihapus).';
-    case 'image_too_large':
+    case 'payload_too_large':
       return 'Gambar terlalu besar. Maksimal 5 MB.';
-    case 'image_invalid_type':
+    case 'unsupported_mime':
       return 'Format gambar tidak didukung. Pakai JPG, PNG, atau WebP.';
     case 'image_decode_failed':
       return 'Gambar gagal di-decode. Coba file lain.';
+    case 'image_slot_empty':
+      return 'Slot gambar masih kosong.';
+    case 'r2_unavailable':
+      return 'Penyimpanan gambar belum dikonfigurasi. Hubungi admin.';
+    case 'missing_file':
+      return 'File gambar belum dipilih.';
     case 'invalid_slot':
       return 'Slot gambar tidak valid.';
     case 'too_many':

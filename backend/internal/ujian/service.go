@@ -56,7 +56,7 @@ const (
 	MaxJumlahSoal     = 200 // hard cap untuk random-mode jumlah_soal
 	MinJumlahSoal     = 1
 	MinDurasiMenit    = 1
-	MaxDurasiMenit    = 600 // 10 jam max
+	MaxDurasiMenit    = 300 // 5 jam max (matches DB CHECK ujian_durasi_menit_check di migration 000011)
 	MaxManualSoalIDs  = 200
 )
 
