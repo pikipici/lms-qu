@@ -45,6 +45,7 @@ import {
   GraduationCap,
   Megaphone,
   RotateCcw,
+  ScrollText,
   Settings,
   Users,
 } from 'lucide-react';
@@ -939,6 +940,12 @@ function GuruKelasDetailContent({ id }: { id: string }) {
               Arsipkan
             </Button>
           )}
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/guru/kelas/detail/rekap?id=${kelas.id}`}>
+              <ScrollText className="size-4" />
+              Rekap nilai
+            </Link>
+          </Button>
         </div>
       </header>
 
