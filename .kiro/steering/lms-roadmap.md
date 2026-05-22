@@ -1,11 +1,11 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.11.15 — **Fase 5 ✅ CLOSED 15/15 + UX/QA pass `22d2095`** + **Fase 6 ✅ CLOSED 15/15 + UX/QA pass `6e10888`** locked #83-#88 (commits `3371e30`+`f50e7f2`+`76de898`+`ceaf86b`+`ede3194`+`7d465bf`+`d2ecef9`+`205be54`+`0df6f89`+`8f77dbc`+`1269846`+`446f187`+`d9012b1`+`19060d0`+`6e10888`), 2026-05-22. Fase 6 progress 15/15 = 100%. BE 100% + FE Guru 100% + FE Siswa 100%. 6.G.2 wired UjianPlayer (timer countdown + autosave 600ms + auto-submit on expire + image presign refresh 12m) + UjianReview (post-submit pembahasan dengan jawaban_benar emerald + jawaban_salah rose) + UjianSection orchestrator state machine (lobby ↔ playing → result → review). Lanjut Fase 7 Rekap Nilai + Activity Feed.
+> Status: v0.12.0 — **Fase 7 OPEN — DECOMPOSED 12 task** (Rekap Nilai + Activity Feed + Pending Counters + Guru Audit). Locked #89-#94. Fase 0-6 ✅ CLOSED.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (UX/QA pass post-Fase-6-close commit `6e10888` + dogfood report `dogfood-output/fase6/report.md` — 5 findings (1 Critical durasi 3-way drift Go 600 vs DB CHECK 300 vs FE 360, 1 High FE form max=360 mismatch DB cap=300, 1 Medium banksoal-api error mapper drift, 2 Low siswa-ujian-api mapper alias/orphan). All fixed: BE `MaxDurasiMenit` 600→300, FE form 360→300, banksoal-api drop dead arms + add 5 BE-truth arms, siswa-ujian-api rename `ujian_not_started`→`ujian_window_not_open` + drop redundant `timer_expired`. Smoke regression `dogfood-output/fase6/smoke-bounds.sh` 9/9 PASS post-fix. Full Fase 6 smoke battery 367/368 still hijau (1 unrelated bank-pool fixture flake). Roadmap v0.11.15.)
+> Last updated: 2026-05-22 (Fase 7 kickoff — locked decisions + sub-fase split 7.A-7.G + 12 task).
 
 ## Daftar Isi
-- [0. Locked Decisions](#0-locked-decisions-v072)
+- [0. Locked Decisions](#0-locked-decisions-v0120)
 - [1. Goal](#1-goal)
 - [2. Target Users](#2-target-users)
 - [3. Tech Stack](#3-tech-stack)
@@ -17,7 +17,7 @@
 - [9. Project Structure](#9-project-structure)
 - [10. Phasing / Roadmap](#10-phasing--roadmap)
 - [11. Risks / Concerns](#11-risks--concerns)
-- [12. Open Decisions Tersisa](#12-open-decisions-tersisa-v072)
+- [12. Open Decisions Tersisa](#12-open-decisions-tersisa-v0120)
 - [13. Deploy Strategy](#13-deploy-strategy-mengikuti-pola-fb-bot)
 - [14. Frontend Development Arsenal](#14-frontend-development-arsenal--skills--agents)
 - [15. Implementation Notes](#15-implementation-notes)
@@ -27,7 +27,7 @@
 
 ---
 
-## 0. Locked Decisions (v0.9.1)
+## 0. Locked Decisions (v0.12.0)
 
 | # | Keputusan | Pilihan |
 |---|-----------|---------|
@@ -107,23 +107,30 @@
 | 74 | Tugas attachment policy | **Lampiran soal/instruksi guru** — Tugas optional punya 0..N attachment di R2 `tugas/<uuid>.<ext>`. Allowlist mime ikut locked #46 (tugas: pdf, docx, jpg, png, zip). Cap size 20MB per file. Cap count: max 5 attachment per tugas. Hard delete on Tugas.Delete dgn compensating R2 cleanup (locked #69 pattern). Kalau Tugas di-archive (status=archived, similar bab), attachment tetap ada di R2 — siswa enrolled tetap bisa download via presigned URL untuk submission yg udah grade history. Future cleanup: archive + 1 tahun → hard delete (locked #51 retention). |
 | 75 | Login rate limit decay + threshold | **Threshold 10/15m per (email+IP)** (raised dari initial 5, locked #47 update). **Auto-clear failed attempts on success**: ketika user login sukses, password change sukses, atau admin password reset sukses → DELETE failed `login_attempts` rows for that email dalam window 15 menit. Counter hard-lock akun (`maxCumulativeFailedLogins=10` di `users.failed_login_count`) tetap berlaku untuk attack pattern beneran (cumulative across windows). **Two-layer consistency**: layer DB (`Service.Login` + `failed_login_attempts`) DAN layer Fiber in-memory limiter (`auth.LoginRateLimit`) sama-sama hanya count failed (`SkipSuccessfulRequests=true`); success ga consume budget di mana pun. Rationale: typo + browser autofill old-password + multi-device combine sering trigger lock untuk real users; pola "user proves they know password → counter reset" mirror pattern industri. UX impact: setelah login sukses, retry dari mistype tidak bayar penalty 15 menit. Implemented commits `8ad9f60` (DB layer + threshold) + `6044d2f` (Fiber memory layer). |
 | 76 | Fase 5 sub-fase split | **Decompose Fase 5 jadi 7 sub-fase 5.A-5.G** (mirror Fase 3+4 pattern proven). 5.A migration 000010 + 6 model (SoalBab, UlanganBabSetting, HasilSoalBab, JawabanBab, EventBab, SoalAssignment) + repo skeleton (1 hari). 5.B SoalBab CRUD BE + image upload + bulk paste pipe-delimited (1 hari). 5.C UlanganBabSetting GET/PUT BE + Latihan flow no-nilai (0.5 hari). 5.D Ulangan Bab BE — start (random pool snapshot deterministic seed) + answer save (autosave 5s) + submit (FOR UPDATE + auto-grade tx) + timer-expire cron 30s (1.5 hari). 5.E BE Resume + Remedial reset + Review gating + Hasil rekap guru (0.5 hari). 5.F FE Guru editor + setting + preview + rekap + reset attempt modal (1 hari). 5.G FE Siswa latihan + ulangan lobby + play (timer countdown + autosave + resume banner) + review (1 hari). Total estimasi 6.5 hari. Setiap task ship + verify + commit + push origin+server seperti Fase 4. |
-| 77 | Bulk paste format soal | **Pipe-delimited 1 baris = 1 soal**: `pertanyaan|opsi_a|opsi_b|opsi_c|opsi_d|opsi_e|jawaban|poin|mode`. Kolom `mode` = `latihan` | `ulangan` | `keduanya`. Kolom `jawaban` = `a`/`b`/`c`/`d`/`e` (single-answer MVP, multi-answer defer v0.11). Kolom `poin` = int 1-100 (default 1 kalau kosong). Pipe escape: kalau pertanyaan/opsi mengandung literal `\|`, user pakai `\\|` (backslash-pipe) → backend unescape sebelum parse. Endpoint `POST /api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}` → parse line-by-line, return `{created: int, errors: [{line, reason}]}` partial-success (mirror locked Fase 1 #29 CSV pattern). Tidak ada image di bulk paste (image cuma via UI per-soal). FE: `<textarea>` mono-font + line counter + parse preview client-side sebelum POST. Reject baris dengan kolom < 9 sebagai `invalid_columns`. |
+| 77 | Bulk paste format soal | **Pipe-delimited 1 baris = 1 soal**: `pertanyaan|opsi_a|opsi_b|opsi_c|opsi_d|opsi_e|jawaban|poin|mode`. Kolom `mode` = `latihan` | `ulangan` | `keduanya`. Kolom `jawaban` = `a`/`b`/`c`/`d`/`e` (single-answer MVP, multi-answer defer v0.11). Kolom `poin` = int 1-100 (default 1 kalau kosong). Pipe escape: kalau pertanyaan/opsi mengandung literal `\\|`, user pakai `\\\\|` (backslash-pipe) → backend unescape sebelum parse. Endpoint `POST /api/v1/bab/:id/soal/bulk` body `{rows: string, mode_default?: string}` → parse line-by-line, return `{created: int, errors: [{line, reason}]}` partial-success (mirror locked Fase 1 #29 CSV pattern). Tidak ada image di bulk paste (image cuma via UI per-soal). FE: `<textarea>` mono-font + line counter + parse preview client-side sebelum POST. Reject baris dengan kolom < 9 sebagai `invalid_columns`. |
 | 78 | Soal image upload | **Inline 6 slot per soal**: 1 untuk `pertanyaan_image` + 5 untuk `opsi_a..e_image`. Per slot upload via multipart `POST /api/v1/soal-bab/:id/image?slot=<pertanyaan|a|b|c|d|e>` → backend resize ke max 1920px sisi panjang (preserve aspect ratio, JPEG 85% atau PNG passthrough kalau < 1920) → R2 prefix `soalbab/<uuid>.<ext>` → update kolom `<slot>_object_key`. Mime allowlist: `image/jpeg`, `image/png`, `image/webp`. Max size raw upload 5MB pre-resize (locked) — backend reject 413 kalau exceed. Library resize: `github.com/disintegration/imaging` (sudah di deps Fase 2 untuk avatar — verify, kalau tidak tambah). FE: per slot tampil preview thumbnail 100×100 + tombol Ganti/Hapus. Compensating R2 cleanup di soalbab.Delete (locked #69 pattern). Display di siswa: render presigned URL inline ResponseContentDisposition `inline` (locked #62). |
 | 79 | Random pool seed deterministic | **Pool snapshot saat siswa start ulangan**: `seed = sha256(mulai_at_unix_micro || siswa_id_uuid || bab_id_uuid)[:8]` (8 byte → uint64 little-endian) → seed `math/rand.New(rand.NewSource(int64(uint64)))` → shuffle full list soal mode IN ('ulangan','keduanya') → take first N (`UlanganBabSetting.JumlahSoal`). Snapshot disimpan di `HasilSoalBab.SoalIDsJSON` (jsonb array of uuid string, frozen) — lookup tiap GET state pakai snapshot ini, bukan re-shuffle. Rationale: deterministic per attempt → resume bawa pool yang sama persis (anti-cheat: siswa refresh tidak dapat soal beda). Auto-grade pakai snapshot ini juga (cek jawaban tiap soal_id di pool vs JawabanBab). Multi-attempt remedial bikin snapshot baru (mulai_at beda → seed beda → pool baru). |
 | 80 | Timer expire & auto-grade concurrency | **Background cron 30s tick** (`internal/soalbab/timer_cron.go` reuse pattern `go-cleanup-cron-ctx-bound`). Setiap tick: `SELECT id FROM hasil_soal_bab WHERE status='berlangsung' AND deadline_at <= now() FOR UPDATE SKIP LOCKED LIMIT 100` → per row: BEGIN tx → `pg_advisory_xact_lock(hashtext('hasil_soal_bab:' || id))` → reload row → cek status masih `berlangsung` → load jawaban → auto-grade (sum nilai jawaban benar) → UPDATE status='selesai', selesai_at=deadline_at (bukan now, supaya konsisten), nilai_total, jawaban_benar_count → audit `ulangan_bab_auto_graded` → COMMIT. Submit endpoint juga pakai advisory lock dengan key sama → race-safe vs cron. Worker single-instance MVP (lms-api binary punya goroutine ini); future scale-out pakai Postgres LISTEN/NOTIFY atau external scheduler. Idempotent: kalau status sudah `selesai` saat dapat lock, skip. Cron interval 30s tradeoff antara latency siswa lihat hasil (<30s) vs DB load (1 query per 30s = 2880/hari). |
 | 81 | Review gating policy | **Latihan: always reviewable** — siswa boleh re-attempt unlimited + lihat jawaban benar setiap saat (formative, no nilai persist). **Ulangan Bab: gated** — kondisi tampil tombol "Lihat Pembahasan" di FE = `Setting.IzinkanReviewSetelahSubmit=true AND (Setting.WaktuBukaReview IS NULL OR Setting.WaktuBukaReview <= now())`. Kalau `IzinkanReviewSetelahSubmit=false` → review tidak pernah bisa diakses (anti-cheat ulangan rahasia). Kalau `IzinkanReviewSetelahSubmit=true` + `WaktuBukaReview` di masa depan → tombol muncul disabled dengan countdown "Buka pada {tanggal}". Endpoint `GET /api/v1/hasil-soal-bab/:id/review` cek gating server-side (bukan FE-only — defense in depth) → 403 `review_locked` kalau gating belum lewat. Hasil dikembalikan: list soal_id + pertanyaan + opsi + jawaban_benar + jawaban_siswa per soal di snapshot pool. Guru/admin: bypass gating (selalu bisa review). |
 | 82 | Coverage gate Fase 5 | **Backend test coverage minimum 70%** untuk package `internal/soalbab` (lebih ketat dari rata-rata project ~60% karena logic nilai persist + concurrency + remedial state). Verify saat sub-fase 5.E close: `go test -cover ./internal/soalbab/... ./internal/ulanganbab/...` (kalau ada split). Kalau < 70% → tambah test sebelum tandain DONE. FE coverage gak di-gate (UI test out-of-scope MVP, smoke E2E browser cukup). Locked decision soft — kalau dapat ≥65% tapi blocker waktu, dokumentasikan gap di section 18 task entry sebagai TODO defer Fase 8 polish. |
-| 83 | Fase 6 sub-fase split | **Decompose Fase 6 jadi 7 sub-fase 6.A-6.G** (mirror Fase 5 pattern proven). 6.A migration 000011 + 7 model (BankSoal, Soal, Ujian, UjianSoal, HasilUjian, JawabanUjian, EventUjian, HasilUjianSoalAssignment) + repo skeleton (1 hari). 6.B BankSoal CRUD BE + image upload 6-slot + bulk paste pipe-delimited (1 hari). 6.C Ujian setup BE — CRUD/duplicate + sumber soal (manual pick atau random N dari Bank Soal filter) (1 hari). 6.D Ujian flow BE — start (snapshot pool deterministic seed) + answer save + submit (FOR UPDATE + auto-grade tx) + timer-expire cron 30s reuse goroutine SoalBab (1.5 hari). 6.E BE Resume + Remedial reset + Review gating + Hasil rekap guru consolidated (0.5 hari). 6.F FE Guru Bank Soal page + Ujian setup form + Rekap + cancel modal (1 hari). 6.G FE Siswa list/lobby + UjianPlayer + Review mirror UlanganPlayer (1 hari). Total estimasi 7 hari. Setiap task ship + verify + commit + push origin+server seperti Fase 5. |
+| 83 | Fase 6 sub-fase split | **Decompose Fase 6 jadi 7 sub-fase 6.A-6.G** (mirror Fase 5 pattern proven). 6.A migration 000011 + 7 model (BankSoal, Soal, Ujian, UjianSoal, HasilUjian, JawabanUjian, EventUjian, HasilUjianSoalAssignment) + repo skeleton (1 hari). 6.B BankSoal CRUD BE + image upload 6-slot + bulk paste pipe-delimited (1 hari). 6.C Ujian setup BE — CRUD/duplicate + sumber soal (manual pick atau random N dari Bank Soal filter) (1 hari). 6.D Ujian flow BE — start (snapshot pool deterministic seed) + answer save (autosave 5s) + submit (FOR UPDATE + auto-grade tx) + timer-expire cron 30s reuse goroutine SoalBab (1.5 hari). 6.E BE Resume + Remedial reset + Review gating + Hasil rekap guru consolidated (0.5 hari). 6.F FE Guru Bank Soal page + Ujian setup form + Rekap + cancel modal (1 hari). 6.G FE Siswa list/lobby + UjianPlayer + Review mirror UlanganPlayer (1 hari). Total estimasi 7 hari. Setiap task ship + verify + commit + push origin+server seperti Fase 5. |
 | 84 | Bank Soal scope MVP | **Per-guru pribadi** — `BankSoal.OwnerGuruID` FK, query selalu `WHERE owner_guru_id = current_user.id`. Tidak ada share antar-guru di MVP (locked v1, open decision #8). Tag fields: `mapel` (text free-form, suggest dari kelas guru existing), `tingkat` (text, e.g. "SMP 7"), `topik` (text optional). Tidak ada FK ke Bab — soal lintas-bab sepenuhnya, beda dari SoalBab Fase 5 yang bab-tied. Soal field shape mirror SoalBab: 5 opsi a..e + jawaban kunci a..e + 6 image slot R2 prefix `soal-bank/<uuid>.<ext>` + poin smallint default 1. CRUD endpoint scope: `/bank-soal/*` (guru only, no admin manage). |
 | 85 | Ujian source mode | **2 mode**: `manual` (guru pick `soal_ids[]` dari Bank Soal sendiri) atau `random` (filter `{mapel?, tingkat?, topik?, jumlah_soal: int}` apply ke Bank Soal owner=guru tsb). Source disimpan di `Ujian.SourceConfigJSON` (jsonb): mode `manual` → `{mode:"manual", soal_ids:[uuid...]}`, mode `random` → `{mode:"random", filter:{...}, jumlah_soal:N}`. Saat guru edit/preview: re-evaluate filter, tampilkan preview pool. Saat siswa start: snapshot freeze ke `HasilUjianSoalAssignment` (pool tetap sama untuk attempt itu meski guru edit Ujian setelah start). Validasi: random mode butuh pool ≥ jumlah_soal, manual mode butuh ≥1 soal_id. Edit Ujian setelah ada attempt aktif → 409 `ujian_active_attempts` (force guru cancel attempt dulu). |
 | 86 | Random pool seed Ujian deterministic | **Mirror locked #79**: `seed = sha256(mulai_at_unix_micro \|\| siswa_id_uuid \|\| ujian_id_uuid)[:8]` → uint64 LE → `math/rand.New(rand.NewSource(int64))`. Beda dari #79 cuma `ujian_id` ganti `bab_id`. Pool source dari `Ujian.SourceConfigJSON`: kalau `manual` shuffle list `soal_ids` lalu take semua (jumlah = len(soal_ids)); kalau `random` query Bank Soal filter di owner=Ujian.GuruID, shuffle, take first `jumlah_soal`. Snapshot disimpan di `HasilUjianSoalAssignment(hasil_ujian_id, soal_id, urutan)` → frozen per attempt. Resume re-load assignment, tidak re-shuffle. Remedial reset (locked #45 mirror) bikin attempt baru dengan seed baru (mulai_at beda) → pool baru. |
 | 87 | Timer expire & auto-grade Ujian concurrency | **Mirror locked #80** dengan tabel target = `hasil_ujian`. Reuse goroutine yang sama dengan `internal/soalbab/timer_cron.go` — tambah block kedua di tick: `SELECT id FROM hasil_ujian WHERE status='berlangsung' AND deadline_at <= now() FOR UPDATE SKIP LOCKED LIMIT 100` → per row: BEGIN tx → `pg_advisory_xact_lock(hashtext('hasil_ujian:' || id))` → reload + cek status `berlangsung` → load JawabanUjian → grade (sum nilai jawaban benar dari snapshot pool) → UPDATE status='selesai', selesai_at=deadline_at, nilai_total, jawaban_benar_count → audit `ujian_auto_graded` → COMMIT. Submit endpoint pakai advisory lock key sama. Idempotent: kalau status sudah `selesai`/`dibatalkan` saat dapat lock, skip. Tick interval 30s tetap. Single goroutine handle 2 sweeps (soalbab + ujian) sekuensial — DB load tetap rendah. |
 | 88 | Coverage gate Fase 6 | **Backend test coverage minimum 70%** untuk package `internal/banksoal` + `internal/ujian` (mirror locked #82). Verify saat sub-fase 6.E close: `go test -cover ./internal/banksoal/... ./internal/ujian/...`. Kalau < 70% → tambah test sebelum tandain DONE. FE coverage gak di-gate (smoke E2E browser cukup, sama #82). Soft fallback: ≥65% boleh defer ke Fase 8 dengan TODO eksplisit di task entry. |
+| 89 | Fase 7 sub-fase split | **Decompose Fase 7 jadi 7 sub-fase 7.A-7.G** (mirror Fase 5+6 pattern proven). 7.A formula nilai backend (siswa-side per-kelas + lintas-kelas, locked #48 + 6.2) (1 hari). 7.B rekap matrix guru per kelas (siswa × bab + ulangan harian + total kelas + export CSV) (1 hari). 7.C activity feed cursor pagination (locked #55) — sumber events submission_submitted/submission_graded/siswa_joined/ulangan_bab_finished/ujian_finished/hasil_reset (1 hari). 7.D pending counters guru consolidated (locked #40 — `ungraded_submissions` + `pending_review_ulangan` + `pending_review_ujian` aggregate single endpoint) (0.5 hari). 7.E guru audit scope per kelas (locked #59) (0.5 hari). 7.F FE Siswa nilai (per kelas + lintas) + breakdown transparan (locked #48 + 6.2 contoh formulas) (1 hari). 7.G FE Guru rekap matrix + export + activity feed widget + pending counters wiring + audit page (1.5 hari). Total estimasi 6.5 hari. Setiap task ship + verify + commit + push origin+server seperti Fase 5/6. |
+| 90 | Fase 7 nilai aggregator policy | **Read-only aggregate, no persisted denormalize** — formula Section 6.2 + 6.4 dihitung at-query-time pakai single-pass JOIN ke HasilSoalBab (mode=ulangan, deleted_at IS NULL, status IN submitted/expired) + Submission (NilaiSetelahPenalty, status=graded) + HasilUjian (deleted_at IS NULL, status IN submitted/expired). Tidak ada tabel `NilaiBab` baru — perf cukup karena per-kelas typical < 50 siswa × < 20 bab. Future v0.13: kalau slow > 1s, materialize ke `NilaiBabSnapshot` invalidated saat ulangan submit/grade tugas. NULL handling explicit (locked #48 re-normalize): komponen tanpa konten di-skip, bobot di-redistribute, return `null` (FE render "—") kalau total_w=0. |
+| 91 | Fase 7 routing | Dashboard guru tetap di `/guru`. Tambahkan: `/siswa/nilai` (cross-class), `/siswa/kelas/[id]/nilai` (per-class), `/guru/kelas/[id]/rekap-nilai`, `/guru/kelas/[id]/audit`. Activity feed widget + pending-counter badges live di dashboard `/guru` existing (bukan halaman terpisah) — mirror Fase 4 pending-counter wiring (commit `34aff41`). Tidak ada perubahan auth boundary; semua endpoint ikuti role-guard + enrollment-guard existing. |
+| 92 | Fase 7 activity feed source | **6 event types** dari tabel existing (no new event table — query union AuditLog yang relevan + 5 domain tables): `submission_submitted` (Submission insert), `submission_graded` (Submission GradedAt set), `siswa_joined` (Enrollment insert via=kode), `ulangan_bab_finished` (HasilSoalBab status submitted/expired, mode=ulangan), `ujian_finished` (HasilUjian status submitted/expired), `hasil_reset` (AuditLog action='hasil_reset' OR 'ujian_attempt_reset'). Source query = UNION ALL 6 SELECT dengan unified shape `{at, type, kelas_id, kelas_nama, target_id, target_label, siswa_id, siswa_nama}` + sort `at DESC`. Cursor `(at_unix_micro, type, target_id)` base64 untuk break tie deterministik (locked #55 expanded). Filter scope: hanya kelas owner=guru (enrollment-guard pattern). Polling 30s pakai `cursor=null` (latest 20). |
+| 93 | Fase 7 pending counters consolidated | **Single endpoint `GET /guru/pending-counts`** (replace standalone Fase 4 `/guru/kelas/:id/pending-grade` — keep both untuk backward compat tapi dashboard pakai consolidated). Response: `{ ungraded_submissions: int, pending_review_ulangan: int, pending_review_ujian: int }`. Per counter scope = semua kelas owner=guru (lintas-kelas total, bukan per-kelas). Per-kelas detail tetap dari endpoint existing. Polling 30s di sidebar dashboard `/guru`. Counter definitions: ungraded_submissions = COUNT Submission status=submitted AND tugas.kelas.guru_id=actor; pending_review_ulangan = COUNT HasilSoalBab status IN (submitted,expired) AND mode=ulangan AND deleted_at IS NULL AND ada UlanganBabSetting.IzinkanReviewSetelahSubmit=true (= guru "perlu approve review buka" — proxy untuk attention); pending_review_ujian = COUNT HasilUjian status IN (submitted,expired) AND deleted_at IS NULL AND Ujian.IzinkanReviewSetelahSubmit=true. Definisi attention semantic boleh tweak saat 7.D implementasi kalau test feel-test bilang noisy. |
+| 94 | Fase 7 export CSV | **Server-side CSV generation, sync inline** — `GET /guru/kelas/:id/rekap-nilai/export.csv` returns `text/csv` dengan `Content-Disposition: attachment; filename="rekap-<kelas-slug>-<YYYYMMDD>.csv"`. Kolom: `nis,nama,<bab1_total>,<bab2_total>,...,<ujian1_total>,...,total_kelas`. Encoding UTF-8 BOM (`\ufeff`) untuk Excel-compat. Empty cell = "" (bukan "NULL"). Limit: max 200 siswa × 30 bab × 30 ujian = ~200 rows × 60 cols cukup buat MVP, render < 500ms expected. Future v0.13: kalau perlu > 200 siswa, switch ke async ImportJob-style (preview→generate→download). |
 
 **Open (perlu sesi terpisah):**
 - Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
 
 ---
+
 
 ## 1. Goal
 
@@ -2625,7 +2632,7 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 🎉 **Fase 5 ✅ CLOSED 15/15 = 100%** — semua acceptance criteria locked #76-#82 met. BE 10/10 + Items addon, FE 5/5 (Guru 2 + Siswa 2 + 1 sub-tab orchestrator). Smoke E2E happy path verified per task. Anti-cheat #76 enforced di `/items` endpoint (jawaban_benar strip) + ulangan answer (no is_benar response). Deterministic seed #79 verified resume tidak shuffle ulang. Cron 30s + advisory lock #80 mutex submit/cron tested di 5.D.4. Review gating #81 enforced di `/review` endpoint dan FE lobby/result reviewable check.
 
-**Eksekusi berikutnya: 🎉 Fase 6 ✅ CLOSED 15/15 (BE 10/10 + FE Guru 2/2 + FE Siswa 2/2). Locked #83-#88 enforced: #83 sub-fase split 6.A-6.G done, #84 BankSoal pribadi cross-kelas done, #85 source mode discriminated done, #86 deterministic seed done, #87 cron 30s + advisory lock done, #88 coverage gate ≥70% DEFER ke Fase 8 TODO (mirror Fase 5 #82). Lanjut **Fase 7 — Rekap Nilai + Activity Feed**.**
+**Eksekusi berikutnya: Fase 7 — Rekap Nilai + Activity Feed + Pending Counters + Guru Audit. Decomposed 12 task (lihat plan di bawah). Locked #89-#94. Estimasi 6.5 hari.**
 
 **Fase 6 — Ulangan Harian (cross-bab) — 15 task, estimasi 7 hari:**
 - 6.A BE foundation: **1/1 ✅ DONE** — 6.A.1 ✅ commit `3371e30` migration 000011 + 7 model + repo skeleton (BankSoal, Ujian, UjianSoal, HasilUjian, JawabanUjian, EventUjian — 6 tables 17 indexes). go vet/build clean. up→11 (95ms) + down round-trip + up (71ms). schema_version `000011_ujian`. bin/lms-api restart healthz=200.
@@ -2645,3 +2652,89 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 **Order eksekusi:** 6.A.1 dulu (foundation), verify tuntas baru gerak 6.B. Tiap task: ship → smoke verify → commit → push origin+server seperti Fase 5.
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
+
+### Fase 7 — Rekap Nilai + Activity Feed + Pending Counters + Guru Audit (6.5 hari)
+
+**Status:** OPEN — DECOMPOSED 12 task. Locked #89-#94 enforced.
+
+**Acceptance criteria (DoD per locked decisions):**
+- [ ] Siswa lihat nilai bab transparan (Section 6.2 formula) per kelas + lintas kelas, breakdown ulangan/tugas/bobot.
+- [ ] Guru lihat matrix rekap nilai per kelas (siswa × bab + ulangan harian + total kelas) + Export CSV (locked #94).
+- [ ] Guru dashboard ada activity feed widget (locked #92, polling 30s, cursor) + pending counter badge consolidated (locked #93).
+- [ ] Guru bisa lihat audit log scope kelas (locked #59).
+- [ ] Backend single source of truth — formula dihitung at-query-time, no FE recompute (locked #90).
+
+**Task breakdown:**
+
+**Task 7.A.1 — Service `nilai` siswa-side: per-kelas + lintas-kelas formula (locked #48 + 6.2)** ⏳ PENDING
+- Files: `backend/internal/nilai/{model.go,repo.go,service.go,handler.go,routes.go}` (new package), `backend/cmd/server/main.go` (wire group `siswaNilai`).
+- Endpoints:
+  - `GET /api/v1/siswa/kelas/:id/nilai` → `{kelas: {id,nama,bobot}, bab[]: {id,nomor,judul,nilai_ulangan_bab(*),nilai_tugas_bab(*),total(*),breakdown}, ulangan_harian[]: {ujian_id,judul,nilai_terbaik(*),attempt_count}, total_kelas(*)}`
+  - `GET /api/v1/siswa/nilai` → list `{kelas_id, kelas_nama, total_kelas(*), bab_count, ulangan_count}`
+- Aggregator pakai single-pass query per komponen, no N+1. NULL handling explicit (#48 re-normalize). Test golden untuk weighted_avg + skip-NULL.
+
+**Task 7.A.2 — Smoke E2E nilai siswa** ⏳ PENDING
+- File: `dogfood-output/fase7/qa-7a.sh` (new, mirror `/tmp/qa-6e1.sh` pattern).
+- Cases: T1 happy 1 bab full (ulangan+tugas), T2 bab tugas-only (NULL ulangan), T3 bab kosong (return null), T4 lintas-kelas list, T5 cross-siswa 403 enrollment-guard, T6 anon 401, T7 weighted formula correctness contoh Section 6.2.
+
+**Task 7.B.1 — Service `nilai` guru-side: rekap matrix per kelas + endpoint** ⏳ PENDING
+- Endpoint: `GET /api/v1/guru/kelas/:id/rekap-nilai` → `{kelas, bab[], ujian[], rows[]: {siswa_id,nis,nama,nilai_per_bab[],nilai_per_ujian[],total_kelas(*)}}`.
+- Aggregator: 1 query per kelas snapshot semua siswa + JOIN HasilSoalBab + Submission + HasilUjian. Sort siswa by nama ASC. NULL passthrough (FE render "—").
+- RoleGuard guru-only + ownership check kelas.guru_id=actor.
+
+**Task 7.B.2 — Export CSV endpoint (locked #94)** ⏳ PENDING
+- Endpoint: `GET /api/v1/guru/kelas/:id/rekap-nilai/export.csv` → `text/csv` + `Content-Disposition: attachment; filename="rekap-<slug>-<YYYYMMDD>.csv"`.
+- BOM UTF-8 prefix. Reuse aggregator dari 7.B.1 (DRY) → render via `encoding/csv` writer.
+
+**Task 7.B.3 — Smoke E2E rekap matrix + export** ⏳ PENDING
+- File: `dogfood-output/fase7/qa-7b.sh`.
+- Cases: T1 happy matrix shape, T2 cross-guru 403, T3 export CSV header `nis,nama,...,total_kelas`, T4 BOM `\ufeff` byte 0..2, T5 empty cell rendering, T6 NULL → "" not "NULL".
+
+**Task 7.C.1 — Activity feed query union + cursor encoder (locked #55 + #92)** ⏳ PENDING
+- Files: `backend/internal/feed/{repo.go,service.go,handler.go,routes.go}` (new package).
+- Endpoint: `GET /api/v1/guru/feed?cursor=BASE64&limit=20`.
+- Implementation: 6 SELECT UNION ALL ke (Submission insert, Submission GradedAt, Enrollment via=kode, HasilSoalBab finished mode=ulangan, HasilUjian finished, AuditLog action IN hasil_reset/ujian_attempt_reset). Filter `kelas_id IN (SELECT id FROM kelas WHERE guru_id=actor)`. Sort `at DESC, type ASC, target_id ASC` deterministic.
+- Cursor: base64(`<at_unix_micro>:<type>:<target_id>`). Default limit 20 max 50.
+
+**Task 7.C.2 — Smoke E2E activity feed** ⏳ PENDING
+- File: `dogfood-output/fase7/qa-7c.sh`.
+- Cases: T1 fresh feed top-N latest, T2 cursor pagination same-event no-duplicate, T3 cross-guru tidak bocor (filter kelas owner), T4 6 event types semua muncul setelah seed data, T5 empty state, T6 invalid cursor 400.
+
+**Task 7.D.1 — Pending counters consolidated (locked #93)** ⏳ PENDING
+- Endpoint: `GET /api/v1/guru/pending-counts` → `{ungraded_submissions, pending_review_ulangan, pending_review_ujian}`.
+- Implement di `backend/internal/feed/service.go` atau new `backend/internal/dashboard/`.
+- Reuse logic existing `/guru/kelas/:id/pending-grade` (Fase 4 commit `a4f14a4`) — abstract counter ke service-level helper, panggil 3 query parallel pakai goroutine + sync.WaitGroup.
+- Smoke: T1 happy zeroes new guru, T2 ungraded after submit, T3 review counter match locked #93 definition.
+
+**Task 7.E.1 — Guru audit scope per kelas (locked #59)** ⏳ PENDING
+- Endpoint: `GET /api/v1/guru/kelas/:id/audit?action=<filter>&limit=50`.
+- Filter action allowlist: `hasil_reset`, `ujian_attempt_reset`, `bab_archived`, `bab_published`, `siswa_kicked`, `tugas_deleted`, `submission_graded`, `ujian_auto_graded`. Hanya entry dengan `target_kelas_id=:id` AND kelas.guru_id=actor.
+- Smoke: T1 happy filter, T2 cross-kelas 403, T3 anon 401, T4 admin lain action tidak masuk scope guru.
+
+**Task 7.F.1 — FE Siswa: `/siswa/nilai` (lintas kelas) + `/siswa/kelas/[id]/nilai` (per-kelas + breakdown)** ⏳ PENDING
+- Files: `frontend/app/siswa/nilai/page.tsx`, `frontend/app/siswa/kelas/detail/nilai/page.tsx` (static export query-string `?id=K`), `frontend/lib/siswa-nilai-api.ts`, `frontend/components/siswa-nilai/{NilaiKelasList.tsx,NilaiKelasDetail.tsx,BabNilaiCard.tsx,UjianNilaiCard.tsx}`.
+- UI: card per bab dengan breakdown (ulangan_bab + tugas + bobot bar) + tooltip formula. Empty state "—" untuk NULL. WIB explicit (locked #29).
+- Reuse TanStack Query + AuthGate guard.
+
+**Task 7.G.1 — FE Guru: `/guru/kelas/[id]/rekap-nilai` matrix + Export CSV** ⏳ PENDING
+- Files: `frontend/app/guru/kelas/detail/rekap-nilai/page.tsx`, `frontend/components/guru-rekap/{RekapMatrix.tsx,ExportCsvButton.tsx}`.
+- UI: tabel HTML responsive, kolom freeze nama+nis, scroll horizontal untuk bab+ujian. Sel klik → tooltip breakdown per siswa-bab. Tombol Export CSV download via `<a href={url} download>` (presigned tidak perlu, server handle Content-Disposition).
+
+**Task 7.G.2 — FE Guru: Activity feed widget di dashboard `/guru` + pending counter wiring + audit page** ⏳ PENDING
+- Files: `frontend/components/guru-dashboard/ActivityFeedCard.tsx` (new), `frontend/components/guru-dashboard/PendingCountersBar.tsx` (new — replace inline counter Fase 4), `frontend/app/guru/page.tsx` (wire), `frontend/app/guru/kelas/detail/audit/page.tsx`, `frontend/lib/guru-feed-api.ts`.
+- Activity feed: polling 30s, infinite-scroll load-more pakai cursor, empty state, type→icon mapping (submission/grading/join/finished/reset).
+- Pending counters: 3 badge (Tugas, Review Ulangan Bab, Review Ujian) + click → drill ke list page existing.
+- Audit page: filter dropdown action + tabel + WIB timestamp + actor name.
+
+**Coverage gate (defer Fase 8 TODO mirror #82/#88):** ≥70% target untuk `internal/nilai` + `internal/feed` — soft fallback ≥65% boleh defer kalau blocker waktu. Smoke E2E hijau cukup untuk MVP.
+
+**Order eksekusi:**
+1. 7.A.1 → 7.A.2 (BE siswa nilai)
+2. 7.B.1 → 7.B.2 → 7.B.3 (BE guru rekap + export)
+3. 7.C.1 → 7.C.2 (activity feed)
+4. 7.D.1 (pending counters)
+5. 7.E.1 (guru audit)
+6. 7.F.1 (FE siswa)
+7. 7.G.1 → 7.G.2 (FE guru rekap + dashboard wiring + audit page)
+
+Tiap task: ship → smoke verify → commit → push origin+server. Setelah 12/12 closed → UX/QA dogfood pass mirror Fase 5/6 → close Fase 7.
