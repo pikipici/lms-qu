@@ -38,7 +38,7 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.11.15 — Fase 0-6 ✅ ALL CLOSED + UX/QA pass `6e10888`, head `6e10888`).
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.11.15 — Fase 0-6 ✅ ALL CLOSED + UX/QA pass `6e10888`, head `b262142`).
   - Fase 4 14/14, Fase 5 15/15 + UX/QA pass `22d2095`, **🎉 Fase 6 15/15 + UX/QA pass `6e10888`** smoke E2E 367/368 hijau (1 unrelated bank-pool fixture flake) + boundary regression 9/9.
 - 88 locked decisions (v0.10.0 add #76-#82 Fase 5; v0.11.0 add #83-#88 Fase 6: sub-fase split 6.A-6.G, BankSoal per-guru, source mode manual/random + SourceConfigJSON, deterministic seed pool, cron 30s + advisory lock reuse SoalBab, coverage gate ≥70% defer Fase 8). 10 open decisions.
 - Next focus: **Fase 7 — Rekap Nilai + Activity Feed** (cross-fase aggregate Tugas + SoalBab + Ujian + activity timeline).
@@ -56,6 +56,7 @@
   - Highlights: anti-cheat #76 verified (items strip `jawaban_benar`, answer no `is_benar`), review gating #81 enforced, deterministic seed #86 verified (resume same hasil_id same pool), cron 30s + advisory lock #87 mutex submit/cron tested. UjianPlayer = timer countdown + autosave 600ms + auto-submit on expire (guarded ref) + R2 presign refresh 12m + optimistic `queryClient.setQueryData`. UjianSection orchestrator 4-state (lobby ↔ playing → result → review). Page route `/siswa/kelas/detail/ujian` static export query-string `?id=K&uid=U`.
   - Coverage gate #88 ≥70% defer to Fase 8 TODO (mirror Fase 5 #82 soft fallback).
   - Commits: `3371e30`+`f50e7f2`+`76de898`+`ceaf86b`+`ede3194`+`7d465bf`+`d2ecef9`+`205be54`+`0df6f89`+`8f77dbc`+`1269846`+`446f187`+`d9012b1`+`19060d0`.
+  - **UX/QA pass post-close** `6e10888` + roadmap bump `b262142`: 5 findings (1 Critical 3-way drift Go `MaxDurasiMenit=600` vs DB CHECK 300 vs FE max=360 → HTTP 500 mentah, 1 High FE form max mismatch, 1 Medium banksoal-api error mapper drift, 2 Low siswa-ujian-api alias/orphan). All fixed: BE 600→300, FE form 360→300, banksoal-api drop 3 dead arms + add 5 BE-truth arms (`payload_too_large`/`unsupported_mime`/`image_slot_empty`/`r2_unavailable`/`missing_file`), siswa-ujian-api rename `ujian_not_started`→`ujian_window_not_open` + drop redundant `timer_expired`. Boundary smoke `dogfood-output/fase6/smoke-bounds.sh` 9/9. Dogfood report `dogfood-output/fase6/report.md`.
 - [ ] Fase 7 — Rekap Nilai + Activity Feed
 - [ ] Fase 8 — Polish + E2E
 
