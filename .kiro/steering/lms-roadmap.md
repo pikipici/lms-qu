@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.9 — **Fase 5.D 4/4 ✅** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 + **5.E 1/1 ✅** DONE 2026-05-21..22. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3` + 5.D.4 Timer expire cron 30s `2587526` + 5.E.1 Hasil review+list+cancel+rekap consolidated `8c55651`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.10 — **Fase 5.D 4/4 ✅** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 + 5.E 1/1 ✅ + **5.F 1/2** DONE 2026-05-21..22. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3` + 5.D.4 Timer expire cron 30s `2587526` + 5.E.1 Hasil review+list+cancel+rekap consolidated `8c55651` + 5.F.1 FE Guru SoalBab editor + bulk paste + image manager `8c74e38`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Task 5.E.1 ✅ DONE — Hasil review+list+cancel+rekap consolidated; Fase 5.E 1/1 ✅; Fase 5 progress 10/15 — BE complete!)
+> Last updated: 2026-05-22 (Task 5.F.1 ✅ DONE — FE Guru SoalBab editor + bulk paste + image manager; Fase 5.F 1/2; Fase 5 progress 11/15)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2520,12 +2520,17 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 
 #### 5.F Frontend Guru — Editor + Setting + Preview + Rekap
 
-**Task 5.F.1 — FE Guru: SoalBab editor + bulk paste + image manager** ⏳
-- Files: `frontend/lib/soalbab-api.ts` (typed client list/get/create/update/delete/uploadImage/deleteImage/bulkCreate + friendly error mapper), `frontend/components/soalbab/SoalBabEditDialog.tsx` (form react-hook-form + zod, 5 opsi + jawaban radio + poin + mode + 6 image slots dengan upload preview), `frontend/components/soalbab/BulkPasteDialog.tsx` (textarea mono-font + line counter + parse preview client-side + result toast partial-success).
-- Page: tab "Soal" di `/guru/kelas/detail?id=:id` bab detail (atau page baru `/guru/kelas/[id]/bab/[bab]/soal` — keputusan saat ship). List card per soal dengan thumbnail kalau ada image, dropdown Edit/Hapus, filter mode tab (semua/latihan/ulangan/keduanya), tombol Tambah + Bulk Paste.
-- Optimistic concurrency #56: kirim version, 409 → invalidate + re-sync.
-- Verify: `npx tsc --noEmit` PASS, `npm run build` PASS.
-- Commit: `feat(fe-soalbab): editor + bulk paste + image manager`
+**Task 5.F.1 — FE Guru: SoalBab editor + bulk paste + image manager** ✅ DONE 2026-05-22 commit `8c74e38`
+- Files:
+  - `frontend/lib/soalbab-api.ts` typed client (list/get/create/update/delete/uploadImage/deleteImage/getImageURL/bulkCreate) + `friendlySoalError` mapper covering 17 reason codes (version_conflict, jawaban, mode, image_too_large, bulk_too_many_lines, bulk_kelas_archived, dll). Image slot `pertanyaan|a|b|c|d|e` matches backend.
+  - `components/soalbab/SoalBabEditDialog.tsx` controlled form: 5 opsi + jawaban radio + poin (1-100) + mode dropdown + 6 image slots (pertanyaan + a..e). Image upload presigned preview + replace + clear; image swap NOT bump version (locked #78). Validation: pertanyaan must have text or image, jawaban must point to non-empty option.
+  - `components/soalbab/BulkPasteDialog.tsx` pipe-delimited 9-kolom paste, line counter (max 200, red kalau >200), sample template w/ "Pakai contoh" button, partial-success result panel (inserted count + per-line errors w/ raw preview 80 char).
+  - `components/soalbab/SoalBabList.tsx` list dengan filter chip (semua/latihan/ulangan/keduanya) + counter pool ulangan & latihan (untuk reference sebelum guru set UlanganBabSetting jumlah_soal), card per soal dengan mode badge berwarna + jawaban benar highlight emerald + dropdown Edit/Hapus + thumbnail indicator "Ada gambar".
+  - Wire ke tab "Soal" di `/guru/kelas/detail/bab` page (replace PlaceholderTab).
+- Optimistic concurrency #56: PATCH bawa version + 409 invalidate + key change re-sync.
+- Verify: `npm run typecheck` clean + `npm run build` clean (server). Page `/guru/kelas/detail/bab` size 15.1 kB / 266 kB First Load (sebelum 11 kB).
+- lms-api restart healthz 200; out/ regenerated dengan tab Soal aktif.
+- Commit: `8c74e38 feat(fe-soalbab): SoalBab editor + bulk paste + image manager (Task 5.F.1)`
 
 **Task 5.F.2 — FE Guru: Setting + Preview + Rekap Hasil + Reset Attempt** ⏳
 - Components: `UlanganBabSettingForm.tsx` (form jumlah_soal/durasi/batas_attempt/izinkan_review/waktu_buka_review dgn validation jumlah_soal ≤ pool count), `SoalPreviewDialog.tsx` (lihat soal dari pov siswa + tampilkan jawaban benar highlighted), `RekapHasilTable.tsx` (TanStack Query list hasil per bab dengan filter mode+status+siswa, sort by nilai/waktu, kolom: siswa, mode, attempt_no, status, nilai_total, dapat_review, action Reset Attempt).
@@ -2562,9 +2567,9 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - 5.C BE Setting + Latihan: 2/2 ✅ DONE (5.C.1 ✅ commit `7b9edd5` UlanganBabSetting GET+PUT upsert; 5.C.2 ✅ commit `d6c808d` Latihan flow start/answer/finish)
 - 5.D BE Ulangan flow + cron: 4/4 ✅ DONE (5.D.1 ✅ start deterministic seed `0346609`+`32f63ae`+`d822d46`; 5.D.2 ✅ answer save delayed grade `5067f0a`; 5.D.3 ✅ submit + auto-grade tx `d262ea3`; 5.D.4 ✅ timer cron 30s `2587526`)
 - 5.E BE Resume + Remedial + Review + Hasil: **1/1 ✅ DONE** (5.E.1 ✅ commit `8c55651` review+list+cancel+rekap consolidated 4 endpoints; smoke E2E 28/28 hijau; **Fase 5 BE COMPLETE 10/10**)
-- 5.F FE Guru editor + setting + rekap: 0/2 ⏳ NEXT
+- 5.F FE Guru editor + setting + rekap: 1/2 (5.F.1 ✅ commit `8c74e38` SoalBab editor + bulk paste + image manager)
 - 5.G FE Siswa latihan + ulangan + review: 0/2
 
-**Eksekusi berikutnya: gas Task 5.F.1** — FE Guru SoalBab editor + bulk paste + image manager. `frontend/lib/soalbab-api.ts` typed client (list/get/create/update/delete/uploadImage/deleteImage/bulkCreate + friendly error mapper) + `SoalBabEditDialog.tsx` form react-hook-form+zod 5 opsi + jawaban radio + 6 image slots, `BulkPasteDialog.tsx` textarea + line counter + parse preview + result toast. Page: tab "Soal" di bab detail dengan list card + thumbnail + filter mode + tombol Tambah + Bulk Paste. Optimistic concurrency #56. Estimasi 90 menit.
+**Eksekusi berikutnya: gas Task 5.F.2** — FE Guru: Setting + Preview + Rekap Hasil + Reset Attempt. `UlanganBabSettingForm.tsx` (PUT `/bab/:id/ulangan-setting` body jumlah_soal/durasi/batas_attempt/izinkan_review/waktu_buka_review + version, validate jumlah_soal ≤ pool count yg ada di SettingView), `RekapHasilTable.tsx` (TanStack list dari GET `/bab/:id/hasil-rekap` — udah jadi di 5.E.1 — sort nilai_terbaik DESC + per-siswa nilai_terbaik/terakhir/cancelled_count + tombol Cancel attempt yg trigger `POST /hasil-soal-bab/:id/cancel`), `ResetAttemptDialog.tsx` konfirmasi destructive. Estimasi 90 menit.
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
