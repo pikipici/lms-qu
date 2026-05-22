@@ -24,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { GuruFeedList } from '@/components/guru/GuruFeedList';
 
 export default function GuruDashboardPage() {
   const userName = useAuthStore((s) => s.user?.name ?? 'Guru');
@@ -179,6 +180,18 @@ export default function GuruDashboardPage() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Aktivitas terbaru</CardTitle>
+          <CardDescription>
+            Submission tugas, ulangan harian selesai, dan siswa baru join.
+            Auto-refresh tiap 30 detik.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GuruFeedList />
         </CardContent>
       </Card>
     </div>
