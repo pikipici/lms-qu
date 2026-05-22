@@ -69,6 +69,7 @@ import { siswaCardToMateri } from '@/components/siswa/siswaCardToMateri';
 import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
 import { SiswaTugasList } from '@/components/submission/SiswaTugasList';
 import { LatihanPlayer } from '@/components/soalbab/LatihanPlayer';
+import { UlanganSection } from '@/components/soalbab/UlanganSection';
 
 // ---------- Sub-tab definition ----------
 
@@ -223,6 +224,50 @@ function MateriTab({
           onOpened={onRefresh}
         />
       ))}
+    </div>
+  );
+}
+
+// ---------- Soal tab (Latihan + Ulangan sub-switch) ----------
+
+type SoalSubTab = 'latihan' | 'ulangan';
+
+function SoalTabContent({ babID }: { babID: string }) {
+  const [sub, setSub] = React.useState<SoalSubTab>('latihan');
+  return (
+    <div className="space-y-4">
+      <div className="inline-flex rounded-md border bg-card p-1">
+        <button
+          type="button"
+          onClick={() => setSub('latihan')}
+          className={cn(
+            'rounded px-3 py-1.5 text-sm transition-colors',
+            sub === 'latihan'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Latihan
+        </button>
+        <button
+          type="button"
+          onClick={() => setSub('ulangan')}
+          className={cn(
+            'rounded px-3 py-1.5 text-sm transition-colors',
+            sub === 'ulangan'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Ulangan Bab
+        </button>
+      </div>
+
+      {sub === 'latihan' ? (
+        <LatihanPlayer babID={babID} disabled={false} />
+      ) : (
+        <UlanganSection babID={babID} disabled={false} />
+      )}
     </div>
   );
 }
@@ -438,7 +483,7 @@ function SiswaBabDetailContent({
       )}
 
       {tab === 'soal' && (
-        <LatihanPlayer babID={babID} disabled={false} />
+        <SoalTabContent babID={babID} />
       )}
 
       {tab === 'tugas' && (
