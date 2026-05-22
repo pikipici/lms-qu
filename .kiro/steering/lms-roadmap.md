@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.7 — **Fase 5.D 3/4** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.8 — **Fase 5.D 4/4 ✅** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21..22. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3` + 5.D.4 Timer expire cron 30s `2587526`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Task 5.D.3 ✅ DONE — Ulangan Bab submit + auto-grade tx + advisory lock per hasil_id, commit `d262ea3`; Fase 5 progress 8/15)
+> Last updated: 2026-05-22 (Task 5.D.4 ✅ DONE — Timer expire cron 30s with auto-grade tx; Fase 5.D 4/4 ✅; Fase 5 progress 9/15)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2473,13 +2473,17 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Smoke E2E hijau (17 cases): submit happy 200 nilai=10/benar=1/total=3 + idempotent submit 200 already_submitted=true + SQL probe (status=selesai, jawaban graded `a→t→10` & `b→f→0`) + EventBab `ulangan_bab_submitted` + siswa2 not-owner 403 + invalid uuid 400 + non-existent 404 + attempt#2 all benar 30 + expire deadline 60s → 410 `submit_after_grace` + cancel via SQL → 409 `hasil_cancelled`.
 - Commit: `d262ea3 feat(soalbab): Ulangan Bab submit + auto-grade tx (Task 5.D.3)`
 
-**Task 5.D.4 — Timer expire cron 30s** ⏳
-- File: `backend/internal/soalbab/timer_cron.go`. Pakai pattern skill `go-cleanup-cron-ctx-bound`: `time.NewTicker(30*time.Second)` + ctx-bound goroutine started di `cmd/server/main.go` setelah DB ready, dihentikan saat shutdown signal.
-- Tick: `SELECT id FROM hasil_soal_bab WHERE status='berlangsung' AND mode='ulangan' AND deadline_at <= now() ORDER BY deadline_at LIMIT 100 FOR UPDATE SKIP LOCKED` → per row spawn func: BEGIN tx → advisory lock (sama key dengan submit) → reload → cek status masih berlangsung → auto-grade (sama logika 5.D.3 tapi `selesai_at = deadline_at` bukan now) → UPDATE → audit `ulangan_bab_auto_graded` w/ meta `{reason: 'timer_expired'}` → COMMIT.
-- Idempotent: kalau status sudah selesai saat ambil lock, skip.
-- Logging: `lms-api` log "[timer-cron] swept N expired" tiap tick non-zero.
-- Verify: test integration: insert hasil dengan deadline_at di masa lalu → tunggu 1 tick → cek status='selesai' + nilai correct.
-- Commit: `feat(ulanganbab): timer expire cron 30s with advisory lock auto-grade`
+**Task 5.D.4 — Timer expire cron 30s** ✅ DONE 2026-05-22 commit `2587526`
+- File baru: `backend/internal/soalbab/timer_cron.go` (`TimerCron` + `RunOnce`/`gradeOne`/`Run`). Pattern adopted dari skill `go-cleanup-cron-ctx-bound`: `time.NewTicker(30s)` ctx-bound goroutine started di `cmd/server/main.go` setelah `soalbabUlanganSvc` construction, dihentikan saat rootCtx canceled (SIGTERM).
+- Initial sweep on boot — catches downtime backlog (e.g. service down 5 menit, semua attempt yang expire selama itu langsung di-grade saat startup).
+- Tick query: `SELECT id FROM hasil_soal_bab WHERE status='berlangsung' AND mode='ulangan' AND deadline_at IS NOT NULL AND deadline_at <= now() ORDER BY deadline_at LIMIT 100 FOR UPDATE SKIP LOCKED` — concurrent ticks (rolling deploy) tidak fight rows yang sama.
+- Per-row tx: BEGIN → `pg_advisory_xact_lock(?::bigint)` keyed `hasilLockKey(hasilID)` (sama dengan Submit 5.D.3 → mutex siswa↔cron) → reload row → idempotent skip kalau status sudah `selesai` (siswa beat us) → `gradeAttemptInTx` shared helper → UPDATE HasilSoalBab + EventBab → COMMIT.
+- Locked policy: `selesai_at = deadline_at` (BUKAN now()) — records moment timer actually expired untuk rekap UI integrity. Submit endpoint pakai now() karena siswa's conscious action.
+- Per-row best-effort: errors counted + logged, never abort tick. `errors.Join(per-row errs...)` surfaces aggregated visibility.
+- Logging: `[timer-cron] starting interval=30s batch=100`, `[timer-cron] initial swept ...`, `[timer-cron] swept scanned=N graded=X skipped=Y errors=Z` pada non-zero ticks.
+- Refactor: extract `gradeAttemptInTx(tx, hasilID, pool, jawabans)` helper di `ulangan.go` — shared antara `Submit` (5.D.3) dan `TimerCron.gradeOne` (5.D.4) supaya logika grading konsisten.
+- Smoke E2E hijau (10 cases): boot startup logs `starting interval=30s batch=100` + initial sweep grades existing expired backlog from session sebelumnya + setup attempt baru + answer 2 benar 1 salah + expire deadline 1 menit + tunggu cron tick → graded after 15s + SQL probe `selesai|20.00|2|3` + `selesai_at == deadline_at` (timer truth) + EventBab `ulangan_bab_auto_graded` meta `reason='timer_expired'` + submit on already-graded → idempotent 200 `already_submitted=true` + race scenario siswa submit dalam 5s grace beat cron → siswa wins (`already_submitted=false`).
+- Commit: `2587526 feat(soalbab): timer expire cron 30s with auto-grade tx (Task 5.D.4)`
 
 #### 5.E Resume + Remedial + Review + Hasil Rekap
 
