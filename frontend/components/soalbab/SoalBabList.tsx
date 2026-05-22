@@ -18,6 +18,7 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Eye,
   ImageIcon,
   Loader2,
   MoreVertical,
@@ -48,6 +49,7 @@ import { cn } from '@/lib/utils';
 
 import { BulkPasteDialog } from './BulkPasteDialog';
 import { SoalBabEditDialog } from './SoalBabEditDialog';
+import { SoalPreviewDialog } from './SoalPreviewDialog';
 
 type ModeFilter = 'semua' | SoalMode;
 
@@ -69,6 +71,7 @@ export function SoalBabList({ babID, contextLabel, disabled }: SoalBabListProps)
   const queryClient = useQueryClient();
   const [filter, setFilter] = React.useState<ModeFilter>('semua');
   const [editing, setEditing] = React.useState<SoalBab | null>(null);
+  const [previewing, setPreviewing] = React.useState<SoalBab | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [bulkOpen, setBulkOpen] = React.useState(false);
 
@@ -203,6 +206,7 @@ export function SoalBabList({ babID, contextLabel, disabled }: SoalBabListProps)
                 key={soal.id}
                 soal={soal}
                 onEdit={() => setEditing(soal)}
+                onPreview={() => setPreviewing(soal)}
                 onDelete={() => {
                   if (confirm(`Hapus soal "${soal.pertanyaan.slice(0, 50) || '(gambar)'}"?`)) {
                     deleteMutation.mutate(soal.id);
@@ -241,6 +245,13 @@ export function SoalBabList({ babID, contextLabel, disabled }: SoalBabListProps)
         babID={babID}
         invalidateKeys={invalidateKeys}
       />
+      <SoalPreviewDialog
+        open={!!previewing}
+        onOpenChange={(o) => {
+          if (!o) setPreviewing(null);
+        }}
+        soal={previewing}
+      />
     </Card>
   );
 }
@@ -259,11 +270,13 @@ function modeBadgeClass(mode: SoalMode): string {
 function SoalRow({
   soal,
   onEdit,
+  onPreview,
   onDelete,
   disabled,
 }: {
   soal: SoalBab;
   onEdit: () => void;
+  onPreview: () => void;
   onDelete: () => void;
   disabled?: boolean;
 }) {
@@ -327,6 +340,10 @@ function SoalRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onPreview}>
+              <Eye className="size-4" />
+              Preview
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onEdit}>
               <Pencil className="size-4" />
               Edit

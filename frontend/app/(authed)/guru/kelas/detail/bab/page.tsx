@@ -83,6 +83,8 @@ import { DuplicateBabDialog } from '@/components/bab/DuplicateBabDialog';
 import { MateriList } from '@/components/materi/MateriList';
 import { PengumumanList } from '@/components/pengumuman/PengumumanList';
 import { SoalBabList } from '@/components/soalbab/SoalBabList';
+import { UlanganBabSettingForm } from '@/components/soalbab/UlanganBabSettingForm';
+import { RekapHasilTable } from '@/components/soalbab/RekapHasilTable';
 import { TugasList } from '@/components/tugas/TugasList';
 
 // ---------- Helpers ----------
@@ -567,11 +569,15 @@ function GuruBabDetailContent({
         />
       )}
       {tab === 'soal' && (
-        <SoalBabList
-          babID={babID}
-          contextLabel={`Bank soal untuk Bab ${bab.nomor} — ${bab.judul}.`}
-          disabled={archived}
-        />
+        <div className="space-y-4">
+          <SoalBabList
+            babID={babID}
+            contextLabel={`Bank soal untuk Bab ${bab.nomor} — ${bab.judul}.`}
+            disabled={archived}
+          />
+          <UlanganBabSettingForm babID={babID} disabled={archived} />
+          <RekapHasilTable babID={babID} disabled={archived} />
+        </div>
       )}
       {tab === 'tugas' && (
         <TugasList
