@@ -29,6 +29,7 @@ import (
 	"github.com/pikip/lms/backend/internal/admin"
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
+	"github.com/pikip/lms/backend/internal/banksoal"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"github.com/pikip/lms/backend/internal/health"
@@ -42,6 +43,7 @@ import (
 	"github.com/pikip/lms/backend/internal/storage"
 	"github.com/pikip/lms/backend/internal/submission"
 	"github.com/pikip/lms/backend/internal/tugas"
+	"github.com/pikip/lms/backend/internal/ujian"
 	"gorm.io/gorm"
 )
 
@@ -461,6 +463,15 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// sweep on boot catches downtime backlog. Cancellable via rootCtx.
 	timerCron := soalbab.NewTimerCron(soalbabRepo)
 	go timerCron.Run(rootCtx)
+
+	// Task 6.A.1 — Fase 6 foundation: BankSoal + Ujian repos. Skeleton
+	// only di foundation pass — handler/service akan land di 6.B-6.G.
+	// Ditahan di scope variable supaya unused-import compile error
+	// nggak ke-trip; underscore-bind sampai 6.B.1 wire CRUD endpoint.
+	bankSoalRepo := banksoal.NewRepo(gdb)
+	ujianRepo := ujian.NewRepo(gdb)
+	_ = bankSoalRepo
+	_ = ujianRepo
 
 	// Task 5.D.2 — Answer endpoint dispatcher. Latihan dapat immediate
 	// is_benar feedback (locked #81), Ulangan delayed grade dengan
