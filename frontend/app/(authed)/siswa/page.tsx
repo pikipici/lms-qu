@@ -11,7 +11,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, GraduationCap, KeyRound, Users } from 'lucide-react';
+import { ArrowRight, GraduationCap, KeyRound, TrendingUp, Users } from 'lucide-react';
 
 import { listMyKelas } from '@/lib/siswa-api';
 import { useAuthStore } from '@/lib/auth';
@@ -59,12 +59,20 @@ export default function SiswaDashboardPage() {
             dari guru.
           </p>
         </div>
-        <Button asChild size="sm">
-          <Link href="/siswa/gabung">
-            <KeyRound className="size-4" />
-            Gabung Kelas
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/siswa/nilai">
+              <TrendingUp className="size-4" />
+              Nilai saya
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href="/siswa/gabung">
+              <KeyRound className="size-4" />
+              Gabung Kelas
+            </Link>
+          </Button>
+        </div>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -23,6 +23,7 @@ import {
   GraduationCap,
   LogOut,
   ShieldAlert,
+  TrendingUp,
   UserCog,
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ const NAV: NavItem[] = [
   { href: '/siswa', label: 'Dashboard', Icon: LayoutDashboard },
   { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList },
   { href: '/siswa/ujian', label: 'Ujian saya', Icon: GraduationCap },
+  { href: '/siswa/nilai', label: 'Nilai saya', Icon: TrendingUp },
   { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound },
 ];
 

@@ -26,7 +26,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, BookOpen, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, RotateCcw, TrendingUp } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import { listMyKelas, type MyKelasItem } from '@/lib/siswa-api';
@@ -234,6 +234,14 @@ function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
             {kelas.deskripsi}
           </p>
         )}
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/siswa/kelas/detail/nilai?id=${kelasID}`}>
+              <TrendingUp className="size-4" />
+              Lihat nilai kelas ini
+            </Link>
+          </Button>
+        </div>
       </header>
 
       <Card>
