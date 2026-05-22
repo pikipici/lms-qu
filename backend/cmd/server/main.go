@@ -469,6 +469,27 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	soalbabAnswerHandler := soalbab.NewAttemptAnswerHandler(soalbabRepo, soalbabLatihanHandler, soalbabUlanganHandler)
 	siswaGroup.Post("/hasil-soal-bab/:id/answer", soalbabAnswerHandler.Answer)
 
+	// Task 5.E.1 — Hasil + Review + Cancel + Rekap consolidated endpoints.
+	// Siswa-side: review jawaban setelah submit (gated locked #81),
+	// list hasil sendiri di bab (untuk lobby/resume hint).
+	// Guru-side: soft-cancel attempt buat remedial reset (locked #76 —
+	// dibatalkan tidak count terhadap batas_attempt), rekap dashboard
+	// per-siswa nilai_terbaik+terakhir.
+	soalbabHasilSvc := soalbab.NewHasilService(soalbabRepo, babRepo, kelasRepo, kelasRepo, authRepo, authRepo)
+	soalbabHasilHandler := soalbab.NewHasilHandler(soalbabHasilSvc)
+	siswaGroup.Get("/hasil-soal-bab/:id/review", soalbabHasilHandler.Review)
+	siswaGroup.Get("/bab/:id/hasil", soalbabHasilHandler.ListSiswa)
+	babGroup.Get("/:id/hasil-rekap", soalbabHasilHandler.Rekap)
+	// Cancel: guru/admin route via babGroup wrapper (sudah punya
+	// RoleGuard admin|guru). Pakai path flat hasil-soal-bab supaya FE
+	// gampang dispatch. Wire under api group dengan auth + role guard.
+	hasilGuruGroup := api.Group("/hasil-soal-bab",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	hasilGuruGroup.Post("/:id/cancel", soalbabHasilHandler.Cancel)
+
 	// Pengumuman (Task 3.F.1): announcement CRUD per kelas. BabID nullable
 	// — bisa kelas-wide atau bab-scoped. Status enum published|archived
 	// (locked #66 passive timestamp). Kelas-scope routes (POST/GET) under

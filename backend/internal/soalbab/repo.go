@@ -416,7 +416,38 @@ type HasilListFilter struct {
 }
 
 func (r *Repo) ListHasilByBab(ctx context.Context, babID uuid.UUID, f HasilListFilter) ([]HasilSoalBab, error) {
-	return nil, errNotImplemented
+	q := r.db.WithContext(ctx).Model(&HasilSoalBab{}).Where("bab_id = ?", babID)
+	if f.Mode != "" {
+		q = q.Where("mode = ?", f.Mode)
+	}
+	if f.SiswaID != uuid.Nil {
+		q = q.Where("siswa_id = ?", f.SiswaID)
+	}
+	if f.Status != "" {
+		q = q.Where("status = ?", f.Status)
+	}
+	if f.Limit > 0 {
+		q = q.Limit(f.Limit)
+	}
+	var rows []HasilSoalBab
+	if err := q.Order("siswa_id ASC, attempt_no ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ListHasilBySiswaBab returns all attempts (Latihan + Ulangan, semua status)
+// for a (siswa, bab) ordered by mulai_at DESC. Used by siswa-side list +
+// resume hint endpoint (Task 5.E.1).
+func (r *Repo) ListHasilBySiswaBab(ctx context.Context, siswaID, babID uuid.UUID) ([]HasilSoalBab, error) {
+	var rows []HasilSoalBab
+	if err := r.db.WithContext(ctx).
+		Where("siswa_id = ? AND bab_id = ?", siswaID, babID).
+		Order("mulai_at DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // ---------------------------------------------------------------------------
