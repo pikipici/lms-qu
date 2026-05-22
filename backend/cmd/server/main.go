@@ -623,6 +623,8 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	)
 	bankSoalGroup.Post("/", bankSoalHandler.Create)
 	bankSoalGroup.Get("/", bankSoalHandler.List)
+	// Static prefixes BEFORE /:id supaya tidak conflict dengan UUID matcher.
+	bankSoalGroup.Post("/bulk", bankSoalHandler.BulkCreate)
 	bankSoalGroup.Get("/:id", bankSoalHandler.Get)
 	bankSoalGroup.Patch("/:id", bankSoalHandler.Update)
 	bankSoalGroup.Delete("/:id", bankSoalHandler.Delete)

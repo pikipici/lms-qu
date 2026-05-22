@@ -35,6 +35,7 @@ type banksoalService interface {
 	UploadImage(ctx context.Context, soalID, callerID uuid.UUID, callerRole string, in UploadImageInput, ip, userAgent string) (*ImageUploadResult, error)
 	DeleteImage(ctx context.Context, soalID, callerID uuid.UUID, callerRole string, slot ImageSlot, ip, userAgent string) (*BankSoal, error)
 	PresignImageURL(ctx context.Context, soalID, callerID uuid.UUID, callerRole string, slot ImageSlot, ip, userAgent string) (*BankSoalImageURLResult, error)
+	BulkCreate(ctx context.Context, callerID uuid.UUID, callerRole string, in BulkCreateInput, ip, userAgent string) (*BulkCreateResult, error)
 }
 
 // Handler wires HTTP routes to banksoal Service.

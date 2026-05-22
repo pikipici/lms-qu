@@ -176,6 +176,36 @@ func (r *Repo) FindSoalsByIDs(ctx context.Context, ids []uuid.UUID) ([]BankSoal,
 	return out, nil
 }
 
+// BulkCreateSoal inserts multiple bank_soal rows in a single transaction.
+// Returns the number of inserted rows. All-or-nothing — kalau salah satu
+// row gagal Create, tx rollback dan return error.
+//
+// Caller (Service.BulkCreate) is responsible for parse + per-line
+// validation; this method assumes input rows already pass validation.
+// Mirror soalbab.Repo.BulkCreateSoal pattern (locked Task 5.B.3).
+func (r *Repo) BulkCreateSoal(ctx context.Context, soals []BankSoal) (int, error) {
+	if len(soals) == 0 {
+		return 0, nil
+	}
+	var inserted int
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Use CreateInBatches to avoid a single huge INSERT that blows
+		// past Postgres' parameter limit (~65k). 50 row × ~20 cols = 1000
+		// params per batch — comfortable headroom.
+		const batchSize = 50
+		res := tx.CreateInBatches(soals, batchSize)
+		if res.Error != nil {
+			return res.Error
+		}
+		inserted = int(res.RowsAffected)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return inserted, nil
+}
+
 // UpdateSoalBasic applies a partial PATCH to bank_soal with optimistic
 // concurrency (#56). Mirror soalbab.Repo.UpdateSoalBasic semantics:
 // caller supplies resolved fields; repo bumps version + updated_at.

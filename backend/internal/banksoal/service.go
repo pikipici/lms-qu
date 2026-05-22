@@ -58,6 +58,7 @@ type repoAPI interface {
 	UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]interface{}) error
 	UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error)
 	SoftDeleteSoal(ctx context.Context, id uuid.UUID, expectedVersion int) error
+	BulkCreateSoal(ctx context.Context, soals []BankSoal) (int, error)
 }
 
 // auditLogger lets the service write audit rows without a hard auth dep.
