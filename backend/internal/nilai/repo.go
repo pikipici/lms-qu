@@ -180,27 +180,41 @@ type ujianAggRow struct {
 func (r *Repo) nilaiUjianByKelas(ctx context.Context, kelasID, siswaID uuid.UUID) (map[uuid.UUID]ujianAggRow, error) {
 	out := map[uuid.UUID]ujianAggRow{}
 	var rows []ujianAggRow
+	// Two-step: SELECT DISTINCT ON for nilai_terakhir + hasil_terakhir_id,
+	// then JOIN with aggregate (best, count). MAX(uuid) doesn't exist in
+	// Postgres, so we can't fold them into one GROUP BY; window/DISTINCT
+	// ON is the cleanest path.
 	err := r.db.WithContext(ctx).Raw(`
 		WITH attempts AS (
 			SELECT h.ujian_id,
 			       h.id,
 			       h.nilai_total,
-			       COALESCE(h.selesai_at, h.mulai_at) AS at,
-			       ROW_NUMBER() OVER (PARTITION BY h.ujian_id ORDER BY COALESCE(h.selesai_at, h.mulai_at) DESC) AS rn_last
+			       COALESCE(h.selesai_at, h.mulai_at) AS at
 			FROM hasil_ujian h
 			JOIN ujian u ON u.id = h.ujian_id
 			WHERE u.kelas_id = ?
 			  AND h.siswa_id = ?
 			  AND h.status = 'selesai'
 			  AND h.deleted_at IS NULL
+		), agg AS (
+			SELECT ujian_id,
+			       MAX(nilai_total) AS nilai_terbaik,
+			       COUNT(*) AS attempt_count
+			FROM attempts
+			GROUP BY ujian_id
+		), last_attempt AS (
+			SELECT DISTINCT ON (ujian_id)
+			       ujian_id, id, nilai_total, at
+			FROM attempts
+			ORDER BY ujian_id, at DESC
 		)
-		SELECT ujian_id,
-		       MAX(nilai_total) AS nilai_terbaik,
-		       MAX(CASE WHEN rn_last = 1 THEN nilai_total END) AS nilai_terakhir,
-		       MAX(CASE WHEN rn_last = 1 THEN id END) AS hasil_terakhir_id,
-		       COUNT(*) AS attempt_count
-		FROM attempts
-		GROUP BY ujian_id
+		SELECT a.ujian_id,
+		       a.nilai_terbaik,
+		       l.nilai_total AS nilai_terakhir,
+		       l.id          AS hasil_terakhir_id,
+		       a.attempt_count
+		FROM agg a
+		JOIN last_attempt l USING (ujian_id)
 	`, kelasID, siswaID).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("nilai ujian per kelas: %w", err)
