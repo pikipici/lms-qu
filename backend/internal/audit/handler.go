@@ -22,11 +22,13 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// errResp keeps response shape consistent with sibling packages.
+// errResp keeps response shape consistent with sibling packages
+// (nilai/feed/submission): {error, code, request_id}.
 func errResp(c *fiber.Ctx, code int, msg, errKey string) error {
 	return c.Status(code).JSON(fiber.Map{
-		"error":   errKey,
-		"message": msg,
+		"error":      msg,
+		"code":       errKey,
+		"request_id": middleware.RequestIDFromFiber(c),
 	})
 }
 

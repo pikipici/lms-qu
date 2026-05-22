@@ -46,6 +46,7 @@ export default function GuruDashboardPage() {
     queryFn: getPendingCounts,
     staleTime: 15_000,
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 
   const items = recentKelas.data?.items ?? [];

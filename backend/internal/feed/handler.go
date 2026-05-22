@@ -36,9 +36,11 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	cursor := strings.TrimSpace(c.Query("cursor"))
 	limit := 0
 	if v := strings.TrimSpace(c.Query("limit")); v != "" {
-		if n, perr := strconv.Atoi(v); perr == nil {
-			limit = n
+		n, perr := strconv.Atoi(v)
+		if perr != nil || n < 1 {
+			return errResp(c, fiber.StatusBadRequest, "invalid limit", "invalid_limit")
 		}
+		limit = n
 	}
 
 	res, err := h.svc.List(c.UserContext(), userID, role, cursor, limit)
