@@ -464,14 +464,19 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	timerCron := soalbab.NewTimerCron(soalbabRepo)
 	go timerCron.Run(rootCtx)
 
-	// Task 6.A.1 — Fase 6 foundation: BankSoal + Ujian repos. Skeleton
-	// only di foundation pass — handler/service akan land di 6.B-6.G.
-	// Ditahan di scope variable supaya unused-import compile error
-	// nggak ke-trip; underscore-bind sampai 6.B.1 wire CRUD endpoint.
+	// Task 6.A.1 + 6.B.1 — Fase 6 BankSoal foundation + CRUD endpoints.
+	// BankSoal per-guru pribadi (locked #84): tidak ada share antar-guru.
+	// Tag mapel/tingkat/topik free-form text — random-mode Ujian filter
+	// di Task 6.C.2. Image upload + bulk paste di Task 6.B.2 + 6.B.3.
+	// Ujian repo skeleton tetap underscore-bound sampai 6.C.1 wire.
 	bankSoalRepo := banksoal.NewRepo(gdb)
+	bankSoalSvc := banksoal.NewService(bankSoalRepo, authRepo, objectStore)
+	bankSoalHandler := banksoal.NewHandler(bankSoalSvc, objectStore)
 	ujianRepo := ujian.NewRepo(gdb)
-	_ = bankSoalRepo
 	_ = ujianRepo
+
+	// guruGroup belum di-register di sini — register di bawah setelah
+	// pendingHandler block. Wire route di sana supaya satu group definition.
 
 	// Task 5.D.2 — Answer endpoint dispatcher. Latihan dapat immediate
 	// is_benar feedback (locked #81), Ulangan delayed grade dengan
@@ -607,6 +612,20 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
 	)
 	guruGroup.Get("/pending-counts", pendingHandler.Count)
+
+	// Task 6.B.1 — BankSoal CRUD endpoints (per-guru pribadi locked #84).
+	// Mounted under /api/v1/bank-soal (admin/guru only). Siswa BLOCKED at
+	// service boundary — siswa baca soal lewat HasilUjian flow di Fase 6.D.
+	bankSoalGroup := api.Group("/bank-soal",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	bankSoalGroup.Post("/", bankSoalHandler.Create)
+	bankSoalGroup.Get("/", bankSoalHandler.List)
+	bankSoalGroup.Get("/:id", bankSoalHandler.Get)
+	bankSoalGroup.Patch("/:id", bankSoalHandler.Update)
+	bankSoalGroup.Delete("/:id", bankSoalHandler.Delete)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

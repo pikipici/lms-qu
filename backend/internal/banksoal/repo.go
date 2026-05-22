@@ -32,11 +32,6 @@ func (r *Repo) DB() *gorm.DB { return r.db }
 // its current version differs from the caller's expected version (#56).
 var ErrVersionConflict = errors.New("banksoal: version conflict")
 
-// errNotImplemented marks repo methods whose bodies will be added in
-// later 6.B-6.E tasks. Returning a typed sentinel keeps server boot +
-// build green during the foundation pass.
-var errNotImplemented = errors.New("banksoal: not implemented (foundation skeleton)")
-
 // ListFilter narrows ListByOwner results.
 type ListFilter struct {
 	// Mapel, when non-empty, narrows by mapel (exact match).
@@ -181,22 +176,158 @@ func (r *Repo) FindSoalsByIDs(ctx context.Context, ids []uuid.UUID) ([]BankSoal,
 	return out, nil
 }
 
-// UpdateSoal will be implemented in 6.B.1 — patch validated fields with
-// optimistic version bump.
-func (r *Repo) UpdateSoal(ctx context.Context, s *BankSoal) error {
-	return errNotImplemented
+// UpdateSoalBasic applies a partial PATCH to bank_soal with optimistic
+// concurrency (#56). Mirror soalbab.Repo.UpdateSoalBasic semantics:
+// caller supplies resolved fields; repo bumps version + updated_at.
+// Returns ErrVersionConflict when row exists but version drifted,
+// gorm.ErrRecordNotFound if row deleted/never existed.
+func (r *Repo) UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	fields["version"] = gorm.Expr("version + 1")
+	fields["updated_at"] = gorm.Expr("now()")
+	res := r.db.WithContext(ctx).
+		Model(&BankSoal{}).
+		Where("id = ? AND version = ? AND deleted_at IS NULL", id, expectedVersion).
+		UpdateColumns(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		var probe BankSoal
+		if err := r.db.WithContext(ctx).
+			Select("id", "version", "deleted_at").
+			Where("id = ?", id).
+			First(&probe).Error; err != nil {
+			return err
+		}
+		if probe.DeletedAt != nil {
+			return gorm.ErrRecordNotFound
+		}
+		return ErrVersionConflict
+	}
+	return nil
 }
 
-// SoftDeleteSoal marks deleted_at = now() if version matches. Returns
+// UpdateSoalImageSlot atomically swaps a single image-key column on
+// the bank_soal row. Returns the OLD object key (before the swap) so
+// the caller can dispatch a compensating R2 delete (locked #69). When
+// the column was already nil, returned *string is nil.
+//
+// `column` MUST be one of: pertanyaan_object_key, opsi_a_object_key,
+// opsi_b_object_key, opsi_c_object_key, opsi_d_object_key,
+// opsi_e_object_key. Caller validates this — repo trusts input.
+//
+// Bumps version + updated_at sehingga setiap upload/delete count
+// sebagai mutation di optimistic concurrency.
+func (r *Repo) UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error) {
+	var old *string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var probe BankSoal
+		if err := tx.Select("id", column, "deleted_at").
+			Where("id = ?", id).First(&probe).Error; err != nil {
+			return err
+		}
+		if probe.DeletedAt != nil {
+			return gorm.ErrRecordNotFound
+		}
+		switch column {
+		case "pertanyaan_object_key":
+			old = probe.PertanyaanObjectKey
+		case "opsi_a_object_key":
+			old = probe.OpsiAObjectKey
+		case "opsi_b_object_key":
+			old = probe.OpsiBObjectKey
+		case "opsi_c_object_key":
+			old = probe.OpsiCObjectKey
+		case "opsi_d_object_key":
+			old = probe.OpsiDObjectKey
+		case "opsi_e_object_key":
+			old = probe.OpsiEObjectKey
+		}
+		updates := map[string]interface{}{
+			column:       newKey,
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": gorm.Expr("now()"),
+		}
+		return tx.Model(&BankSoal{}).
+			Where("id = ?", id).
+			UpdateColumns(updates).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return old, nil
+}
+
+// SoftDeleteSoal marks deleted_at = now() and bumps version. Returns
 // ErrVersionConflict if version drifted, gorm.ErrRecordNotFound if
 // row already deleted or never existed.
 func (r *Repo) SoftDeleteSoal(ctx context.Context, id uuid.UUID, expectedVersion int) error {
-	return errNotImplemented
+	res := r.db.WithContext(ctx).
+		Model(&BankSoal{}).
+		Where("id = ? AND version = ? AND deleted_at IS NULL", id, expectedVersion).
+		UpdateColumns(map[string]interface{}{
+			"deleted_at": gorm.Expr("now()"),
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": gorm.Expr("now()"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		var probe BankSoal
+		if err := r.db.WithContext(ctx).
+			Select("id", "version", "deleted_at").
+			Where("id = ?", id).
+			First(&probe).Error; err != nil {
+			return err
+		}
+		if probe.DeletedAt != nil {
+			return gorm.ErrRecordNotFound
+		}
+		return ErrVersionConflict
+	}
+	return nil
 }
 
-// HardDeleteSoal removes the row entirely. Caller MUST ensure no
-// HasilUjian still references the soal_id (locked #84 soft-delete
-// fallback when references exist).
-func (r *Repo) HardDeleteSoal(ctx context.Context, id uuid.UUID) error {
-	return errNotImplemented
+// HardDeleteSoal removes the row entirely + returns image keys for R2
+// compensating cleanup. Caller MUST ensure no HasilUjian.SoalIDsJSON
+// still references the soal_id (locked #84 soft-delete fallback when
+// references exist). Used by guru force-delete jalur khusus + admin
+// purge cron (Fase 8).
+func (r *Repo) HardDeleteSoal(ctx context.Context, id uuid.UUID) ([]string, error) {
+	var keys []string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var probe BankSoal
+		if err := tx.Where("id = ?", id).First(&probe).Error; err != nil {
+			return err
+		}
+		keys = collectImageKeys(&probe)
+		return tx.Where("id = ?", id).Delete(&BankSoal{}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+// collectImageKeys returns the non-nil R2 object keys held by a
+// BankSoal — used for compensating delete on hard-delete.
+func collectImageKeys(s *BankSoal) []string {
+	if s == nil {
+		return nil
+	}
+	keys := make([]string, 0, 6)
+	for _, k := range []*string{
+		s.PertanyaanObjectKey,
+		s.OpsiAObjectKey, s.OpsiBObjectKey, s.OpsiCObjectKey,
+		s.OpsiDObjectKey, s.OpsiEObjectKey,
+	} {
+		if k != nil && *k != "" {
+			keys = append(keys, *k)
+		}
+	}
+	return keys
 }
