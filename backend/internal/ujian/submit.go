@@ -189,41 +189,12 @@ func (s *FlowService) Submit(ctx context.Context, hasilID, siswaID uuid.UUID, ip
 		return nil, fmt.Errorf("ujian submit jawabans: %w", err)
 	}
 
-	// Re-grade. UPDATE per row dalam tx — pool max bound by
-	// MaxJumlahSoal/MaxManualSoalIDs (locked).
-	var benar int16
-	var nilaiTotal float64
-	for i := range jawabans {
-		j := &jawabans[i]
-		soal, ok := soalByID[j.SoalID]
-		falseVal := false
-		if !ok {
-			// Soal soft-deleted post-snapshot; defensive false.
-			j.IsBenar = &falseVal
-			j.PoinDapat = 0
-		} else if j.Jawaban == nil || *j.Jawaban == "" {
-			j.IsBenar = &falseVal
-			j.PoinDapat = 0
-		} else {
-			isBenar := banksoal.Jawaban(*j.Jawaban) == soal.Jawaban
-			j.IsBenar = &isBenar
-			if isBenar {
-				j.PoinDapat = soal.Poin
-				benar++
-				nilaiTotal += float64(soal.Poin)
-			} else {
-				j.PoinDapat = 0
-			}
-		}
-		if err := tx.Model(&JawabanUjian{}).
-			Where("id = ?", j.ID).
-			Updates(map[string]any{
-				"is_benar":   j.IsBenar,
-				"poin_dapat": j.PoinDapat,
-			}).Error; err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("ujian submit grade jawaban: %w", err)
-		}
+	// Re-grade — shared helper used by Submit (siswa-driven) and
+	// TimerCron.GradeExpiredHasil (cron-driven, 6.D.4 locked #87).
+	benar, nilaiTotal, err := gradeAttemptInTx(tx, jawabans, soalByID)
+	if err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("ujian submit: %w", err)
 	}
 	jumlahTotal := int16(len(pool))
 	now := s.now()

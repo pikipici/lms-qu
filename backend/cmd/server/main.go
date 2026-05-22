@@ -479,6 +479,13 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	ujianItemsSvc := ujian.NewItemsService(ujianRepo, bankSoalRepo, objectStore)
 	ujianFlowHandler := ujian.NewFlowHandler(ujianFlowSvc, ujianItemsSvc)
 
+	// Task 6.D.4 — Ujian timer expire cron. Mirrors soalbab.TimerCron
+	// (locked #87): 30s tick, advisory lock per hasil_id (sha256
+	// "hasil-submit:" key) shared with FlowService.Submit so cron and
+	// siswa submit are mutually exclusive on the same row.
+	ujianTimerCron := ujian.NewTimerCron(ujianRepo, bankSoalRepo)
+	go ujianTimerCron.Run(rootCtx)
+
 	// guruGroup belum di-register di sini — register di bawah setelah
 	// pendingHandler block. Wire route di sana supaya satu group definition.
 
