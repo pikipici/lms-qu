@@ -670,8 +670,12 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	//        single-attempt enforcement via partial-unique index).
 	// Items: GET /siswa/hasil-ujian/:id/items (anti-cheat — strip
 	//        jawaban_benar; presigned image slots TTL 15m).
+	// Answer: POST /siswa/hasil-ujian/:id/answer (6.D.2 — UPSERT
+	//        JawabanUjian dgn is_benar=NULL+poin_dapat=0; delayed
+	//        grade locked #76 mirror; cron locked #87 grade nanti).
 	siswaGroup.Post("/ujian/:id/start", ujianFlowHandler.Start)
 	siswaGroup.Get("/hasil-ujian/:id/items", ujianFlowHandler.Items)
+	siswaGroup.Post("/hasil-ujian/:id/answer", ujianFlowHandler.Answer)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
