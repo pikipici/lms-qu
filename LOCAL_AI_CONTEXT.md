@@ -68,6 +68,9 @@
 - Tidak ada Nginx (mirip fb-bot).
 - Backup: pg_dump cron daily, retain 30 hari rolling + monthly archive 1 tahun.
 - Cleanup daily cron: orphan files, ImportJob expired, LoginAttempt >30d, RefreshToken expired >7d, Submission file kelas archived +1y.
+- **Deploy script:** `deploy/deploy.sh --remote` (existing). Flow: build BE binaries (lms-api+seed-admin+reset-admin) → build FE static → migrate up (idempotent) → systemctl restart lms-api → curl `/api/v1/readyz` confirm. **Wajib source `.env` dulu sebelum invoke** karena migrate butuh `DATABASE_URL`. Idempotent untuk FE-only commits (migrate up = no change).
+  - Eksekusi: `ssh rdpkhorur 'cd /home/ubuntu/lms && set -a; . ./.env; set +a; bash deploy/deploy.sh --remote'`
+  - BE deploy gotcha: stop service dulu sebelum cp binary kalau build manual ke `/tmp` (script `deploy.sh` handle ini sendiri).
 
 ## First admin bootstrap
 1. ssh rdpkhorur
