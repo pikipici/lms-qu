@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.12.0 — **Fase 7 OPEN — DECOMPOSED 12 task** (Rekap Nilai + Activity Feed + Pending Counters + Guru Audit). Locked #89-#94. Fase 0-6 ✅ CLOSED.
+> Status: v0.13.0 — **Fase 7 ✅ CLOSED 12/12** (Rekap Nilai + Activity Feed + Pending Counters + Guru Audit + UX/QA). Locked #89-#94. Fase 0-7 ✅ CLOSED.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Fase 7 kickoff — locked decisions + sub-fase split 7.A-7.G + 12 task).
+> Last updated: 2026-05-22 (Fase 7 closed — v0.13.0 release).
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v0120)
