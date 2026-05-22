@@ -7,7 +7,7 @@
  *
  * Bounds (locked #74):
  *   jumlah_soal:   1-200, harus ≤ pool_size
- *   durasi_menit:  1-360
+ *   durasi_menit:  1-300 (matches BE setting.SettingMaxDurasiMenit)
  *   batas_attempt: 1-10
  *   waktu_buka_review: optional RFC3339
  *
@@ -46,7 +46,7 @@ import { cn } from '@/lib/utils';
 const JUMLAH_MIN = 1;
 const JUMLAH_MAX = 200;
 const DURASI_MIN = 1;
-const DURASI_MAX = 360;
+const DURASI_MAX = 300;
 const ATTEMPT_MIN = 1;
 const ATTEMPT_MAX = 10;
 

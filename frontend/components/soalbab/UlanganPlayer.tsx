@@ -18,8 +18,12 @@
  *     truth (cron auto-grade 30s). Saat tick mencapai 0 kita auto-submit
  *     once via guard ref.
  *   - User klik submit beberapa kali → mutationKey + isPending guard.
- *   - Network blip saat autosave → toast "gagal simpan" dengan retry on
- *     next radio change (autosaveError ditampilkan inline per soal).
+ *   - Network blip saat autosave → toast "gagal simpan" + auto-retry 2x dengan
+ *     exponential backoff. Terminal error codes (400/403/404/409/410/422) NOT
+ *     retried — surface inline + user re-trigger by re-clicking radio.
+ *   - Image presigned URL TTL 15m vs ulangan durasi up to 300m → items query
+ *     auto-refetch every 12 menit kalau ada item dengan images, untuk refresh
+ *     presigned URLs sebelum expire.
  */
 
 import * as React from 'react';
@@ -135,6 +139,17 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
       }
       return count < 2;
     },
+    // Refresh presigned image URLs every 12 menit untuk attempt aktif dengan
+    // images. R2 presign TTL = 15 menit, ulangan durasi bisa sampai 300 menit.
+    refetchInterval: (query) => {
+      const att = (query.state.data as { attempt: AttemptItemsResult } | undefined)?.attempt;
+      if (!att) return false;
+      if (att.status !== 'berlangsung') return false;
+      const hasImages = att.items.some((it) => it.images && it.images.length > 0);
+      if (!hasImages) return false;
+      return 12 * 60 * 1000;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const att = itemsQuery.data?.attempt;
@@ -153,6 +168,15 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
   const answerMu = useMutation({
     mutationFn: ({ soalID, jawaban }: { soalID: string; jawaban: SoalJawaban }) =>
       postUlanganAnswer(hasilID, { soal_id: soalID, jawaban }),
+    // Auto-retry transient 5xx + network errors. Terminal/business codes
+    // (validation, forbidden, conflict, gone) NOT retried — bubble up.
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError) {
+        if (err.status >= 400 && err.status < 500) return false;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attempt) => 500 * 2 ** attempt,
     onSuccess: (_data, { soalID }) => {
       setAutosaveErr((prev) => {
         if (!prev[soalID]) return prev;

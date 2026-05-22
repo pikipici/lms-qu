@@ -17,10 +17,11 @@
  */
 
 import { ApiError, api } from '@/lib/api';
+import type { HasilStatus } from '@/lib/soalbab-attempt-api';
 
 // ---------- Types ----------
 
-export type HasilStatus = 'berlangsung' | 'selesai' | 'expired' | 'dibatalkan';
+export type { HasilStatus };
 
 export interface SiswaRekap {
   siswa_id: string;

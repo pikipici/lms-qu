@@ -333,7 +333,6 @@ function StatusBadge({ status }: { status: HasilSummary['status'] }) {
   const map = {
     berlangsung: { label: 'Berlangsung', cn: 'bg-amber-100 text-amber-800' },
     selesai: { label: 'Selesai', cn: 'bg-emerald-100 text-emerald-800' },
-    expired: { label: 'Expired', cn: 'bg-rose-100 text-rose-800' },
     dibatalkan: { label: 'Dibatalkan', cn: 'bg-muted text-muted-foreground' },
   } as const;
   const cfg = map[status] ?? map.berlangsung;

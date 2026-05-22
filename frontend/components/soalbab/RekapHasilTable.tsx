@@ -10,7 +10,7 @@
  *   - Tabel per siswa: nama/email + attempt_count + cancelled_count +
  *     nilai_terbaik + nilai_terakhir + status_terakhir + tombol "Reset attempt"
  *   - Cancel handler hanya tersedia kalau hasil_terakhir_id ada DAN
- *     status_terakhir == 'selesai' atau 'expired' (latihan tidak punya
+ *     status_terakhir == 'selesai' atau 'berlangsung' (latihan tidak punya
  *     entry di rekap karena backend filter Mode=ulangan).
  */
 
@@ -81,8 +81,6 @@ function statusLabel(s?: string | null): { text: string; className: string } {
   switch (s) {
     case 'selesai':
       return { text: 'Selesai', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-    case 'expired':
-      return { text: 'Expired', className: 'bg-amber-50 text-amber-700 border-amber-200' };
     case 'berlangsung':
       return { text: 'Berlangsung', className: 'bg-sky-50 text-sky-700 border-sky-200' };
     case 'dibatalkan':
@@ -232,7 +230,6 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
                     const canCancel = Boolean(
                       row.hasil_terakhir_id &&
                         (row.status_terakhir === 'selesai' ||
-                          row.status_terakhir === 'expired' ||
                           row.status_terakhir === 'berlangsung'),
                     );
                     return (
