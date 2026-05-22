@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   GraduationCap,
+  Library,
   LogOut,
   ShieldAlert,
   UserCog,
@@ -50,6 +51,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/guru', label: 'Dashboard', Icon: LayoutDashboard, badgeKey: 'ungraded' },
   { href: '/guru/kelas', label: 'Kelas', Icon: GraduationCap },
+  { href: '/guru/bank-soal', label: 'Bank Soal', Icon: Library },
 ];
 
 function isActive(pathname: string, href: string): boolean {
