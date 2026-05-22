@@ -475,9 +475,10 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// Guru-side: soft-cancel attempt buat remedial reset (locked #76 —
 	// dibatalkan tidak count terhadap batas_attempt), rekap dashboard
 	// per-siswa nilai_terbaik+terakhir.
-	soalbabHasilSvc := soalbab.NewHasilService(soalbabRepo, babRepo, kelasRepo, kelasRepo, authRepo, authRepo)
+	soalbabHasilSvc := soalbab.NewHasilService(soalbabRepo, babRepo, kelasRepo, kelasRepo, authRepo, authRepo, objectStore)
 	soalbabHasilHandler := soalbab.NewHasilHandler(soalbabHasilSvc)
 	siswaGroup.Get("/hasil-soal-bab/:id/review", soalbabHasilHandler.Review)
+	siswaGroup.Get("/hasil-soal-bab/:id/items", soalbabHasilHandler.Items)
 	siswaGroup.Get("/bab/:id/hasil", soalbabHasilHandler.ListSiswa)
 	babGroup.Get("/:id/hasil-rekap", soalbabHasilHandler.Rekap)
 	// Cancel: guru/admin route via babGroup wrapper (sudah punya

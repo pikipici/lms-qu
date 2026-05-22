@@ -1,8 +1,9 @@
-// HTTP handler untuk Hasil + Review + Cancel + Rekap (Task 5.E.1).
+// HTTP handler for Hasil flow (Task 5.E.1 + Task 5.G.1).
 //
 // Routes:
 //   - GET  /api/v1/siswa/hasil-soal-bab/:id/review  → siswa review jawaban
-//   - GET  /api/v1/siswa/bab/:id/hasil              → siswa list hasil
+//   - GET  /api/v1/siswa/hasil-soal-bab/:id/items   → siswa live attempt items (Task 5.G.1)
+//   - GET  /api/v1/siswa/bab/:id/hasil              → siswa list hasil sendiri di bab
 //   - POST /api/v1/hasil-soal-bab/:id/cancel        → guru/admin cancel
 //   - GET  /api/v1/bab/:id/hasil-rekap              → guru/admin rekap
 package soalbab
@@ -23,6 +24,7 @@ import (
 // hasilService is the subset of *HasilService the handler uses.
 type hasilService interface {
 	Review(ctx context.Context, hasilID, siswaID uuid.UUID) (*ReviewResult, error)
+	Items(ctx context.Context, hasilID, siswaID uuid.UUID) (*ItemsResult, error)
 	ListSiswaHasil(ctx context.Context, babID, siswaID uuid.UUID) (*SiswaHasilListResult, error)
 	Cancel(ctx context.Context, hasilID, callerID uuid.UUID, callerRole, ip, userAgent string) (*CancelResult, error)
 	Rekap(ctx context.Context, babID, callerID uuid.UUID, callerRole string) (*RekapResult, error)
@@ -53,6 +55,28 @@ func (h *HasilHandler) Review(c *fiber.Ctx) error {
 		return mapHasilErr(c, err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"review": res})
+}
+
+// Items handles GET /siswa/hasil-soal-bab/:id/items.
+//
+// Returns live attempt items for the calling siswa's active (status=berlangsung)
+// attempt. Anti-cheat: jawaban_benar di-strip out (locked #76). Image slots
+// di-presign per call (TTL 15m). Latihan jawaban_siswa.is_benar
+// surfaced untuk pre-fill banner; ulangan stays NULL until submit.
+func (h *HasilHandler) Items(c *fiber.Ctx) error {
+	hasilID, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid hasil id", "invalid_id")
+	}
+	siswaID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	res, err := h.svc.Items(c.UserContext(), hasilID, siswaID)
+	if err != nil {
+		return mapHasilErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"attempt": res})
 }
 
 // ListSiswa handles GET /siswa/bab/:id/hasil.
@@ -118,6 +142,8 @@ func mapHasilErr(c *fiber.Ctx, err error) error {
 		return errResp(c, fiber.StatusForbidden, "review dimatikan guru", "review_disabled")
 	case errors.Is(err, ErrHasilNotFinished):
 		return errResp(c, fiber.StatusConflict, "attempt belum selesai", "hasil_not_finished")
+	case errors.Is(err, ErrHasilNotActive):
+		return errResp(c, fiber.StatusConflict, "attempt sudah selesai atau dibatalkan; pakai endpoint review", "hasil_not_active")
 	case errors.Is(err, ErrCancelLatihan):
 		return errResp(c, fiber.StatusBadRequest, "latihan tidak perlu di-cancel", "cancel_latihan")
 	case errors.Is(err, ErrHasilNotOwned):

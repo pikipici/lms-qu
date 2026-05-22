@@ -39,6 +39,7 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/kelas"
+	"github.com/pikip/lms/backend/internal/storage"
 )
 
 // Sentinel errors for Hasil flow.
@@ -53,6 +54,10 @@ var (
 	// ErrCancelLatihan — guru coba cancel attempt mode=latihan. Latihan
 	// tidak counted sehingga cancel tidak meaningful.
 	ErrCancelLatihan = errors.New("soalbab: latihan tidak perlu di-cancel")
+	// ErrHasilNotActive — caller minta items dari attempt yang sudah selesai
+	// atau dibatalkan. Items endpoint hanya untuk attempt berlangsung;
+	// post-finish caller harus pakai /review (gated).
+	ErrHasilNotActive = errors.New("soalbab: hasil sudah tidak aktif")
 )
 
 // HasilRepoAPI is the subset of *Repo Hasil service depends on.
@@ -80,13 +85,15 @@ type HasilService struct {
 	enr   enrollmentLookup
 	users userLookup
 	audit auditLogger
+	store storage.Storage // optional — presign image slots untuk Items()
 	now   func() time.Time
 }
 
-// NewHasilService wires the hasil service. users + audit boleh nil
-// (degrade — review tetap jalan, rekap tanpa nama siswa).
-func NewHasilService(repo HasilRepoAPI, b babLookup, k kelasLookup, enr enrollmentLookup, users userLookup, audit auditLogger) *HasilService {
-	return &HasilService{repo: repo, bab: b, kelas: k, enr: enr, users: users, audit: audit, now: time.Now}
+// NewHasilService wires the hasil service. users + audit + store boleh nil
+// (degrade — review tetap jalan, rekap tanpa nama siswa, Items tanpa
+// presigned image URL).
+func NewHasilService(repo HasilRepoAPI, b babLookup, k kelasLookup, enr enrollmentLookup, users userLookup, audit auditLogger, store storage.Storage) *HasilService {
+	return &HasilService{repo: repo, bab: b, kelas: k, enr: enr, users: users, audit: audit, store: store, now: time.Now}
 }
 
 // ---------------------------------------------------------------------------
@@ -641,4 +648,180 @@ func (s *HasilService) logAudit(ctx context.Context, action string, actorID *uui
 		At:            s.now(),
 	}
 	_ = s.audit.LogAudit(ctx, entry)
+}
+
+// ---------------------------------------------------------------------------
+// GET /siswa/hasil-soal-bab/:id/items  (live attempt items)
+// ---------------------------------------------------------------------------
+
+// AttemptItemImage is one presigned image slot. URL kosong kalau slot tidak
+// punya gambar; ExpiresAt nullable. Slot key tetap di-emit walau kosong
+// untuk konsistensi FE iterasi.
+type AttemptItemImage struct {
+	Slot      string     `json:"slot"`
+	URL       string     `json:"url"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// AttemptItem is one soal di payload Items. Anti-cheat: TIDAK include
+// jawaban_benar (locked #76 — siswa cuma boleh tau correct answer setelah
+// finish via /review yang gated).
+type AttemptItem struct {
+	SoalID         uuid.UUID          `json:"soal_id"`
+	Pertanyaan     string             `json:"pertanyaan"`
+	OpsiA          string             `json:"opsi_a"`
+	OpsiB          string             `json:"opsi_b"`
+	OpsiC          string             `json:"opsi_c"`
+	OpsiD          string             `json:"opsi_d"`
+	OpsiE          string             `json:"opsi_e"`
+	Mode           Mode               `json:"mode"`
+	Poin           int16              `json:"poin"`
+	Urutan         int                `json:"urutan"`
+	JawabanSiswa   *string            `json:"jawaban_siswa,omitempty"`
+	// IsBenar is hadir untuk latihan (immediate feedback per locked #81),
+	// nil untuk ulangan (delayed grade sampai submit).
+	IsBenar        *bool              `json:"is_benar,omitempty"`
+	Images         []AttemptItemImage `json:"images,omitempty"`
+}
+
+// ItemsResult is the live-attempt payload returned by GET items endpoint.
+type ItemsResult struct {
+	HasilID    uuid.UUID     `json:"hasil_id"`
+	BabID      uuid.UUID     `json:"bab_id"`
+	Mode       HasilMode     `json:"mode"`
+	Status     HasilStatus   `json:"status"`
+	AttemptNo  int16         `json:"attempt_no"`
+	MulaiAt    time.Time     `json:"mulai_at"`
+	DeadlineAt *time.Time    `json:"deadline_at,omitempty"`
+	Total      int           `json:"total"`
+	Items      []AttemptItem `json:"items"`
+}
+
+// Items returns the live attempt items for a siswa-owned attempt that is
+// still status=berlangsung. Anti-cheat: jawaban_benar di-strip; image slot
+// di-presign saat attempt aktif (locked #62 TTL 15m).
+//
+// Untuk attempt yang sudah selesai, FE pakai /review (gated locked #81).
+// Items dispatch by hasil.mode supaya FE shared di latihan + ulangan.
+func (s *HasilService) Items(ctx context.Context, hasilID, siswaID uuid.UUID) (*ItemsResult, error) {
+	hasil, err := s.repo.FindHasilByID(ctx, hasilID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("soalbab items find: %w", err)
+	}
+	if hasil.SiswaID != siswaID {
+		return nil, ErrHasilNotOwned
+	}
+	if hasil.Status != HasilBerlangsung {
+		return nil, ErrHasilNotActive
+	}
+
+	pool, perr := decodeSoalIDsJSON(hasil.SoalIDsJSON)
+	if perr != nil {
+		return nil, fmt.Errorf("soalbab items pool decode: %w", perr)
+	}
+	soals, err := s.repo.ListSoalByIDs(ctx, pool)
+	if err != nil {
+		return nil, fmt.Errorf("soalbab items soals: %w", err)
+	}
+	soalByID := make(map[uuid.UUID]*SoalBab, len(soals))
+	for i := range soals {
+		soalByID[soals[i].ID] = &soals[i]
+	}
+
+	jawabans, err := s.repo.ListJawabanByHasil(ctx, hasilID)
+	if err != nil {
+		return nil, fmt.Errorf("soalbab items jawabans: %w", err)
+	}
+	jawByID := make(map[uuid.UUID]*JawabanBab, len(jawabans))
+	for i := range jawabans {
+		jawByID[jawabans[i].SoalID] = &jawabans[i]
+	}
+
+	items := make([]AttemptItem, 0, len(pool))
+	for idx, sid := range pool {
+		soal, ok := soalByID[sid]
+		if !ok {
+			// Soal deleted post-snapshot — placeholder (rare, only kalau
+			// guru hapus soal saat siswa lagi attempt berlangsung).
+			items = append(items, AttemptItem{
+				SoalID:     sid,
+				Pertanyaan: "(soal sudah dihapus guru, lewati)",
+				Urutan:     idx + 1,
+			})
+			continue
+		}
+		item := AttemptItem{
+			SoalID:     soal.ID,
+			Pertanyaan: soal.Pertanyaan,
+			OpsiA:      soal.OpsiA,
+			OpsiB:      soal.OpsiB,
+			OpsiC:      soal.OpsiC,
+			OpsiD:      soal.OpsiD,
+			OpsiE:      soal.OpsiE,
+			Mode:       soal.Mode,
+			Poin:       soal.Poin,
+			Urutan:     idx + 1,
+		}
+		if j, ok := jawByID[sid]; ok {
+			item.JawabanSiswa = j.Jawaban
+			// Latihan: surface IsBenar untuk pre-fill banner; ulangan
+			// tetap nil (delayed grade).
+			if hasil.Mode == HasilModeLatihan {
+				item.IsBenar = j.IsBenar
+			}
+		}
+		// Presign image slots best-effort. Kalau store nil atau presign
+		// error, slot di-skip (FE handle missing gracefully).
+		if s.store != nil {
+			item.Images = s.presignSlots(ctx, soal)
+		}
+		items = append(items, item)
+	}
+
+	return &ItemsResult{
+		HasilID:    hasil.ID,
+		BabID:      hasil.BabID,
+		Mode:       hasil.Mode,
+		Status:     hasil.Status,
+		AttemptNo:  hasil.AttemptNo,
+		MulaiAt:    hasil.MulaiAt,
+		DeadlineAt: hasil.DeadlineAt,
+		Total:      len(pool),
+		Items:      items,
+	}, nil
+}
+
+// presignSlots resolves per-soal image slots ke presigned URL (best-effort).
+// TTL hardcoded sama dengan SoalImagePresignTTL (15m).
+func (s *HasilService) presignSlots(ctx context.Context, soal *SoalBab) []AttemptItemImage {
+	type entry struct {
+		slot string
+		key  *string
+	}
+	candidates := []entry{
+		{"pertanyaan", soal.PertanyaanObjectKey},
+		{"a", soal.OpsiAObjectKey},
+		{"b", soal.OpsiBObjectKey},
+		{"c", soal.OpsiCObjectKey},
+		{"d", soal.OpsiDObjectKey},
+		{"e", soal.OpsiEObjectKey},
+	}
+	out := make([]AttemptItemImage, 0, len(candidates))
+	exp := s.now().Add(SoalImagePresignTTL)
+	for _, c := range candidates {
+		if c.key == nil || *c.key == "" {
+			continue
+		}
+		url, err := s.store.PresignGet(ctx, *c.key, SoalImagePresignTTL)
+		if err != nil {
+			// Skip — FE render tanpa gambar lebih baik dari fail seluruh items.
+			continue
+		}
+		t := exp
+		out = append(out, AttemptItemImage{Slot: c.slot, URL: url, ExpiresAt: &t})
+	}
+	return out
 }
