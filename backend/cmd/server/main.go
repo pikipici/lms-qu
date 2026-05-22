@@ -699,6 +699,10 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	ujianHasilHandler := ujian.NewHasilHandler(ujianHasilSvc)
 	siswaGroup.Get("/hasil-ujian/:id/review", ujianHasilHandler.Review)
 	siswaGroup.Get("/kelas/:id/ujian/hasil", ujianHasilHandler.ListSiswa)
+	// Task 6.G.1 — siswa list ujian per kelas. Reuse ujianHandler.ListByKelas;
+	// service-level role-branch (callerRole=siswa) auto-filter status=published
+	// only + verify enrollment.
+	siswaGroup.Get("/kelas/:id/ujian", ujianHandler.ListByKelas)
 	ujianStaffGroup.Get("/:id/hasil-rekap", ujianHasilHandler.Rekap)
 	// Cancel: flat /hasil-ujian/:id/cancel under guru/admin role guard.
 	hasilUjianGuruGroup := api.Group("/hasil-ujian",

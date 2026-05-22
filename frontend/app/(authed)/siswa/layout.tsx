@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   KeyRound,
   ClipboardList,
+  GraduationCap,
   LogOut,
   ShieldAlert,
   UserCog,
@@ -49,6 +50,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/siswa', label: 'Dashboard', Icon: LayoutDashboard },
   { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList },
+  { href: '/siswa/ujian', label: 'Ujian saya', Icon: GraduationCap },
   { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound },
 ];
 
