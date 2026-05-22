@@ -59,6 +59,17 @@ var (
 	// ujung autosave 5s harus refuse update biar nggak ada last-second
 	// race dengan grade. HTTP 410 Gone.
 	ErrUlanganTimerExpired = errors.New("soalbab: ulangan timer expired")
+	// ErrUlanganAlreadySubmitted — siswa POST submit pada hasil yang sudah
+	// selesai. Idempotent — service balikin existing rekap, tapi sentinel
+	// dipakai handler kalau caller eksplisit minta error response. Kita
+	// pakai 200 idempotent return existing kebanyakan kasus, sentinel cuma
+	// kalau row dibatalkan/race weird.
+	ErrUlanganAlreadySubmitted = errors.New("soalbab: ulangan already submitted")
+	// ErrUlanganSubmitAfterGrace — siswa POST submit > deadline_at + 5s.
+	// Cron auto-grade harusnya udah handle by then, tapi kalau cron belom
+	// keburu siswa boleh submit dalam grace 5s untuk hindari race UI.
+	// HTTP 410 Gone.
+	ErrUlanganSubmitAfterGrace = errors.New("soalbab: ulangan submit after grace")
 )
 
 // UlanganRepoAPI is the subset of *Repo Ulangan service depends on.
@@ -69,11 +80,13 @@ type UlanganRepoAPI interface {
 	DB() *gorm.DB
 	GetSettingByBab(ctx context.Context, babID uuid.UUID) (*UlanganBabSetting, error)
 	ListSoalByBab(ctx context.Context, babID uuid.UUID, f SoalListFilter) ([]SoalBab, error)
+	ListSoalByIDs(ctx context.Context, ids []uuid.UUID) ([]SoalBab, error)
 	FindActiveHasil(ctx context.Context, babID, siswaID uuid.UUID, mode HasilMode) (*HasilSoalBab, error)
 	CountHasilByBabSiswa(ctx context.Context, babID, siswaID uuid.UUID, mode HasilMode) (int64, error)
 	CreateHasil(ctx context.Context, h *HasilSoalBab) error
 	FindHasilByID(ctx context.Context, id uuid.UUID) (*HasilSoalBab, error)
 	UpsertJawaban(ctx context.Context, j *JawabanBab) error
+	ListJawabanByHasil(ctx context.Context, hasilID uuid.UUID) ([]JawabanBab, error)
 	AppendEvent(ctx context.Context, e *EventBab) error
 }
 
@@ -374,6 +387,297 @@ func (s *UlanganService) Answer(ctx context.Context, hasilID, siswaID uuid.UUID,
 		}),
 	})
 	return nil
+}
+
+// UlanganSubmitResult is the rekap nilai yang siswa dapat lihat setelah
+// submit. dapat_review_at populated dari Setting.WaktuBukaReview kalau
+// ada (locked #81 review gating); kalau nil = review available langsung
+// (kecuali izinkan_review_setelah_submit=false → caller FE handle).
+type UlanganSubmitResult struct {
+	HasilID           uuid.UUID  `json:"hasil_id"`
+	NilaiTotal        float64    `json:"nilai_total"`
+	JawabanBenarCount int16      `json:"jawaban_benar_count"`
+	JawabanTotal      int16      `json:"jawaban_total"`
+	SelesaiAt         time.Time  `json:"selesai_at"`
+	DapatReviewAt     *time.Time `json:"dapat_review_at,omitempty"`
+	IzinkanReview     bool       `json:"izinkan_review"`
+	AlreadySubmitted  bool       `json:"already_submitted"`
+}
+
+// Submit grades all jawaban for an in-flight ulangan attempt, persists
+// nilai_total, dan close attempt jadi status='selesai'. Idempotent —
+// kalau attempt sudah selesai, balikin existing rekap dengan
+// already_submitted=true.
+//
+// Behavior:
+//   - tx + pg_advisory_xact_lock per hasil_id (sha256(hasil_id)[:8]).
+//     Race vs cron auto-grade (5.D.4) safe — siapa duluan dapet lock,
+//     yang lain re-check status di dalam tx setelah lock acquire.
+//   - now() ≤ deadline_at + 5s grace (locked policy: cron tick 30s,
+//     siswa boleh submit late dalam 5s untuk hindari UI race).
+//   - Re-grade tiap jawaban: is_benar = (jawaban == soal.jawaban),
+//     poin_dapat = is_benar ? soal.poin : 0. Snapshot soal_ids dari
+//     hasil.SoalIDsJSON, jawaban yang skip → is_benar=false poin=0.
+//   - Audit ulangan_bab_submitted, append EventBab.
+func (s *UlanganService) Submit(ctx context.Context, hasilID, siswaID uuid.UUID, ip, userAgent string) (*UlanganSubmitResult, error) {
+	hasil, err := s.repo.FindHasilByID(ctx, hasilID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("soalbab ulangan submit find: %w", err)
+	}
+	if hasil.SiswaID != siswaID {
+		return nil, ErrHasilNotOwned
+	}
+	if hasil.Mode != HasilModeUlangan {
+		return nil, ErrHasilModeInvalid
+	}
+	if hasil.Status == HasilDibatalkan {
+		return nil, ErrHasilCancelled
+	}
+	if hasil.DeadlineAt == nil {
+		return nil, errors.New("soalbab ulangan: hasil missing deadline_at")
+	}
+	// Idempotent path BEFORE entering tx — kalau status=selesai &
+	// nilai_total != nil, return existing snapshot (no relock).
+	if hasil.Status == HasilSelesai && hasil.NilaiTotal != nil {
+		return s.buildSubmitResult(ctx, hasil, true)
+	}
+
+	// Late submit grace: 5s past deadline. Beyond that, cron auto-grade
+	// kemungkinan udah handle (kalau belum, FE refresh trigger 410 yang
+	// nanti diganti dengan rekap GET endpoint at 5.E).
+	grace := time.Duration(5) * time.Second
+	if s.now().After(hasil.DeadlineAt.Add(grace)) {
+		return nil, ErrUlanganSubmitAfterGrace
+	}
+
+	// Single-flight per hasil_id via pg advisory_xact_lock(bigint).
+	// Cron 5.D.4 menggunakan key yang sama supaya siswa & cron mutually
+	// exclusive on the same hasil row.
+	key := hasilLockKey(hasilID)
+
+	tx := s.repo.DB().WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return nil, fmt.Errorf("soalbab ulangan submit tx begin: %w", tx.Error)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(?::bigint)", key).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit advisory lock: %w", err)
+	}
+
+	// Re-fetch hasil under lock — cron mungkin baru saja auto-grade.
+	var locked HasilSoalBab
+	if err := tx.Where("id = ?", hasilID).First(&locked).Error; err != nil {
+		tx.Rollback()
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("soalbab ulangan submit reload: %w", err)
+	}
+	if locked.Status == HasilDibatalkan {
+		tx.Rollback()
+		return nil, ErrHasilCancelled
+	}
+	if locked.Status == HasilSelesai && locked.NilaiTotal != nil {
+		// Idempotent: cron beat us to it, atau user double-clicked.
+		// Commit empty tx (lock release) and return existing.
+		if err := tx.Commit().Error; err != nil {
+			return nil, fmt.Errorf("soalbab ulangan submit commit idempotent: %w", err)
+		}
+		return s.buildSubmitResult(ctx, &locked, true)
+	}
+
+	// Load setting for review-gating populating + final assertion that
+	// pool ids masih bisa di-grade. Setting fetch oke fail-soft (kalau
+	// guru hapus setting setelah start, kita tetap grade dengan snapshot
+	// yang ada — start sudah enforce setting waktu pool dipilih).
+	var setting *UlanganBabSetting
+	if cfg, err := s.repo.GetSettingByBab(ctx, locked.BabID); err == nil {
+		setting = cfg
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit setting: %w", err)
+	}
+
+	// Decode pool snapshot.
+	pool, perr := decodeSoalIDsJSON(locked.SoalIDsJSON)
+	if perr != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit pool decode: %w", perr)
+	}
+	if len(pool) == 0 {
+		tx.Rollback()
+		return nil, errors.New("soalbab ulangan submit: empty pool snapshot")
+	}
+
+	// Load soals + answers (in-tx for snapshot consistency).
+	var soals []SoalBab
+	if err := tx.Where("id IN ?", pool).Find(&soals).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit soals: %w", err)
+	}
+	soalByID := make(map[uuid.UUID]*SoalBab, len(soals))
+	for i := range soals {
+		soalByID[soals[i].ID] = &soals[i]
+	}
+	var jawabans []JawabanBab
+	if err := tx.Where("hasil_id = ?", hasilID).Find(&jawabans).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit jawabans: %w", err)
+	}
+
+	// Re-grade. UPDATE per row dalam tx — pool max 200 (locked bound).
+	var benar int16
+	var nilaiTotal float64
+	for i := range jawabans {
+		j := &jawabans[i]
+		soal, ok := soalByID[j.SoalID]
+		if !ok {
+			// Soal deleted post-snapshot; treat as wrong (defensive).
+			falseVal := false
+			j.IsBenar = &falseVal
+			j.PoinDapat = 0
+		} else if j.Jawaban == nil || *j.Jawaban == "" {
+			falseVal := false
+			j.IsBenar = &falseVal
+			j.PoinDapat = 0
+		} else {
+			isBenar := Jawaban(*j.Jawaban) == soal.Jawaban
+			j.IsBenar = &isBenar
+			if isBenar {
+				j.PoinDapat = soal.Poin
+				benar++
+				nilaiTotal += float64(soal.Poin)
+			} else {
+				j.PoinDapat = 0
+			}
+		}
+		if err := tx.Model(&JawabanBab{}).
+			Where("id = ?", j.ID).
+			Updates(map[string]any{
+				"is_benar":   j.IsBenar,
+				"poin_dapat": j.PoinDapat,
+			}).Error; err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("soalbab ulangan submit grade jawaban: %w", err)
+		}
+	}
+	jumlahTotal := int16(len(pool))
+	now := s.now()
+
+	if err := tx.Model(&HasilSoalBab{}).
+		Where("id = ?", hasilID).
+		Updates(map[string]any{
+			"status":              HasilSelesai,
+			"selesai_at":          now,
+			"nilai_total":         nilaiTotal,
+			"jawaban_benar_count": benar,
+			"jawaban_total":       jumlahTotal,
+			"updated_at":          gorm.Expr("now()"),
+		}).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit update hasil: %w", err)
+	}
+	if err := tx.Create(&EventBab{
+		HasilID: hasilID,
+		Action:  "ulangan_bab_submitted",
+		Meta: marshalMeta(map[string]any{
+			"nilai_total":         nilaiTotal,
+			"jawaban_benar_count": benar,
+			"jawaban_total":       jumlahTotal,
+			"selesai_at":          now.UTC().Format(time.RFC3339Nano),
+		}),
+	}).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("soalbab ulangan submit event: %w", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return nil, fmt.Errorf("soalbab ulangan submit commit: %w", err)
+	}
+
+	// Audit (post-commit, best-effort).
+	s.logAudit(ctx, "ulangan_bab_submitted", &siswaID, string(auth.Siswa), &hasilID, &locked.BabID, ip, userAgent, map[string]any{
+		"hasil_id":            hasilID.String(),
+		"bab_id":              locked.BabID.String(),
+		"attempt_no":          locked.AttemptNo,
+		"nilai_total":         nilaiTotal,
+		"jawaban_benar_count": benar,
+		"jawaban_total":       jumlahTotal,
+		"selesai_at":          now.UTC().Format(time.RFC3339Nano),
+	})
+
+	// Build result. Hydrate locked dengan recently-set fields supaya
+	// buildSubmitResult lihat consistent state.
+	locked.Status = HasilSelesai
+	locked.SelesaiAt = &now
+	locked.NilaiTotal = &nilaiTotal
+	locked.JawabanBenarCount = &benar
+	jt := jumlahTotal
+	locked.JawabanTotal = &jt
+	res, err := s.buildSubmitResult(ctx, &locked, false)
+	if err != nil {
+		return nil, err
+	}
+	if setting != nil {
+		res.IzinkanReview = setting.IzinkanReviewSetelahSubmit
+		res.DapatReviewAt = setting.WaktuBukaReview
+	}
+	return res, nil
+}
+
+// buildSubmitResult assembles the rekap response from a finalized hasil
+// row. Re-fetches the setting separately so callers without a setting
+// in scope can call this on the idempotent path.
+func (s *UlanganService) buildSubmitResult(ctx context.Context, h *HasilSoalBab, alreadySubmitted bool) (*UlanganSubmitResult, error) {
+	if h == nil {
+		return nil, errors.New("soalbab ulangan submit result: nil hasil")
+	}
+	res := &UlanganSubmitResult{
+		HasilID:          h.ID,
+		AlreadySubmitted: alreadySubmitted,
+	}
+	if h.NilaiTotal != nil {
+		res.NilaiTotal = *h.NilaiTotal
+	}
+	if h.JawabanBenarCount != nil {
+		res.JawabanBenarCount = *h.JawabanBenarCount
+	}
+	if h.JawabanTotal != nil {
+		res.JawabanTotal = *h.JawabanTotal
+	}
+	if h.SelesaiAt != nil {
+		res.SelesaiAt = *h.SelesaiAt
+	}
+	// Setting fetch (review gating). Fail-soft: kalau setting hilang,
+	// default IzinkanReview=true (sama dengan migration default).
+	res.IzinkanReview = true
+	if cfg, err := s.repo.GetSettingByBab(ctx, h.BabID); err == nil {
+		res.IzinkanReview = cfg.IzinkanReviewSetelahSubmit
+		res.DapatReviewAt = cfg.WaktuBukaReview
+	}
+	return res, nil
+}
+
+// hasilLockKey derives an int64 advisory-lock key for a single hasil_id.
+// Used by both Submit (5.D.3) and the cron auto-grade tick (5.D.4) so
+// they're mutually exclusive on the same row.
+func hasilLockKey(hasilID uuid.UUID) int64 {
+	h := sha256.New()
+	hb, _ := hasilID.MarshalBinary()
+	// Distinct domain prefix so this key never collides with the
+	// (bab,siswa) start-key used by Start().
+	h.Write([]byte("hasil-submit:"))
+	h.Write(hb)
+	d := h.Sum(nil)
+	return int64(binary.LittleEndian.Uint64(d[:8])) //nolint:gosec
 }
 
 // requireSiswaBabAccess enforces (siswa enrolled active) ∩ (bab published).

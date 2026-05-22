@@ -1,11 +1,12 @@
-// HTTP handler for Ulangan Bab flow (Task 5.D.1 + 5.D.2).
+// HTTP handler for Ulangan Bab flow (Task 5.D.1 + 5.D.2 + 5.D.3).
 //
 // Routes:
 //   - POST /api/v1/siswa/bab/:id/ulangan/start          (5.D.1)
 //   - POST /api/v1/siswa/hasil-soal-bab/:id/answer      (5.D.2 dispatched
 //     by AttemptAnswerHandler — branches by hasil.mode)
+//   - POST /api/v1/siswa/hasil-soal-bab/:id/submit      (5.D.3)
 //
-// Submit/cron land in Task 5.D.3-5.D.4.
+// Cron lands in Task 5.D.4.
 package soalbab
 
 import (
@@ -26,6 +27,7 @@ import (
 type ulanganService interface {
 	Start(ctx context.Context, babID, siswaID uuid.UUID, ip, userAgent string) (*UlanganStartResult, error)
 	Answer(ctx context.Context, hasilID, siswaID uuid.UUID, in AnswerInput) error
+	Submit(ctx context.Context, hasilID, siswaID uuid.UUID, ip, userAgent string) (*UlanganSubmitResult, error)
 }
 
 // UlanganHandler wires HTTP routes to UlanganService.
@@ -96,6 +98,26 @@ func (h *UlanganHandler) Answer(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"ok": true})
 }
 
+// Submit handles POST /api/v1/siswa/hasil-soal-bab/:id/submit.
+// Idempotent — kalau hasil sudah selesai, balikin existing rekap dengan
+// already_submitted=true (HTTP 200).
+func (h *UlanganHandler) Submit(c *fiber.Ctx) error {
+	hasilID, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid hasil id", "invalid_id")
+	}
+	siswaID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	res, err := h.svc.Submit(c.UserContext(), hasilID, siswaID,
+		c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapUlanganErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"summary": res})
+}
+
 // mapUlanganErr maps Ulangan sentinels → HTTP status + stable code.
 func mapUlanganErr(c *fiber.Ctx, err error) error {
 	switch {
@@ -107,6 +129,10 @@ func mapUlanganErr(c *fiber.Ctx, err error) error {
 		return errResp(c, fiber.StatusConflict, "jumlah soal ulangan kurang dari kebutuhan setting; minta guru tambah soal", "ulangan_pool_insufficient")
 	case errors.Is(err, ErrUlanganTimerExpired):
 		return errResp(c, fiber.StatusGone, "waktu ulangan sudah habis", "timer_expired")
+	case errors.Is(err, ErrUlanganSubmitAfterGrace):
+		return errResp(c, fiber.StatusGone, "waktu submit sudah lewat (auto-graded)", "submit_after_grace")
+	case errors.Is(err, ErrUlanganAlreadySubmitted):
+		return errResp(c, fiber.StatusConflict, "ulangan sudah disubmit", "already_submitted")
 	case errors.Is(err, ErrSoalNotInPool):
 		return errResp(c, fiber.StatusBadRequest, "soal tidak termasuk dalam attempt ini", "soal_not_in_pool")
 	case errors.Is(err, ErrInvalidInput):

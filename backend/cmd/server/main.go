@@ -450,6 +450,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	soalbabUlanganSvc := soalbab.NewUlanganService(soalbabRepo, babRepo, kelasRepo, authRepo)
 	soalbabUlanganHandler := soalbab.NewUlanganHandler(soalbabUlanganSvc)
 	siswaGroup.Post("/bab/:id/ulangan/start", soalbabUlanganHandler.Start)
+	// Task 5.D.3 — Ulangan submit + auto-grade tx (advisory lock per
+	// hasil_id). Idempotent: row sudah selesai balikin existing rekap.
+	siswaGroup.Post("/hasil-soal-bab/:id/submit", soalbabUlanganHandler.Submit)
 
 	// Task 5.D.2 — Answer endpoint dispatcher. Latihan dapat immediate
 	// is_benar feedback (locked #81), Ulangan delayed grade dengan
