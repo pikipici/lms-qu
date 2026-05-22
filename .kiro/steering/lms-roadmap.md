@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.12 — **Fase 5.D 4/4 ✅** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 + 5.E 1/1 ✅ + 5.F 2/2 ✅ + **5.G 1/2** DONE 2026-05-21..22. 5.G.1 FE Siswa Latihan flow `1716fab` (+BE Items endpoint `e0fcb66`). Sebelumnya: 5.B.1 CRUD `928401b` + 5.B.2 image upload `57eb504` + 5.B.3 bulk paste `dabbdf1` + 5.C.1 Setting `7b9edd5` + 5.C.2 Latihan BE `d6c808d` + 5.D.1 Ulangan start `0346609`+`32f63ae`+`d822d46` + 5.D.2 answer `5067f0a` + 5.D.3 submit `d262ea3` + 5.D.4 timer cron `2587526` + 5.E.1 Hasil consolidated `8c55651` + 5.F.1 FE editor `8c74e38` + 5.F.2 FE setting/rekap `4195efa`. Locked decisions baru #76-#82. Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.13 — **Fase 5 ✅ DONE 15/15** 2026-05-22. 5.A 1/1 + 5.B 3/3 + 5.C 2/2 + 5.D 4/4 + 5.E 1/1 + 5.F 2/2 + **5.G 2/2 ✅**. 5.G.2 FE Siswa Ulangan flow `6c10d19` (UlanganLobby+Player+Review+Section + tab Soal split sub-segmented Latihan/Ulangan). 5.G.1 `1716fab` Latihan + BE Items `e0fcb66`. Sebelumnya: 5.B.1 CRUD `928401b` + 5.B.2 image upload `57eb504` + 5.B.3 bulk paste `dabbdf1` + 5.C.1 Setting `7b9edd5` + 5.C.2 Latihan BE `d6c808d` + 5.D.1 Ulangan start `0346609`+`32f63ae`+`d822d46` + 5.D.2 answer `5067f0a` + 5.D.3 submit `d262ea3` + 5.D.4 timer cron `2587526` + 5.E.1 Hasil consolidated `8c55651` + 5.F.1 FE editor `8c74e38` + 5.F.2 FE setting/rekap `4195efa`. Locked decisions baru #76-#82. Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Task 5.G.1 ✅ DONE — FE Siswa Latihan flow + BE Items endpoint; Fase 5.G 1/2; Fase 5 progress 13/15)
+> Last updated: 2026-05-22 (Task 5.G.2 ✅ DONE — FE Siswa Ulangan flow lobby + player + review; Fase 5.G 2/2; **Fase 5 ✅ DONE 15/15**)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2568,14 +2568,39 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - lms-api restart healthz=200.
 - Commits: `e0fcb66 feat(soalbab): GET /siswa/hasil-soal-bab/:id/items live attempt items (Task 5.G.1 BE prep)` + `1716fab feat(fe-soalbab): siswa Latihan flow start/items/answer/finish (Task 5.G.1)`
 
-**Task 5.G.2 — FE Siswa: Ulangan Bab lobby + play (timer + autosave + resume) + review** ⏳
-- Page: `/siswa/kelas/[id]/bab/[bab]/ulangan`.
-  - Lobby: tampilkan setting (durasi, jumlah_soal, batas_attempt), riwayat attempt (nilai per attempt), tombol "Mulai" (disabled kalau exceed batas_attempt). Kalau ada `berlangsung` → tombol "Lanjutkan".
-  - Play: timer countdown dari `deadline_at - now` (auto-submit di 0). Autosave per perubahan radio (debounce 1s, retry on 5xx). Resume banner kalau ada perubahan offline → reload state. NO immediate is_benar feedback (mode ulangan).
-  - Submit confirm dialog → POST submit → result page dengan nilai_total + tombol "Lihat Pembahasan" (gated by review policy locked #81 — kalau locked tampil "Buka {tanggal}" disabled + countdown).
-  - Review page: `/siswa/kelas/[id]/bab/[bab]/ulangan/review/[hasil_id]` — load `/review` endpoint, render per soal: pertanyaan + opsi (highlight jawaban_siswa kuning + jawaban_benar hijau), poin_dapat per soal.
-- Verify: tsc + build PASS.
-- Commit: `feat(fe-soalbab): siswa ulangan lobby + play + review`
+**Task 5.G.2 — FE Siswa: Ulangan Bab lobby + play (timer + autosave + resume) + review** ✅ DONE 2026-05-22
+- FE Siswa Ulangan flow: lobby (trimmed setting + history attempt + smart CTA), player (timer countdown deadline_at-now warn<5m critical<1m + autosave debounced 600ms + auto-submit guarded ref pas timer ≤0 + per-soal autosave inline error notice + NO immediate feedback per locked #76), review (jawaban_benar emerald highlight + jawaban_salah rose + summary nilai/benar/salah/persen).
+- Files baru:
+  - `frontend/lib/soalbab-ulangan-api.ts` (typed client lobby/history/start/answer/submit/review + 22-code friendlyUlanganError mapper).
+  - `frontend/components/soalbab/UlanganLobby.tsx` (durasi/batas/sisa attempt InfoTile + ReviewPolicyNote + history list dengan StatusBadge + reviewable gating per row).
+  - `frontend/components/soalbab/UlanganPlayer.tsx` (timer header + scroll list nomored + radio A-E + image presigned + dialog submit confirm).
+  - `frontend/components/soalbab/UlanganReview.tsx` (rekap card + ReviewSoalCard dengan emerald/rose highlight).
+  - `frontend/components/soalbab/UlanganSection.tsx` (orchestrator state machine: lobby <-> playing -> result -> review; result card include reviewable gating + post-submit invalidate lobby+history queries).
+- Modified: `frontend/app/(authed)/siswa/kelas/detail/bab/page.tsx` — replace `<LatihanPlayer/>` di tab Soal dengan `<SoalTabContent/>` sub-segmented (Latihan / Ulangan Bab pill switcher).
+- typecheck PASS, build PASS — siswa bab page **14kB → 16.7kB / First Load 192kB → 198kB**.
+- Smoke 5.G.2 happy path:
+  - login guru1+siswa1, create kelas+bab+publish, bulk 5 soal mode=ulangan, setting (3 soal/1 menit/2 attempt/izinkan_review).
+  - siswa join, GET ulangan-setting (trimmed: durasi+batas+izinkan, no pool_size), GET hasil list (kosong).
+  - POST start → hasil_id + deadline_at, GET items → 3 soal, **anti-cheat verified: items has jawaban_benar = false**.
+  - POST 3× answer (a/b/a) → respons `{ok:true}` (no is_benar/jawaban_benar).
+  - POST submit → `nilai=20 benar=2/3 already=false`, idempotent submit → `nilai=20 already=true`.
+  - GET review → 3 items, **review has jawaban_benar = true**.
+  - GET hasil list post-submit → `count=1 attempt_count=1 terbaik=20`.
+- Commits: `6c10d19 feat(fe-soalbab): siswa Ulangan flow lobby + player + review (Task 5.G.2)` push origin+server, workspace synced.
+
+---
+
+## 🎉 Fase 5 ✅ CLOSED 15/15 = 100% (2026-05-22)
+
+**Total scope delivered:** Soal Bab module — Latihan formative (no nilai persist + immediate feedback + re-attempt unlimited) + Ulangan Bab graded (deterministic seed pool snapshot + timer countdown + autosave + 1× attempt + nilai persist + remedial cancel + review gating).
+
+**BE 10/10 endpoints + 1 addon (Items):** SoalBab CRUD + image upload + bulk paste, UlanganBabSetting GET/PUT, Latihan start/answer/finish, Ulangan start/answer/submit, Hasil review/list/cancel/rekap, Items live attempt (5.G.1 prep). Cron timer-expire 30s tick + advisory lock auto-grade.
+
+**FE 5/5 surfaces:** Guru SoalBab editor + bulk paste + image manager (5.F.1), Guru UlanganBabSetting form + Rekap table + Preview dialog (5.F.2), Siswa Latihan player (5.G.1), Siswa Ulangan lobby+player+review (5.G.2). Tab Soal di /siswa/kelas/detail/bab dan /guru/kelas/detail/bab fully wired.
+
+**Locked decisions enforced #76-#82:** sub-fase split, anti-cheat items strip jawaban_benar, deterministic seed `sha256(mulai_unix_micro‖siswa‖bab)[:8]`, cron 30s tick + grace 5s submit, advisory lock auto-grade vs user-submit mutex, review gating izinkan+waktu_buka, coverage gate 70% (deferred to Fase 8 TODO).
+
+---
 
 ---
 
@@ -2590,8 +2615,10 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - 5.D BE Ulangan flow + cron: 4/4 ✅ DONE (5.D.1 ✅ start deterministic seed `0346609`+`32f63ae`+`d822d46`; 5.D.2 ✅ answer save delayed grade `5067f0a`; 5.D.3 ✅ submit + auto-grade tx `d262ea3`; 5.D.4 ✅ timer cron 30s `2587526`)
 - 5.E BE Resume + Remedial + Review + Hasil: **1/1 ✅ DONE** (5.E.1 ✅ commit `8c55651` review+list+cancel+rekap consolidated 4 endpoints; smoke E2E 28/28 hijau; **Fase 5 BE COMPLETE 10/10**)
 - 5.F FE Guru editor + setting + rekap: **2/2 ✅ DONE** (5.F.1 ✅ commit `8c74e38` SoalBab editor + bulk paste + image manager; 5.F.2 ✅ commit `4195efa` UlanganBabSettingForm + RekapHasilTable + SoalPreviewDialog + CancelAttemptConfirmDialog wired ke tab Soal)
-- 5.G FE Siswa latihan + ulangan + review: **1/2** (5.G.1 ✅ commits `e0fcb66`+`1716fab` Items endpoint + LatihanPlayer player; ⏳ NEXT 5.G.2 Ulangan lobby + play + review)
+- 5.G FE Siswa latihan + ulangan + review: **2/2 ✅ DONE** (5.G.1 ✅ commits `e0fcb66`+`1716fab` Items endpoint + LatihanPlayer; 5.G.2 ✅ commit `6c10d19` UlanganLobby+Player+Review+Section + tab Soal sub-segmented Latihan/Ulangan)
 
-**Eksekusi berikutnya: gas Task 5.G.2** — FE Siswa: Ulangan Bab lobby + play (timer countdown + autosave + resume banner) + review page. `UlanganLobby.tsx` (siswa lihat trimmed setting view + history attempt + tombol Mulai/Lanjutkan), `UlanganPlayer.tsx` (timer countdown dari deadline_at, autosave debounced 1s, no immediate is_benar feedback per locked #76, submit confirm dialog → POST /siswa/hasil-soal-bab/:id/submit), result page → `Lihat Pembahasan` gated by review policy locked #81 (kalau locked tampil disabled + countdown ke waktu_buka_review). Estimasi 120 menit untuk close Fase 5.
+🎉 **Fase 5 ✅ CLOSED 15/15 = 100%** — semua acceptance criteria locked #76-#82 met. BE 10/10 + Items addon, FE 5/5 (Guru 2 + Siswa 2 + 1 sub-tab orchestrator). Smoke E2E happy path verified per task. Anti-cheat #76 enforced di `/items` endpoint (jawaban_benar strip) + ulangan answer (no is_benar response). Deterministic seed #79 verified resume tidak shuffle ulang. Cron 30s + advisory lock #80 mutex submit/cron tested di 5.D.4. Review gating #81 enforced di `/review` endpoint dan FE lobby/result reviewable check.
+
+**Eksekusi berikutnya: tunggu instruksi user untuk fase berikutnya (Fase 6/7/8 atau iterasi UX/perf di fase yang sudah closed).**
 
 > Catatan Fase 5: deterministic seed pool snapshot (locked #79) penting untuk anti-cheat resume — siswa refresh tidak boleh dapat soal beda. Cron 30s timer expire (locked #80) jalan inline di lms-api goroutine MVP — single-instance OK; future scale-out via LISTEN/NOTIFY. Coverage gate 70% backend (locked #82) — verify saat 5.E close, kalau ≥65% tapi blocker waktu boleh defer ke Fase 8 dengan TODO.
