@@ -720,11 +720,17 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// callerRole=siswa + active enrollment (defensive — service & route
 	// double-check). Routing locked #91: /siswa/nilai (lintas) +
 	// /siswa/kelas/:id/nilai (per-kelas).
+	//
+	// Task 7.B — Guru rekap matrix (locked #91+#94): GET /kelas/:id/rekap
+	// dgn ?format=json|csv. Reuse aggregator per siswa (loop bounded by
+	// active enrollment count, MVP cap 10K).
 	nilaiRepo := nilai.NewRepo(gdb)
 	nilaiSvc := nilai.NewService(nilaiRepo, kelasRepo, kelasRepo)
-	nilaiHandler := nilai.NewHandler(nilaiSvc)
+	nilaiUserAdapter := nilai.UserNameAdapter{Repo: authRepo}
+	nilaiHandler := nilai.NewHandler(nilaiSvc, kelasRepo, nilaiUserAdapter)
 	siswaGroup.Get("/nilai", nilaiHandler.SiswaList)
 	siswaGroup.Get("/kelas/:id/nilai", nilaiHandler.SiswaKelasNilai)
+	kelasGroup.Get("/:id/rekap", nilaiHandler.GuruKelasRekap)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
