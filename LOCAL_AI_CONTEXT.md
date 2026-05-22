@@ -38,10 +38,10 @@
 - Local = no runtime deps installed. Tidak ada `go run`, `npm install`, `psql` di local.
 - Push code lokal → ssh ke rdpkhorur → `git fetch && reset --hard` → build → restart systemd.
 - Verifikasi build/test selalu di rdpkhorur. Hasil dilaporkan balik ke chat.
-- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.11.15 — Fase 0-6 ✅ ALL CLOSED + UX/QA pass `6e10888`, head `b262142`).
-  - Fase 4 14/14, Fase 5 15/15 + UX/QA pass `22d2095`, **🎉 Fase 6 15/15 + UX/QA pass `6e10888`** smoke E2E 367/368 hijau (1 unrelated bank-pool fixture flake) + boundary regression 9/9.
-- 88 locked decisions (v0.10.0 add #76-#82 Fase 5; v0.11.0 add #83-#88 Fase 6: sub-fase split 6.A-6.G, BankSoal per-guru, source mode manual/random + SourceConfigJSON, deterministic seed pool, cron 30s + advisory lock reuse SoalBab, coverage gate ≥70% defer Fase 8). 10 open decisions.
-- Next focus: **Fase 7 — Rekap Nilai + Activity Feed** (cross-fase aggregate Tugas + SoalBab + Ujian + activity timeline).
+- Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.12.0 — Fase 7 OPEN, decomposed 12 task A-G, head `f6d9532`).
+  - Fase 4 14/14, Fase 5 15/15 + UX/QA pass `22d2095`, Fase 6 15/15 + UX/QA pass `6e10888`, **Fase 7 IN PROGRESS** (Task 7.A.1 ✅ BE nilai siswa CLOSED, smoke 16/16 hijau).
+- 94 locked decisions (v0.10.0 add #76-#82 Fase 5; v0.11.0 add #83-#88 Fase 6; **v0.12.0 add #89-#94 Fase 7**: sub-fase split 7.A-7.G, read-only at-query-time aggregator (no nilai_* tables), formula NilaiBab = avg(tugas%) + avg(soalbab%) simple, FE guru rekap routing, activity feed polling+cursor, CSV export). 10 open decisions.
+- Active focus: **Fase 7 Task 7.A.2 — FE siswa rekap nilai** (page `/siswa/kelas/[id]/nilai` + dashboard cross-class card konsumsi `GET /siswa/nilai`).
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)
@@ -57,7 +57,13 @@
   - Coverage gate #88 ≥70% defer to Fase 8 TODO (mirror Fase 5 #82 soft fallback).
   - Commits: `3371e30`+`f50e7f2`+`76de898`+`ceaf86b`+`ede3194`+`7d465bf`+`d2ecef9`+`205be54`+`0df6f89`+`8f77dbc`+`1269846`+`446f187`+`d9012b1`+`19060d0`.
   - **UX/QA pass post-close** `6e10888` + roadmap bump `b262142`: 5 findings (1 Critical 3-way drift Go `MaxDurasiMenit=600` vs DB CHECK 300 vs FE max=360 → HTTP 500 mentah, 1 High FE form max mismatch, 1 Medium banksoal-api error mapper drift, 2 Low siswa-ujian-api alias/orphan). All fixed: BE 600→300, FE form 360→300, banksoal-api drop 3 dead arms + add 5 BE-truth arms (`payload_too_large`/`unsupported_mime`/`image_slot_empty`/`r2_unavailable`/`missing_file`), siswa-ujian-api rename `ujian_not_started`→`ujian_window_not_open` + drop redundant `timer_expired`. Boundary smoke `dogfood-output/fase6/smoke-bounds.sh` 9/9. Dogfood report `dogfood-output/fase6/report.md`.
-- [ ] Fase 7 — Rekap Nilai + Activity Feed
+- [-] Fase 7 — Rekap Nilai + Activity Feed (IN PROGRESS, decomposed 12 task A-G, head `f6d9532`)
+  - **Locked #89-#94**: sub-fase split 7.A-7.G; read-only at-query-time aggregator (NO `nilai_*` tables, compute on-query via repo); formula NilaiBab = avg(tugas%) + avg(soalbab%) simple; FE guru rekap routing; activity feed polling + cursor pagination; CSV export.
+  - **Schema findings (locked in implementation)**: `tugas` TIDAK punya `deleted_at` & TIDAK punya `max_nilai` (pakai `nilai_setelah_penalty` NUMERIC(5,2) langsung skala 0..100 + filter `status='published'`). `hasil_ujian` punya `deleted_at` + `status` (selesai/dibatalkan/berlangsung).
+  - **Postgres quirk locked**: `MAX(uuid)` SQLSTATE 42883 NOT supported → pattern 2-CTE (agg `MAX/COUNT` non-uuid + `DISTINCT ON ujian_id ORDER BY at DESC` last_attempt) + JOIN.
+  - **Task 7.A.1 ✅ CLOSED** 2026-05-22 commits `d93de60`+`5839951`+`f6d9532` — BE nilai siswa: package `internal/nilai/` (model+repo+service+handler), routes `GET /siswa/kelas/:id/nilai` + `GET /siswa/nilai` (cross-class aggregator), 4 query methods (nilaiTugasPerBab + nilaiSoalbabPerBab + nilaiUjianByKelas + listKelasForSiswa). Smoke `/tmp/qa-7a.sh` 16/16 PASS (T0a/b anon 401, T1 guru 403, T2a items shape, T3a-e per-kelas struktur+bobot=100, T4 invalid uuid 400, T5 unenrolled 403, T6a-e bab breakdown).
+  - **Next**: Task 7.A.2 — FE siswa rekap nilai (page `/siswa/kelas/[id]/nilai` per-kelas detail + dashboard cross-class card konsumsi `GET /siswa/nilai`).
+- [ ] Fase 7 (sisa) — 7.B Guru rekap matrix + CSV / 7.C Activity feed / 7.D Pending counters / 7.E Guru audit log / 7.F UX/QA pass / 7.G close v0.13.0
 - [ ] Fase 8 — Polish + E2E
 
 ## Critical conventions
