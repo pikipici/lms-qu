@@ -25,6 +25,7 @@ import (
 type flowSvc interface {
 	Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip, userAgent string) (*StartResult, error)
 	SaveAnswer(ctx context.Context, hasilID, siswaID uuid.UUID, in AnswerInput) error
+	Submit(ctx context.Context, hasilID, siswaID uuid.UUID, ip, userAgent string) (*SubmitResult, error)
 }
 
 // itemsSvc is the subset of *ItemsService the handler depends on.
@@ -129,6 +130,29 @@ func (h *FlowHandler) Answer(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"ok": true})
 }
 
+// Submit handles POST /api/v1/siswa/hasil-ujian/:id/submit (6.D.3).
+//
+// Single-tx auto-grade dengan pg_advisory_xact_lock per hasil_id;
+// race-safe vs cron auto-grade (6.D.4 reuse same key locked #87).
+// Idempotent — kalau attempt sudah selesai, balikin existing rekap
+// dengan already_submitted=true.
+func (h *FlowHandler) Submit(c *fiber.Ctx) error {
+	hasilID, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid hasil id", "invalid_id")
+	}
+	siswaID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	res, err := h.flow.Submit(c.UserContext(), hasilID, siswaID,
+		c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapFlowErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"summary": res})
+}
+
 func mapFlowErr(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, ErrUjianNotPublished):
@@ -151,6 +175,10 @@ func mapFlowErr(c *fiber.Ctx, err error) error {
 		return errResp(c, fiber.StatusGone, "attempt sudah selesai/dibatalkan", "hasil_not_active")
 	case errors.Is(err, ErrSoalNotInPool):
 		return errResp(c, fiber.StatusBadRequest, "soal tidak termasuk dalam attempt ini", "soal_not_in_pool")
+	case errors.Is(err, ErrUjianSubmitAfterGrace):
+		return errResp(c, fiber.StatusGone, "submit terlambat; nilai akan diproses oleh sistem", "submit_after_grace")
+	case errors.Is(err, ErrHasilCancelled):
+		return errResp(c, fiber.StatusConflict, "attempt dibatalkan oleh guru", "hasil_cancelled")
 	case errors.Is(err, ErrInvalidInput):
 		return errResp(c, fiber.StatusBadRequest, friendlyMessage(err, "invalid input"), "invalid_body")
 	case errors.Is(err, ErrForbidden):

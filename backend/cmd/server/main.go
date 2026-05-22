@@ -673,9 +673,13 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// Answer: POST /siswa/hasil-ujian/:id/answer (6.D.2 — UPSERT
 	//        JawabanUjian dgn is_benar=NULL+poin_dapat=0; delayed
 	//        grade locked #76 mirror; cron locked #87 grade nanti).
+	// Submit: POST /siswa/hasil-ujian/:id/submit (6.D.3 — single-tx
+	//        auto-grade, pg_advisory_xact_lock per hasil_id; idempotent;
+	//        late-submit grace 5s past deadline; mirror 5.D.3 d262ea3).
 	siswaGroup.Post("/ujian/:id/start", ujianFlowHandler.Start)
 	siswaGroup.Get("/hasil-ujian/:id/items", ujianFlowHandler.Items)
 	siswaGroup.Post("/hasil-ujian/:id/answer", ujianFlowHandler.Answer)
+	siswaGroup.Post("/hasil-ujian/:id/submit", ujianFlowHandler.Submit)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
