@@ -28,11 +28,12 @@ type UserListFilter struct {
 
 // AuditLogFilter narrows the audit log query. All fields optional.
 type AuditLogFilter struct {
-	ActorID  *uuid.UUID // exact match if set
-	TargetID *uuid.UUID // exact match if set
-	Action   string     // exact match if non-empty
-	Since    *time.Time // at >= since
-	Until    *time.Time // at < until
+	ActorID       *uuid.UUID // exact match if set
+	TargetID      *uuid.UUID // exact match if set
+	TargetKelasID *uuid.UUID // exact match if set (Task 7.E guru audit scope, locked #59)
+	Action        string     // exact match if non-empty
+	Since         *time.Time // at >= since
+	Until         *time.Time // at < until
 }
 
 // LoginAttemptFilter narrows the login attempts query.
@@ -412,6 +413,32 @@ func (r *Repo) LogAudit(ctx context.Context, entry *AuditLog) error {
 	return r.db.WithContext(ctx).Create(entry).Error
 }
 
+// BulkUserNames returns id→name for the given user IDs in a single query.
+// Missing IDs are simply absent from the map. Used by guru audit log
+// (Task 7.E) and other read-side flows that need actor names.
+func (r *Repo) BulkUserNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	type row struct {
+		ID   uuid.UUID
+		Name string
+	}
+	var rows []row
+	if err := r.db.WithContext(ctx).
+		Model(&User{}).
+		Select("id", "name").
+		Where("id IN ?", ids).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, x := range rows {
+		out[x.ID] = x.Name
+	}
+	return out, nil
+}
+
 // ListAuditLogs returns a page of audit events matching the filter, ordered by at DESC.
 // limit must be >0; offset >=0.
 func (r *Repo) ListAuditLogs(ctx context.Context, f AuditLogFilter, limit, offset int) ([]AuditLog, int64, error) {
@@ -422,6 +449,9 @@ func (r *Repo) ListAuditLogs(ctx context.Context, f AuditLogFilter, limit, offse
 	}
 	if f.TargetID != nil {
 		query = query.Where("target_id = ?", *f.TargetID)
+	}
+	if f.TargetKelasID != nil {
+		query = query.Where("target_kelas_id = ?", *f.TargetKelasID)
 	}
 	action := strings.TrimSpace(f.Action)
 	if action != "" {

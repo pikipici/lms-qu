@@ -27,6 +27,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
 	"github.com/pikip/lms/backend/internal/admin"
+	"github.com/pikip/lms/backend/internal/audit"
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/banksoal"
@@ -634,6 +635,19 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	feedSvc := feed.NewService(feedRepo)
 	feedHandler := feed.NewHandler(feedSvc)
 	guruGroup.Get("/feed", feedHandler.List)
+
+	// Task 7.E — Guru audit log scope per kelas (locked #59). Endpoint:
+	//   GET /api/v1/guru/kelas/:id/audit?action=&limit=&offset=
+	//   GET /api/v1/guru/audit-actions
+	// Hard scope: WHERE target_kelas_id=:id; guru ownership check.
+	auditSvc := audit.NewService(
+		authRepo,
+		audit.KelasFinderAdapter{Repo: kelasRepo},
+		authRepo, // BulkUserNames adapter satisfies userLookup
+	)
+	auditHandler := audit.NewHandler(auditSvc)
+	guruGroup.Get("/audit-actions", auditHandler.ListActions)
+	guruGroup.Get("/kelas/:id/audit", auditHandler.ListByKelas)
 
 	// Task 6.B.1 — BankSoal CRUD endpoints (per-guru pribadi locked #84).
 	// Mounted under /api/v1/bank-soal (admin/guru only). Siswa BLOCKED at
