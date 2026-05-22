@@ -43,6 +43,7 @@ import {
   ClipboardList,
   Copy,
   GraduationCap,
+  History,
   Megaphone,
   RotateCcw,
   ScrollText,
@@ -944,6 +945,12 @@ function GuruKelasDetailContent({ id }: { id: string }) {
             <Link href={`/guru/kelas/detail/rekap?id=${kelas.id}`}>
               <ScrollText className="size-4" />
               Rekap nilai
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/guru/kelas/detail/audit?id=${kelas.id}`}>
+              <History className="size-4" />
+              Audit log
             </Link>
           </Button>
         </div>

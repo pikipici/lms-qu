@@ -32,6 +32,7 @@ type AuditLogFilter struct {
 	TargetID      *uuid.UUID // exact match if set
 	TargetKelasID *uuid.UUID // exact match if set (Task 7.E guru audit scope, locked #59)
 	Action        string     // exact match if non-empty
+	Actions       []string   // IN match if non-empty (Task 7.E whitelist filter)
 	Since         *time.Time // at >= since
 	Until         *time.Time // at < until
 }
@@ -456,6 +457,9 @@ func (r *Repo) ListAuditLogs(ctx context.Context, f AuditLogFilter, limit, offse
 	action := strings.TrimSpace(f.Action)
 	if action != "" {
 		query = query.Where("action = ?", action)
+	}
+	if len(f.Actions) > 0 {
+		query = query.Where("action IN ?", f.Actions)
 	}
 	if f.Since != nil {
 		query = query.Where("at >= ?", *f.Since)

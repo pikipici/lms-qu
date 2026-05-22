@@ -26,26 +26,44 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 )
 
-// AllowedActions adalah whitelist action filter yang diizinkan untuk guru
-// (locked #59 + roadmap Task 7.E.1). Includes Fase 5/6 reset events +
-// kelas lifecycle + grading actions yang relevant ke transparansi guru.
+// AllowedActions adalah whitelist action filter yang relevan untuk guru
+// transparency (locked #59 + roadmap Task 7.E.1, expanded to match real
+// audit emitters in DB).
 //
-// Semua action yang ada di-emit oleh package lain dgn TargetKelasID set
-// — tidak ada action di sini yang TargetKelasID NULL.
+// Includes: kelas/bab/tugas/soalbab/ujian/ulangan_bab lifecycle +
+// grading + reset + siswa-join events. Untuk action yang TIDAK ada di
+// list ini, output difilter di repo level (locked: tidak boleh leak
+// internal/security action ke guru — admin tetap punya akses penuh
+// lewat /admin/audit-log).
 var AllowedActions = []string{
-	"hasil_reset",            // soalbab/hasil — guru/admin reset ulangan attempt
-	"ulangan_bab_cancelled",  // soalbab/hasil — alias hasil_reset
-	"ujian_attempt_reset",    // ujian/hasil — guru/admin reset ujian attempt
-	"bab_archived",           // bab/service — guru archive bab
-	"bab_published",          // bab/service — guru publish bab (kalau emit)
-	"siswa_kicked",           // kelas/admin — admin/guru kick siswa
-	"tugas_deleted",          // tugas/service — guru delete tugas
-	"submission_graded",      // submission/service — guru grade submission
-	"ujian_auto_graded",      // ujian/timer_cron — auto-grade
-	"ulangan_bab_auto_graded",// soalbab/timer_cron — auto-grade
-	"ulangan_bab_submitted",  // soalbab/ulangan — siswa submit ulangan
-	"ujian_started",          // ujian/start — siswa mulai ujian
-	"ulangan_bab_started",    // soalbab/ulangan — siswa mulai ulangan
+	// Kelas lifecycle
+	"kelas_created", "kelas_updated", "kelas_archived", "kelas_duplicated",
+	// Bab lifecycle
+	"bab_created", "bab_status_changed", "bab_archived", "bab_published",
+	// Materi
+	"materi_created", "materi_updated", "materi_deleted",
+	// Soal-bab lifecycle
+	"soalbab_created", "soalbab_bulk_created", "soalbab_deleted",
+	"soalbab_image_uploaded", "soalbab_updated",
+	// Ulangan setting + attempts
+	"ulangan_setting_updated",
+	"ulangan_bab_started", "ulangan_bab_submitted",
+	"ulangan_bab_cancelled", "ulangan_bab_auto_graded",
+	// Tugas lifecycle + grading
+	"tugas_created", "tugas_status_changed", "tugas_deleted",
+	"tugas_duplicated", "tugas_graded",
+	// Submission lifecycle
+	"submission_submitted", "submission_graded", "submission_returned",
+	// Ujian lifecycle + attempts
+	"ujian_started", "ujian_submitted", "ujian_cancelled",
+	"ujian_deleted", "ujian_duplicated", "ujian_auto_graded",
+	// Reset semantics (locked #59 explicit)
+	"hasil_reset", "ujian_attempt_reset",
+	// Siswa membership
+	"siswa_joined_kelas", "siswa_join_kelas_noop",
+	"admin_assigned_siswa_to_kelas", "siswa_kicked",
+	// Pengumuman
+	"pengumuman_created", "pengumuman_updated", "pengumuman_deleted",
 }
 
 // IsAllowedAction reports whether action is in the allowlist.
@@ -145,6 +163,7 @@ func (s *Service) ListByKelas(
 	filter := auth.AuditLogFilter{
 		TargetKelasID: &kelasID,
 		Action:        action,
+		Actions:       AllowedActions, // defense-in-depth output filter
 	}
 	rows, total, err := s.repo.ListAuditLogs(ctx, filter, limit, offset)
 	if err != nil {
