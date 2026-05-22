@@ -687,6 +687,26 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	siswaGroup.Get("/hasil-ujian/:id/items", ujianFlowHandler.Items)
 	siswaGroup.Post("/hasil-ujian/:id/answer", ujianFlowHandler.Answer)
 	siswaGroup.Post("/hasil-ujian/:id/submit", ujianFlowHandler.Submit)
+
+	// Task 6.E.1 — Ujian Hasil + Review + Cancel + Rekap consolidated.
+	// Mirror soalbab.HasilService (commit 8c55651) adapted untuk Ujian:
+	// review gating embedded di Ujian (IzinkanReviewSetelahSubmit +
+	// WaktuBukaReview, locked #81); UjianID-based scope; BankSoal
+	// source. Soft-cancel: Status='dibatalkan' + DeletedAt — partial-
+	// unique (ujian_id, siswa_id) WHERE deleted_at IS NULL membebaskan
+	// slot supaya siswa boleh start fresh attempt (locked #76).
+	ujianHasilSvc := ujian.NewHasilService(ujianRepo, bankSoalRepo, kelasRepo, kelasRepo, authRepo, authRepo)
+	ujianHasilHandler := ujian.NewHasilHandler(ujianHasilSvc)
+	siswaGroup.Get("/hasil-ujian/:id/review", ujianHasilHandler.Review)
+	siswaGroup.Get("/kelas/:id/ujian/hasil", ujianHasilHandler.ListSiswa)
+	ujianStaffGroup.Get("/:id/hasil-rekap", ujianHasilHandler.Rekap)
+	// Cancel: flat /hasil-ujian/:id/cancel under guru/admin role guard.
+	hasilUjianGuruGroup := api.Group("/hasil-ujian",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	hasilUjianGuruGroup.Post("/:id/cancel", ujianHasilHandler.Cancel)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

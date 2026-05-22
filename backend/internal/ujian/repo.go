@@ -266,6 +266,59 @@ func (r *Repo) ListHasilBySiswa(ctx context.Context, ujianID, siswaID uuid.UUID)
 	return rows, err
 }
 
+// ListHasilBySiswaAll returns all attempts a siswa has across ALL ujians
+// dalam kelas tertentu (cross-ujian per kelas). Used by 6.E.1 siswa
+// list endpoint untuk lobby/history per kelas. Ordered by mulai_at DESC.
+func (r *Repo) ListHasilBySiswaAllKelas(ctx context.Context, kelasID, siswaID uuid.UUID) ([]HasilUjian, error) {
+	var rows []HasilUjian
+	err := r.db.WithContext(ctx).
+		Joins("JOIN ujian u ON u.id = hasil_ujian.ujian_id").
+		Where("u.kelas_id = ? AND hasil_ujian.siswa_id = ? AND hasil_ujian.deleted_at IS NULL",
+			kelasID, siswaID).
+		Order("hasil_ujian.mulai_at DESC, hasil_ujian.id DESC").
+		Find(&rows).Error
+	return rows, err
+}
+
+// ListHasilByUjian returns all attempts under a specific ujian (across
+// all siswa in kelas). Used by 6.E.1 guru rekap dashboard. Ordered by
+// (siswa_id, mulai_at DESC) for stable per-siswa grouping.
+func (r *Repo) ListHasilByUjian(ctx context.Context, ujianID uuid.UUID) ([]HasilUjian, error) {
+	var rows []HasilUjian
+	err := r.db.WithContext(ctx).
+		Where("ujian_id = ? AND deleted_at IS NULL", ujianID).
+		Order("siswa_id, mulai_at DESC, id DESC").
+		Find(&rows).Error
+	return rows, err
+}
+
+// UpdateHasilStatus mutates a hasil row's lifecycle fields. Used by
+// 6.E.1 Cancel (soft-cancel set Status='dibatalkan' + DeletedAt). For
+// other transitions (submit, auto-grade) callers write inline UPDATE
+// inside their tx.
+func (r *Repo) UpdateHasilStatus(ctx context.Context, hasilID uuid.UUID, status HasilStatus, selesaiAt *time.Time, deletedAt *time.Time) error {
+	updates := map[string]any{
+		"status":     status,
+		"updated_at": gorm.Expr("now()"),
+	}
+	if selesaiAt != nil {
+		updates["selesai_at"] = *selesaiAt
+	}
+	if deletedAt != nil {
+		updates["deleted_at"] = *deletedAt
+	}
+	res := r.db.WithContext(ctx).Model(&HasilUjian{}).
+		Where("id = ?", hasilID).
+		Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // ScanExpiredHasilIDs returns IDs of HasilUjian rows whose status is
 // 'berlangsung' and deadline_at <= now, capped to limit. Used by
 // timer_cron sweep (locked #87). Caller takes per-row advisory lock
