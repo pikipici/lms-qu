@@ -37,6 +37,7 @@ import (
 	"github.com/pikip/lms/backend/internal/kelas"
 	"github.com/pikip/lms/backend/internal/materi"
 	"github.com/pikip/lms/backend/internal/middleware"
+	"github.com/pikip/lms/backend/internal/nilai"
 	"github.com/pikip/lms/backend/internal/pengumuman"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/soalbab"
@@ -711,6 +712,19 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
 	)
 	hasilUjianGuruGroup.Post("/:id/cancel", ujianHasilHandler.Cancel)
+
+	// Task 7.A.1 — Nilai siswa endpoints (locked #89-#91).
+	// Read-only aggregator (locked #90): per-kelas + lintas-kelas
+	// returns NilaiBab + NilaiUlanganHarian + TotalKelas pakai single-pass
+	// JOINs ke HasilSoalBab/Submission/HasilUjian. Authorization
+	// callerRole=siswa + active enrollment (defensive — service & route
+	// double-check). Routing locked #91: /siswa/nilai (lintas) +
+	// /siswa/kelas/:id/nilai (per-kelas).
+	nilaiRepo := nilai.NewRepo(gdb)
+	nilaiSvc := nilai.NewService(nilaiRepo, kelasRepo, kelasRepo)
+	nilaiHandler := nilai.NewHandler(nilaiSvc)
+	siswaGroup.Get("/nilai", nilaiHandler.SiswaList)
+	siswaGroup.Get("/kelas/:id/nilai", nilaiHandler.SiswaKelasNilai)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
