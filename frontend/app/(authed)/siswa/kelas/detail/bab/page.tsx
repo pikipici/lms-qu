@@ -68,6 +68,7 @@ import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
 import { siswaCardToMateri } from '@/components/siswa/siswaCardToMateri';
 import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
 import { SiswaTugasList } from '@/components/submission/SiswaTugasList';
+import { LatihanPlayer } from '@/components/soalbab/LatihanPlayer';
 
 // ---------- Sub-tab definition ----------
 
@@ -437,12 +438,7 @@ function SiswaBabDetailContent({
       )}
 
       {tab === 'soal' && (
-        <PlaceholderTab
-          Icon={BookOpen}
-          title="Soal"
-          body="Latihan soal + ulangan bab. Akan tersedia di Fase 5."
-          taskRef="Fase 5 (Soal Bab)"
-        />
+        <LatihanPlayer babID={babID} disabled={false} />
       )}
 
       {tab === 'tugas' && (
