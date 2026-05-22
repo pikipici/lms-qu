@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.10.6 — **Fase 5.D 2/4** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
+> Status: v0.10.7 — **Fase 5.D 3/4** + 5.A 1/1 + 5.B 3/3 + 5.C 2/2 ✅ DONE 2026-05-21. 5.B.1 CRUD `928401b` + 5.B.2 image upload 6-slot + presign `57eb504` + 5.B.3 bulk paste pipe-delimited `dabbdf1` + 5.C.1 UlanganBabSetting GET+PUT upsert `7b9edd5` + 5.C.2 Latihan flow start/answer/finish `d6c808d` + 5.D.1 Ulangan Bab start deterministic seed + advisory lock `0346609`+`32f63ae`+`d822d46` + 5.D.2 Ulangan Bab answer save delayed grade + dispatcher `5067f0a` + 5.D.3 Ulangan Bab submit + auto-grade tx + advisory lock `d262ea3`. Locked decisions baru #76-#82 (sub-fase split + bulk paste pipe-delimited + image upload inline 6-slot 5MB resize 1920px + random pool deterministic seed sha256(mulai_unix_micro‖siswa‖bab) + timer expire cron 30s + advisory lock auto-grade tx + review gating policy + coverage gate 70%). Soal Bab covers Latihan (formative no nilai) + Ulangan Bab (1× attempt + nilai persist + remedial reset + resume). Fase 4 ✅ DONE 14/14 carry-over: 4.A.4 `3600188`, 4.D.2 BE `5d160b6`+`9d5eda2` + FE `6f49e14`, 4.E.2 BE `a4f14a4` + FE `34aff41`.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-22 (Task 5.D.2 ✅ DONE — Ulangan Bab answer save delayed grade + dispatcher branching, commit `5067f0a`; Fase 5 progress 7/15)
+> Last updated: 2026-05-22 (Task 5.D.3 ✅ DONE — Ulangan Bab submit + auto-grade tx + advisory lock per hasil_id, commit `d262ea3`; Fase 5 progress 8/15)
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v072)
@@ -2459,15 +2459,19 @@ Pecah jadi dua sub-step supaya gak idle nungguin credentials user.
 - Smoke E2E hijau (19 cases): start ulangan → answer happy 200 `{ok:true}` (no is_benar leak) + overwrite UPSERT idempotent + soal_not_in_pool 400 + siswa2 not-owner 403 + invalid jawaban "z" 400 + empty body 400 + invalid uuid 400 + non-existent hasil 404 + SQL probe `jawaban='b', is_benar=NULL, poin_dapat=0` (delayed grade confirmed) + EventBab `answer_save` mode=ulangan + expire deadline via SQL → 410 `timer_expired` + cancel via SQL → 409 `hasil_cancelled` + latihan branch sanity (still leaks is_benar+jawaban_benar+poin_dapat per #81 — dispatcher branching works).
 - Commit: `5067f0a feat(soalbab): Ulangan Bab answer save (Task 5.D.2)`
 
-**Task 5.D.3 — Ulangan Bab submit + auto-grade tx (advisory lock)** ⏳
-- Endpoint: `POST /api/v1/hasil-soal-bab/:id/submit` — siswa pemilik.
-  - BEGIN tx → `pg_advisory_xact_lock(hashtext('hasil_soal_bab:' || id::text))` → reload row → cek `status='berlangsung'` (kalau `selesai` → 409 `already_submitted` return existing) → cek `now() ≤ deadline_at + 5s grace`.
-  - Load semua jawaban + load soal pool (snapshot soal_ids_json) → grade tiap soal: `is_benar = (jawaban == soal.jawaban)`, `poin_dapat = is_benar ? soal.poin : 0`. UPDATE JawabanBab batch.
-  - Hitung `nilai_total = sum(poin_dapat)`, `jawaban_benar_count = count(is_benar)`, `jawaban_total = len(pool)`. UPDATE `HasilSoalBab(status='selesai', selesai_at=now, nilai_total, jawaban_benar_count, jawaban_total)`.
-  - Audit `ulangan_bab_submitted`. COMMIT.
-  - Return `{nilai_total, jawaban_benar_count, jawaban_total, dapat_review_at: <waktu_buka_review or null>}`.
-- Verify: test (submit happy + already_submitted idempotent + race vs cron + nilai correctness).
-- Commit: `feat(ulanganbab): submit + auto-grade tx with advisory lock`
+**Task 5.D.3 — Ulangan Bab submit + auto-grade tx (advisory lock)** ✅ DONE 2026-05-22 commit `d262ea3`
+- File: `backend/internal/soalbab/ulangan.go` — tambah `UlanganService.Submit` + `UlanganSubmitResult` + `hasilLockKey` helper. `backend/internal/soalbab/ulangan_handler.go` — tambah `Submit` handler + sentinel mapping `submit_after_grace` 410, `already_submitted` 409.
+- Endpoint: `POST /api/v1/siswa/hasil-soal-bab/:id/submit` siswa-only.
+- tx + `pg_advisory_xact_lock(?::bigint)` keyed `sha256("hasil-submit:" || hasil_id)[:8]` LE int64. Cron 5.D.4 bakal pakai key sama → mutual exclusion siswa vs cron.
+- Idempotent: kalau status=selesai & nilai_total != nil, return existing rekap dengan `already_submitted=true` (HTTP 200, no relock pre-tx). Race vs cron: re-check inside tx setelah lock acquire — kalau cron sudah grade duluan, commit empty tx + return existing.
+- Late-submit grace: `now() ≤ deadline_at + 5s`. Beyond → `ErrUlanganSubmitAfterGrace` 410. Cron tick 30s, grace ini hindari UI race antara siswa klik vs cron sweep.
+- Cancelled → 409 `hasil_cancelled`. Mode mismatch → 409 `hasil_mode_invalid`.
+- Re-grade per jawaban: `is_benar = (jawaban == soal.jawaban)`, `poin_dapat = soal.poin if benar else 0`. Skip/missing jawaban → `is_benar=false, poin=0`. UPDATE per row dalam tx (pool max 200 per locked bound).
+- UPDATE `HasilSoalBab(status='selesai', selesai_at=now, nilai_total, jawaban_benar_count, jawaban_total, updated_at=now())`.
+- Append `EventBab(action='ulangan_bab_submitted')` + audit log post-commit best-effort.
+- Response shape (HTTP 200): `{summary: {hasil_id, nilai_total, jawaban_benar_count, jawaban_total, selesai_at, dapat_review_at?, izinkan_review, already_submitted}}`. dapat_review_at populated dari `Setting.WaktuBukaReview` (locked #81 review gating); `izinkan_review` dari `Setting.IzinkanReviewSetelahSubmit` fail-soft default true.
+- Smoke E2E hijau (17 cases): submit happy 200 nilai=10/benar=1/total=3 + idempotent submit 200 already_submitted=true + SQL probe (status=selesai, jawaban graded `a→t→10` & `b→f→0`) + EventBab `ulangan_bab_submitted` + siswa2 not-owner 403 + invalid uuid 400 + non-existent 404 + attempt#2 all benar 30 + expire deadline 60s → 410 `submit_after_grace` + cancel via SQL → 409 `hasil_cancelled`.
+- Commit: `d262ea3 feat(soalbab): Ulangan Bab submit + auto-grade tx (Task 5.D.3)`
 
 **Task 5.D.4 — Timer expire cron 30s** ⏳
 - File: `backend/internal/soalbab/timer_cron.go`. Pakai pattern skill `go-cleanup-cron-ctx-bound`: `time.NewTicker(30*time.Second)` + ctx-bound goroutine started di `cmd/server/main.go` setelah DB ready, dihentikan saat shutdown signal.
