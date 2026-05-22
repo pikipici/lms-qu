@@ -473,7 +473,8 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	bankSoalSvc := banksoal.NewService(bankSoalRepo, authRepo, objectStore)
 	bankSoalHandler := banksoal.NewHandler(bankSoalSvc, objectStore)
 	ujianRepo := ujian.NewRepo(gdb)
-	_ = ujianRepo
+	ujianSvc := ujian.NewService(ujianRepo, kelasRepo, bankSoalRepo, authRepo)
+	ujianHandler := ujian.NewHandler(ujianSvc)
 
 	// guruGroup belum di-register di sini — register di bawah setelah
 	// pendingHandler block. Wire route di sana supaya satu group definition.
@@ -634,6 +635,31 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	bankSoalGroup.Post("/:id/image", bankSoalHandler.UploadImage)
 	bankSoalGroup.Delete("/:id/image", bankSoalHandler.DeleteImage)
 	bankSoalGroup.Get("/:id/image-url", bankSoalHandler.ImageURL)
+
+	// Task 6.C.1 + 6.C.2 — Ujian setup (CRUD + duplicate + source dispatch).
+	// Kelas-scope routes (POST/GET kelas/:id/ujian) under kelasGroup
+	// dengan service-level role branching (siswa published-only).
+	// Flat /ujian/:id routes admin/guru-only (siswa baca lewat HasilUjian
+	// flow di Fase 6.D).
+	kelasGroup.Post("/:id/ujian", ujianHandler.Create)
+	kelasGroup.Get("/:id/ujian", ujianHandler.ListByKelas)
+
+	ujianGroup := api.Group("/ujian",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru), string(auth.Siswa)),
+	)
+	ujianGroup.Get("/:id", ujianHandler.Get)
+	ujianStaffGroup := api.Group("/ujian",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	// Static prefixes BEFORE /:id supaya tidak conflict dengan UUID matcher.
+	ujianStaffGroup.Post("/:id/duplicate", ujianHandler.Duplicate)
+	ujianStaffGroup.Post("/:id/source/preview", ujianHandler.PreviewSource)
+	ujianStaffGroup.Patch("/:id", ujianHandler.Update)
+	ujianStaffGroup.Delete("/:id", ujianHandler.Delete)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

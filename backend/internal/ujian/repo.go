@@ -88,16 +88,68 @@ func (r *Repo) ListByKelas(ctx context.Context, kelasID uuid.UUID, f UjianListFi
 	return rows, nil
 }
 
-// UpdateUjian — implemented in 6.C.1 (PATCH dengan optimistic version
-// + active-attempts guard). Skeleton returns errNotImplemented.
-func (r *Repo) UpdateUjian(ctx context.Context, u *Ujian) error {
-	return errNotImplemented
+// UpdateUjianBasic applies an optimistic-versioned partial update.
+// `fields` is a column→value map; `version` increments + `updated_at`
+// is bumped server-side.
+//
+// Returns gorm.ErrRecordNotFound when row is gone, ErrVersionConflict
+// when expectedVersion mismatches the live row.
+func (r *Repo) UpdateUjianBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	// Defensive: never let caller stomp on version directly.
+	delete(fields, "version")
+	delete(fields, "id")
+	fields["version"] = gorm.Expr("version + 1")
+	fields["updated_at"] = time.Now()
+
+	res := r.db.WithContext(ctx).Model(&Ujian{}).
+		Where("id = ? AND version = ?", id, expectedVersion).
+		Updates(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		var u Ujian
+		if err := r.db.WithContext(ctx).Where("id = ?", id).First(&u).Error; err != nil {
+			return err
+		}
+		return ErrVersionConflict
+	}
+	return nil
 }
 
-// DeleteUjian — implemented in 6.C.1. Cascade UjianSoal via FK,
-// HasilUjian guard via service layer.
+// DeleteUjian hard-deletes an ujian row. Caller MUST verify
+// HasilUjian is empty / archive-only before calling — repo just
+// enforces optimistic version. Cascade ke UjianSoal via FK ON DELETE
+// CASCADE (migration 000011).
 func (r *Repo) DeleteUjian(ctx context.Context, id uuid.UUID, expectedVersion int) error {
-	return errNotImplemented
+	res := r.db.WithContext(ctx).
+		Where("id = ? AND version = ?", id, expectedVersion).
+		Delete(&Ujian{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		var u Ujian
+		if err := r.db.WithContext(ctx).Where("id = ?", id).First(&u).Error; err != nil {
+			return err
+		}
+		return ErrVersionConflict
+	}
+	return nil
+}
+
+// CountHasilByUjian returns the number of HasilUjian rows attached to
+// an ujian (any status, including soft-deleted). Used by Delete to
+// reject when attempts exist.
+func (r *Repo) CountHasilByUjian(ctx context.Context, ujianID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&HasilUjian{}).
+		Where("ujian_id = ?", ujianID).
+		Count(&n).Error
+	return n, err
 }
 
 // HasActiveAttempts reports whether ujianID still has any HasilUjian
@@ -117,9 +169,29 @@ func (r *Repo) HasActiveAttempts(ctx context.Context, ujianID uuid.UUID) (bool, 
 // ---------------------------------------------------------------------------
 
 // SetUjianSoalIDs replaces the manual-mode soal_ids list for an ujian
-// in a single transaction. Implemented in 6.C.2.
+// in a single transaction (DELETE existing + bulk INSERT new). Caller
+// passes ordered slice; index → Urutan column.
+//
+// Empty slice clears the junction (used when guru switches dari manual
+// ke random mode).
 func (r *Repo) SetUjianSoalIDs(ctx context.Context, ujianID uuid.UUID, soalIDs []uuid.UUID) error {
-	return errNotImplemented
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("ujian_id = ?", ujianID).Delete(&UjianSoal{}).Error; err != nil {
+			return err
+		}
+		if len(soalIDs) == 0 {
+			return nil
+		}
+		rows := make([]UjianSoal, 0, len(soalIDs))
+		for i, sid := range soalIDs {
+			rows = append(rows, UjianSoal{
+				UjianID: ujianID,
+				SoalID:  sid,
+				Urutan:  int16(i),
+			})
+		}
+		return tx.CreateInBatches(rows, 100).Error
+	})
 }
 
 // ListUjianSoalIDs returns ordered soal_ids in the manual junction.
