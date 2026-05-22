@@ -139,10 +139,13 @@ func (r *Repo) nilaiTugasPerBab(ctx context.Context, kelasID, siswaID uuid.UUID)
 	var rows []tugasAggRow
 	// LEFT JOIN dari tugas → submission (siswa) supaya bab tanpa
 	// submission masih punya tugas_total > 0 (penting untuk re-normalize).
+	// nilai_setelah_penalty sudah dalam skala 0..100 (NUMERIC(5,2)) —
+	// tidak perlu normalize-by-max-nilai (Tugas tidak punya max_nilai
+	// column; nilai mentah disimpan langsung dari guru saat grade).
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT t.bab_id,
-		       AVG(CASE WHEN s.status = 'graded' AND s.nilai_setelah_penalty IS NOT NULL AND t.max_nilai > 0
-		                THEN (s.nilai_setelah_penalty::float / t.max_nilai::float) * 100
+		       AVG(CASE WHEN s.status = 'graded' AND s.nilai_setelah_penalty IS NOT NULL
+		                THEN s.nilai_setelah_penalty::float
 		           END) AS avg_pct,
 		       COUNT(CASE WHEN s.status = 'graded' THEN 1 END) AS graded_count,
 		       COUNT(*) AS tugas_total
@@ -150,6 +153,7 @@ func (r *Repo) nilaiTugasPerBab(ctx context.Context, kelasID, siswaID uuid.UUID)
 		LEFT JOIN submission s ON s.tugas_id = t.id AND s.siswa_id = ?
 		WHERE t.kelas_id = ?
 		  AND t.bab_id IS NOT NULL
+		  AND t.status = 'published'
 		GROUP BY t.bab_id
 	`, siswaID, kelasID).Scan(&rows).Error
 	if err != nil {
