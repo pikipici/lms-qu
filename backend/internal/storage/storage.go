@@ -35,6 +35,11 @@ const (
 	// (Task 2.D.4). Same admin-only scope as CategoryImport but separated so
 	// cleanup/eviction policies and presigned-URL TTLs can diverge later.
 	CategoryCredentials = "credentials"
+	// CategoryBankSoal holds inline image slots for BankSoal rows
+	// (Fase 6 / Task 6.B.2). Distinct from CategorySoal (which is the
+	// SoalBab bab-tied bank from Fase 5) supaya cleanup cron + audit
+	// per-fitur tidak nyampur. Locked decision #58 prefix per kategori.
+	CategoryBankSoal = "soal-bank"
 )
 
 var validCategories = map[string]struct{}{
@@ -44,6 +49,7 @@ var validCategories = map[string]struct{}{
 	CategorySubmission:  {},
 	CategoryImport:      {},
 	CategoryCredentials: {},
+	CategoryBankSoal:    {},
 }
 
 // IsValidCategory reports whether name is one of the known kategori prefixes.

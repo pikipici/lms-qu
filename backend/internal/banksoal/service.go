@@ -56,6 +56,7 @@ type repoAPI interface {
 	ListByOwner(ctx context.Context, guruID uuid.UUID, f ListFilter) ([]BankSoal, error)
 	CountByOwner(ctx context.Context, guruID uuid.UUID, f ListFilter) (int64, error)
 	UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersion int, fields map[string]interface{}) error
+	UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error)
 	SoftDeleteSoal(ctx context.Context, id uuid.UUID, expectedVersion int) error
 }
 

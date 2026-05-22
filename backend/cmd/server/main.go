@@ -626,6 +626,12 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	bankSoalGroup.Get("/:id", bankSoalHandler.Get)
 	bankSoalGroup.Patch("/:id", bankSoalHandler.Update)
 	bankSoalGroup.Delete("/:id", bankSoalHandler.Delete)
+
+	// Task 6.B.2 — image upload (6 slot inline) per-guru pribadi.
+	// Mirror SoalBab Task 5.B.2 — multipart upload, R2 prefix soal-bank/.
+	bankSoalGroup.Post("/:id/image", bankSoalHandler.UploadImage)
+	bankSoalGroup.Delete("/:id/image", bankSoalHandler.DeleteImage)
+	bankSoalGroup.Get("/:id/image-url", bankSoalHandler.ImageURL)
 }
 
 func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {

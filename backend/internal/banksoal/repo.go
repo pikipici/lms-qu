@@ -219,9 +219,19 @@ func (r *Repo) UpdateSoalBasic(ctx context.Context, id uuid.UUID, expectedVersio
 // opsi_b_object_key, opsi_c_object_key, opsi_d_object_key,
 // opsi_e_object_key. Caller validates this — repo trusts input.
 //
-// Bumps version + updated_at sehingga setiap upload/delete count
-// sebagai mutation di optimistic concurrency.
+// Image swap does NOT bump version — keeping image swap orthogonal to
+// content edits supaya guru bisa fix typo gambar tanpa invalidasi tab
+// editor lain (locked #56 explicit applies to text edits, gambar is
+// idempotent set/clear). Mirror soalbab.UpdateSoalImageSlot.
 func (r *Repo) UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column string, newKey *string) (*string, error) {
+	switch column {
+	case "pertanyaan_object_key",
+		"opsi_a_object_key", "opsi_b_object_key",
+		"opsi_c_object_key", "opsi_d_object_key", "opsi_e_object_key":
+		// allowed
+	default:
+		return nil, errors.New("banksoal: invalid image column")
+	}
 	var old *string
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var probe BankSoal
@@ -248,12 +258,18 @@ func (r *Repo) UpdateSoalImageSlot(ctx context.Context, id uuid.UUID, column str
 		}
 		updates := map[string]interface{}{
 			column:       newKey,
-			"version":    gorm.Expr("version + 1"),
 			"updated_at": gorm.Expr("now()"),
 		}
-		return tx.Model(&BankSoal{}).
+		res := tx.Model(&BankSoal{}).
 			Where("id = ?", id).
-			UpdateColumns(updates).Error
+			UpdateColumns(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
