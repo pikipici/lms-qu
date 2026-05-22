@@ -32,6 +32,7 @@ import (
 	"github.com/pikip/lms/backend/internal/banksoal"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
+	"github.com/pikip/lms/backend/internal/feed"
 	"github.com/pikip/lms/backend/internal/health"
 	"github.com/pikip/lms/backend/internal/importjob"
 	"github.com/pikip/lms/backend/internal/kelas"
@@ -624,6 +625,15 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
 	)
 	guruGroup.Get("/pending-counts", pendingHandler.Count)
+
+	// Task 7.C — Activity feed guru (locked #39+#55). UNION ALL aggregator
+	// across submission_baru / ulangan_selesai / siswa_join with opaque
+	// base64 cursor `(at_unix_micro DESC, id DESC)`. Polling 30s + load-
+	// more pakai cursor.
+	feedRepo := feed.NewRepo(gdb)
+	feedSvc := feed.NewService(feedRepo)
+	feedHandler := feed.NewHandler(feedSvc)
+	guruGroup.Get("/feed", feedHandler.List)
 
 	// Task 6.B.1 — BankSoal CRUD endpoints (per-guru pribadi locked #84).
 	// Mounted under /api/v1/bank-soal (admin/guru only). Siswa BLOCKED at
