@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.13.0 + Fase 8 MVP go-live smoke gate ✅ CLOSED at `be73d2a`. Fase 0-7 ✅ CLOSED; expanded E2E/coverage hardening deferred to v0.14/v0.15.
+> Status: v0.13.0 + Fase 8 operational baseline ready at `07429cd`. Fase 0-7 ✅ CLOSED; deploy hardening, auth integration coverage, monitoring timer, and smoke/E2E gates validated.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-23 (Fase 8 smoke gate closed — deployed + final smoke PASS).
+> Last updated: 2026-05-23 (Fase 8 operational baseline ready — deployed + monitoring PASS).
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v0120)

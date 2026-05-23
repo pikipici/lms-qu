@@ -1,7 +1,7 @@
-# Release Readiness — Fase 8 MVP Smoke Gate
+# Release Readiness - Fase 8 Operational Baseline
 
 > Date: 2026-05-23
-> Commit: `be73d2a` (`test: add Fase 8 go-live smoke gate`)
+> Commit: `07429cd` (`chore: ignore generated public output`)
 > Deployment: `rdpkhorur:/home/ubuntu/lms`
 > Status: Ready for optional tag/release decision
 
@@ -12,6 +12,10 @@
 - Playwright default execution made sequential to avoid login rate-limit flakiness on remote smoke runs.
 - Stable go-live E2E gate isolated in `frontend/e2e/login-smoke.spec.ts`.
 - Expanded E2E specs moved to `.draft.ts` so they stay typechecked but do not block Playwright discovery.
+- Auth repository PostgreSQL integration gate added and validated with `AUTH_REPO_TEST_DSN` sourced from remote env without printing secrets.
+- Remote deploy path hardened and validated through `deploy/deploy.sh --remote`.
+- User-level systemd monitoring timer installed and validated on `rdpkhorur`.
+- Generated root `public/` deploy output is ignored so remote git status stays clean.
 
 ## Remote Verification
 
@@ -22,22 +26,38 @@ cd /home/ubuntu/lms
 E2E_BASE_URL=http://127.0.0.1:8200 bash scripts/fase8-smoke.sh
 ```
 
-Result on deployed commit `be73d2a`:
+Result on latest validated operational baseline:
 
-- `/api/v1/healthz` PASS
-- `/api/v1/readyz` PASS
-- `/login` exported form check PASS
-- `npm run typecheck` PASS
-- `npx playwright test --list` PASS: 3 tests / 1 file
-- `npx playwright test login-smoke.spec.ts` PASS: 3/3
-- Final output: `[fase8-smoke] PASS`
+- Remote HEAD `07429cd` fast-forwarded and clean against `origin/main`.
+- `/api/v1/healthz` PASS.
+- `/api/v1/readyz` PASS.
+- `/login` exported form check PASS.
+- `npm run typecheck` PASS.
+- Playwright discovery PASS: 6 tests.
+- `guru-login.spec.ts` PASS: 3/3.
+- `scripts/fase8-smoke.sh` PASS: login smoke 3/3.
+- `scripts/fase8-monitoring-check.sh` PASS.
+- Monitoring user timer active; last service result `success`, exit status `0`.
+
+## Coverage And Deploy Evidence
+
+- Auth repository integration coverage: `76.5%` when `AUTH_REPO_TEST_DSN` is set.
+- Auth regular/default coverage remains about `59.6%` because integration tests skip without DSN.
+- Total backend regular coverage remains about `26.4%`.
+- Standard remote deploy path validated at `203d8b8`; subsequent docs/monitoring/gitignore commits do not change runtime behavior.
+- Evidence files:
+  - `dogfood-output/fase8/auth-repo-integration-validation.md`
+  - `dogfood-output/fase8/deploy-script-hardening-203d8b8.md`
+  - `dogfood-output/fase8/monitoring-user-timer-validation.md`
+  - `dogfood-output/fase8/coverage-monitoring-hardening.md`
 
 ## Deferred Hardening
 
-- Strict 70% backend coverage per-package remains deferred to v0.14/v0.15.
+- Strict total backend coverage growth remains deferred to v0.14/v0.15, though auth clears the 70% target in integration mode.
 - Expanded E2E flows remain drafts; hardening order is documented in `dogfood-output/fase8/expanded-e2e-hardening-backlog.md`.
-- Remote worktree still has unrelated dirty `frontend/package-lock.json`; do not revert or commit without explicit approval.
+- External alerting is still missing; the current user timer logs failures but does not notify.
+- Optional privileged persistence remains open: `loginctl enable-linger ubuntu` or system-level timer install.
 
 ## Suggested Next Decision
 
-Either tag this as the production-readiness baseline, or continue without a tag and start expanded E2E hardening from the smallest draft (`guru-login.draft.ts`).
+Either tag `07429cd` or newer as the production-readiness baseline, or continue without a tag and grow low-risk coverage packages (`health`, `config`, `feed`) toward the next backend coverage milestone.

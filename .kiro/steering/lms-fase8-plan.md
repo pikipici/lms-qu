@@ -1,6 +1,6 @@
 # LMS Fase 8 — Polish + E2E / Production Readiness Plan
 
-> Status: **MVP go-live smoke gate closed** (commit `be73d2a`)<br>
+> Status: **Fase 8 operational baseline ready** (commit `07429cd`)<br>
 > Owner: User + Apis<br>
 > Last updated: 2026-05-23<br>
 > Parent: `lms-roadmap.md` (v0.13.0 Fase 7 CLOSED)
@@ -38,16 +38,16 @@ Mengubah LMS dari feature-complete (Fase 0-7) menjadi production-ready MVP denga
 ### Week 2 — Execution
 | # | Task | Scope | Status |
 |---|------|-------|--------|
-| W2.1 | **E2E implementation** | Playwright tests: auth, guru CRUD, siswa flow, admin | DONE for MVP gate — `login-smoke.spec.ts` + `scripts/fase8-smoke.sh` pass on deployed commit `be73d2a`; expanded drafts tracked in `dogfood-output/fase8/expanded-e2e-hardening-backlog.md` |
+| W2.1 | **E2E implementation** | Playwright tests: auth, guru CRUD, siswa flow, admin | DONE for operational baseline — `login-smoke.spec.ts`, `guru-login.spec.ts`, and `scripts/fase8-smoke.sh` pass on deployed commit `07429cd`; expanded drafts tracked in `dogfood-output/fase8/expanded-e2e-hardening-backlog.md` |
 | W2.2 | **Coverage re-scope** | Define MVP critical paths, add tests only for those | DONE — strict 70% per-package gate deferred, see `dogfood-output/fase8/coverage-rescope.md` |
 | W2.3 | **Smoke test suite** | Shell-based final smoke (healthz, readyz, login export, typecheck, E2E smoke) | DONE — `scripts/fase8-smoke.sh` |
 
 ### Week 3 — Production
 | # | Task | Scope | Status |
 |---|------|-------|--------|
-| W3.1 | **v0.14.0 release** | Tag + release notes + deploy | TODO |
-| W3.2 | **Monitoring** | systemd status check + basic alerting | TODO |
-| W3.3 | **Documentation** | Known gaps documented for v0.15 | TODO |
+| W3.1 | **v0.14.0 release** | Tag + release notes + deploy | READY FOR DECISION — operational baseline `07429cd` |
+| W3.2 | **Monitoring** | systemd status check + basic alerting | PARTIAL DONE — user timer active; external alerting still TODO |
+| W3.3 | **Documentation** | Known gaps documented for v0.15 | DONE — release readiness and hardening evidence updated |
 
 ---
 
@@ -138,20 +138,23 @@ Mengubah LMS dari feature-complete (Fase 0-7) menjadi production-ready MVP denga
 
 ## 6. Definition of Done
 
-- [ ] `deploy/deploy.sh` has pre-flight + post-deploy health + rollback
-- [ ] All auth/guru/siswa errors use standardized envelope
-- [x] MVP auth E2E smoke passes locally + on rdpkhorur (`login-smoke.spec.ts`, 3/3)
-- [x] Smoke test suite passes after deploy (`scripts/fase8-smoke.sh`, commit `be73d2a`)
-- [ ] Expanded E2E Priority 1 flows promoted from `.draft.ts` when stable (non-blocker; see backlog)
-- [ ] v0.14.0 tagged and deployed
-- [ ] Known gaps documented in release notes
+- [x] `deploy/deploy.sh` has pre-flight + post-deploy health checks and validated remote deploy path; rollback remains manual via preserved backup binary/stashes.
+- [ ] All auth/guru/siswa errors use standardized envelope.
+- [x] MVP auth E2E smoke passes locally + on rdpkhorur (`login-smoke.spec.ts`, 3/3).
+- [x] Guru login E2E passes on rdpkhorur (`guru-login.spec.ts`, 3/3).
+- [x] Smoke test suite passes after deploy (`scripts/fase8-smoke.sh`, commit `07429cd`).
+- [x] Monitoring user timer is active and last run succeeded.
+- [ ] Expanded E2E Priority 1 flows promoted from `.draft.ts` when stable (non-blocker; see backlog).
+- [ ] v0.14.0 tagged and deployed.
+- [x] Known gaps documented in release readiness notes.
 
 ---
 
 ## 7. Current Next Step
 
-1. Decide whether to tag a v0.13.x/v0.14.0 production-readiness release from commit `be73d2a`.
-2. If tagging is deferred, continue hardening expanded E2E drafts using `dogfood-output/fase8/expanded-e2e-hardening-backlog.md`.
+1. Decide whether to tag a v0.13.x/v0.14.0 production-readiness release from commit `07429cd` or newer.
+2. If tagging is deferred, grow low-risk backend coverage packages (`health`, `config`, `feed`) toward the next coverage milestone.
 3. Keep MVP deploy gate as `E2E_BASE_URL=http://127.0.0.1:8200 bash scripts/fase8-smoke.sh`.
-4. Do not touch remote dirty `frontend/package-lock.json` unless explicitly approved.
+4. Add external alerting for monitoring; current user timer logs failures but does not notify.
+5. Do not touch dirty local `LOCAL_AI_CONTEXT.md` unless explicitly approved.
 
