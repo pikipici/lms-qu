@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -14,7 +15,11 @@ import (
 
 // Handler bundles HTTP handlers untuk Task 7.E guru audit endpoints.
 type Handler struct {
-	svc *Service
+	svc auditService
+}
+
+type auditService interface {
+	ListByKelas(ctx context.Context, kelasID, callerID uuid.UUID, callerRole, action string, limit, offset int) (*ListResponse, error)
 }
 
 // NewHandler wires the Handler against a Service.
