@@ -20,14 +20,14 @@ type stubSvc struct {
 	result *LoginResult
 	err    error
 
-	refreshResult    *LoginResult
-	refreshErr       error
-	logoutErr        error
-	logoutAllErr     error
-	sessions         []RefreshToken
-	sessionsErr      error
-	meUser           *User
-	meErr            error
+	refreshResult     *LoginResult
+	refreshErr        error
+	logoutErr         error
+	logoutAllErr      error
+	sessions          []RefreshToken
+	sessionsErr       error
+	meUser            *User
+	meErr             error
 	changePasswordErr error
 
 	calls     int
@@ -36,18 +36,18 @@ type stubSvc struct {
 	ip        string
 	userAgent string
 
-	refreshCalls         int
-	refreshToken         string
-	logoutCalls          int
-	logoutToken          string
-	logoutAllCalls       int
-	logoutAllUserID      uuid.UUID
-	sessionsCalls        int
-	sessionsUserID       uuid.UUID
-	meCalls              int
-	meUserID             uuid.UUID
-	changePasswordCalls  int
-	changePasswordUserID uuid.UUID
+	refreshCalls          int
+	refreshToken          string
+	logoutCalls           int
+	logoutToken           string
+	logoutAllCalls        int
+	logoutAllUserID       uuid.UUID
+	sessionsCalls         int
+	sessionsUserID        uuid.UUID
+	meCalls               int
+	meUserID              uuid.UUID
+	changePasswordCalls   int
+	changePasswordUserID  uuid.UUID
 	changeCurrentPassword string
 	changeNewPassword     string
 }
@@ -108,6 +108,60 @@ func (s *stubSvc) ChangePassword(ctx context.Context, userID uuid.UUID, currentP
 	s.ip = ip
 	s.userAgent = userAgent
 	return s.changePasswordErr
+}
+
+func TestNewHandler(t *testing.T) {
+	svc := &Service{}
+	h := NewHandler(svc)
+	if h == nil || h.svc != svc {
+		t.Fatalf("NewHandler() did not wire service")
+	}
+}
+
+func TestLoginRateLimit(t *testing.T) {
+	svc := &stubSvc{err: ErrInvalidCredentials}
+	app := fiber.New()
+	app.Post("/login", LoginRateLimit(1), (&Handler{svc: svc}).Login)
+
+	resp := postLogin(t, app, `{"email":"limit@example.com","password":"wrong"}`)
+	resp.Body.Close()
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Fatalf("first status = %d, want %d", resp.StatusCode, fiber.StatusUnauthorized)
+	}
+
+	resp = postLogin(t, app, `{"email":"limit@example.com","password":"wrong-again"}`)
+	defer resp.Body.Close()
+	assertErrorCode(t, resp, fiber.StatusTooManyRequests, "too_many_requests")
+}
+
+func TestRefreshRateLimit(t *testing.T) {
+	svc := &stubSvc{refreshErr: ErrInvalidCredentials}
+	app := fiber.New()
+	app.Post("/refresh", RefreshRateLimit(1), (&Handler{svc: svc}).Refresh)
+
+	resp := postJSON(t, app, "/refresh", `{"refresh_token":"bad"}`)
+	resp.Body.Close()
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Fatalf("first status = %d, want %d", resp.StatusCode, fiber.StatusUnauthorized)
+	}
+
+	resp = postJSON(t, app, "/refresh", `{"refresh_token":"bad"}`)
+	defer resp.Body.Close()
+	assertErrorCode(t, resp, fiber.StatusTooManyRequests, "too_many_requests")
+}
+
+func TestModelTableNames(t *testing.T) {
+	tests := map[string]string{
+		User{}.TableName():         "users",
+		RefreshToken{}.TableName(): "refresh_tokens",
+		LoginAttempt{}.TableName(): "login_attempts",
+		AuditLog{}.TableName():     "audit_logs",
+	}
+	for got, want := range tests {
+		if got != want {
+			t.Fatalf("TableName() = %q, want %q", got, want)
+		}
+	}
 }
 
 func TestHandler_Login_Success(t *testing.T) {
@@ -495,6 +549,11 @@ func assertLoginError(t *testing.T, err error, wantStatus int, wantCode string) 
 	resp := postLogin(t, app, `{"email":"user@example.com","password":"secret"}`)
 	defer resp.Body.Close()
 
+	assertErrorCode(t, resp, wantStatus, wantCode)
+}
+
+func assertErrorCode(t *testing.T, resp *http.Response, wantStatus int, wantCode string) {
+	t.Helper()
 	if resp.StatusCode != wantStatus {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, wantStatus)
 	}

@@ -57,9 +57,9 @@ HAS_MSG=$(jq -r 'if .message then "yes" else "no" end' /tmp/_b)
 [[ "$HAS_RID" == "yes" ]] && ok "T7c audit envelope has 'request_id'" "yes" || no "T7c audit envelope has 'request_id'" "$HAS_RID" "yes"
 [[ "$HAS_MSG" == "no" ]] && ok "T7d audit envelope no longer has 'message'" "no" || no "T7d audit no 'message'" "$HAS_MSG" "no"
 
-# T8 audit code value masih specific (invalid_kelas_id, bukan generic invalid_id)
+# T8 audit code follows project-wide invalid_id convention.
 C=$(jq -r '.code // empty' /tmp/_b)
-[[ "$C" == "invalid_kelas_id" ]] && ok "T8 audit code=invalid_kelas_id" "$C" || no "T8 audit code" "$C" "invalid_kelas_id"
+[[ "$C" == "invalid_id" ]] && ok "T8 audit code=invalid_id" "$C" || no "T8 audit code" "$C" "invalid_id"
 
 # T9 audit error value sekarang human-readable msg
 E=$(jq -r '.error // empty' /tmp/_b)

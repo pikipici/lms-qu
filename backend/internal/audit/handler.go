@@ -37,7 +37,7 @@ func (h *Handler) ListByKelas(c *fiber.Ctx) error {
 	idStr := strings.TrimSpace(c.Params("id"))
 	kelasID, err := uuid.Parse(idStr)
 	if err != nil {
-		return errResp(c, fiber.StatusBadRequest, "invalid kelas id", "invalid_kelas_id")
+		return errResp(c, fiber.StatusBadRequest, "invalid kelas id", "invalid_id")
 	}
 
 	callerID, err := middleware.UserIDFromCtx(c)

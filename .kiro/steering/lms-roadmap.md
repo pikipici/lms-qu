@@ -1019,6 +1019,11 @@ lms/
 - Frontend guru: `/guru/kelas/[id]/audit` halaman riwayat aksi di kelas (filter action, paginated)
 
 ### Fase 8 — Polish & Production-ready (3-4 hari)
+
+Progress 2026-05-23:
+- Fase 8.1 structured error response cleanup started: guru audit invalid kelas id code normalized `invalid_kelas_id` to `invalid_id` (matches project-wide UUID parse convention) and 7.F regression script updated. Local compile check `go test ./internal/audit` PASS.
+- Fase 8.2 coverage gate measured locally: `auth` 55.8% after adding handler constructor/rate-limit/table-name tests, `admin` 75.4%, `soalbab` 3.9% after adding enum/validation/setting helper tests, `ujian` 5.5% after adding enum/table/helper/start-helper tests, `nilai` 13.2% after adding pure helper tests for nilai weighted totals + CSV encoder. Target 70% still requires substantial service/handler/repo tests for `auth`, `soalbab`, `ujian`, and `nilai`.
+
 - Logging hardening, error handling, structured error response (`{ error, code, request_id }`)
 - Backup `pg_dump` cron daily ke folder lain (rotation 30 hari rolling, monthly archive 1 tahun)
 - **Backup restore drill**: dokumentasikan + test restore di staging (minimal 1x sebelum go-live)
