@@ -57,8 +57,24 @@ pre_flight() {
   set +a
   
   # 2. Check required env vars
-  if [ -z "$DATABASE_URL" ] || [ -z "$R2_BUCKET" ]; then
+  if [ -z "${DATABASE_URL:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
     echo "[deploy] ERROR: required env vars missing (DATABASE_URL, R2_BUCKET)!" >&2
+    exit 1
+  fi
+
+  # Derive Cloudflare R2/AWS CLI env from the existing app env without writing secrets.
+  if [ -z "${R2_ENDPOINT:-}" ]; then
+    if [ -z "${R2_ACCOUNT_ID:-}" ]; then
+      echo "[deploy] ERROR: R2_ENDPOINT or R2_ACCOUNT_ID required for R2 pre-flight!" >&2
+      exit 1
+    fi
+    export R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+  fi
+  export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${R2_ACCESS_KEY_ID:-}}"
+  export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-${R2_SECRET_ACCESS_KEY:-}}"
+  export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}"
+  if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "[deploy] ERROR: R2 credentials missing for AWS CLI pre-flight!" >&2
     exit 1
   fi
   
@@ -100,7 +116,7 @@ build_phase() {
   
   # 1. Frontend build
   echo "[deploy] frontend build..."
-  ( cd "$REMOTE_DIR/frontend" && npm install --silent && npm run build ) || {
+  ( cd "$REMOTE_DIR/frontend" && npm ci --silent && npm run build ) || {
     echo "[deploy] ERROR: frontend build failed!" >&2
     exit 1
   }
