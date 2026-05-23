@@ -38,6 +38,7 @@ build_and_restart() {
   ( cd backend && go build -o bin/lms-api ./cmd/server )
   ( cd backend && go build -o bin/seed-admin ./cmd/seed-admin )
   ( cd backend && go build -o bin/reset-admin ./cmd/reset-admin )
+  ( cd backend && go build -o bin/cleanup-dry-run ./cmd/cleanup-dry-run )
 
   echo "[deploy] migrate up..."
   if command -v migrate >/dev/null 2>&1; then

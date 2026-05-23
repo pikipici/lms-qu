@@ -267,7 +267,16 @@ Planned dry-run scopes:
 | `submission` attachments in archived kelas | archived + 1 year | count object keys by prefix and total bytes if available | after R2 orphan report verified |
 | R2 orphan objects | no DB reference | list candidate keys only, no delete | manual review of sample keys |
 
-Manual dry-run SQL probes:
+Preferred dry-run command:
+```bash
+ssh rdpkhorur
+cd /home/ubuntu/lms
+set -a; . ./.env; set +a
+./backend/bin/cleanup-dry-run
+./backend/bin/cleanup-dry-run --format=json > dogfood-output/fase8/cleanup-dry-run-$(date +%F).json
+```
+
+Manual SQL probes if the binary is unavailable:
 ```bash
 ssh rdpkhorur
 cd /home/ubuntu/lms
@@ -275,7 +284,7 @@ set -a; . ./.env; set +a
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 SELECT 'login_attempts_old' AS scope, COUNT(*) AS candidate_count
 FROM login_attempts
-WHERE created_at < now() - interval '30 days';
+WHERE at < now() - interval '30 days';
 
 SELECT 'refresh_tokens_expired_revoked' AS scope, COUNT(*) AS candidate_count
 FROM refresh_tokens
