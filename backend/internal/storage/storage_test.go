@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -231,6 +233,121 @@ func TestMockStorage_Concurrent(t *testing.T) {
 
 	if m.Len() != N {
 		t.Fatalf("Len = %d, want %d", m.Len(), N)
+	}
+}
+
+func TestMockStorage_KeysCopyAndDownloadURL(t *testing.T) {
+	ctx := context.Background()
+	m := NewMockStorage()
+	now := time.Date(2026, 5, 23, 10, 0, 0, 0, time.UTC)
+	m.SetNowFn(func() time.Time { return now })
+
+	if err := m.PutObject(ctx, PutObjectInput{Key: "import/source.txt", Body: strings.NewReader("payload"), ContentType: "text/plain"}); err != nil {
+		t.Fatalf("PutObject: %v", err)
+	}
+	keys := m.Keys()
+	if len(keys) != 1 || keys[0] != "import/source.txt" {
+		t.Fatalf("Keys = %v, want source key", keys)
+	}
+
+	if err := m.CopyObject(ctx, "import/source.txt", "import/copy.txt"); err != nil {
+		t.Fatalf("CopyObject: %v", err)
+	}
+	if err := m.DeleteObject(ctx, "import/source.txt"); err != nil {
+		t.Fatalf("DeleteObject source: %v", err)
+	}
+	copyObj, err := m.GetObject(ctx, "import/copy.txt")
+	if err != nil {
+		t.Fatalf("GetObject copy: %v", err)
+	}
+	defer copyObj.Body.Close()
+	read, err := io.ReadAll(copyObj.Body)
+	if err != nil {
+		t.Fatalf("ReadAll copy: %v", err)
+	}
+	if string(read) != "payload" || copyObj.ContentType != "text/plain" {
+		t.Fatalf("copy = (%q,%q), want payload/text", string(read), copyObj.ContentType)
+	}
+
+	gotURL, err := m.PresignGetDownload(ctx, "import/copy.txt", 0, "laporan final.csv")
+	if err != nil {
+		t.Fatalf("PresignGetDownload: %v", err)
+	}
+	u, err := url.Parse(gotURL)
+	if err != nil {
+		t.Fatalf("URL parse: %v", err)
+	}
+	if u.Query().Get("filename") != "laporan final.csv" {
+		t.Fatalf("filename query = %q", u.Query().Get("filename"))
+	}
+	if u.Query().Get("expires") != fmtInt(now.Add(15*time.Minute).Unix()) {
+		t.Fatalf("expires query = %q", u.Query().Get("expires"))
+	}
+}
+
+func TestMockStorage_CopyObjectErrorsAndContext(t *testing.T) {
+	m := NewMockStorage()
+	ctx := context.Background()
+	if err := m.CopyObject(ctx, "", "dst"); err == nil {
+		t.Fatal("CopyObject with empty key should error")
+	}
+	if err := m.CopyObject(ctx, "missing", "dst"); !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("CopyObject missing = %v, want ErrObjectNotFound", err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := m.CopyObject(cancelled, "src", "dst"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CopyObject canceled = %v, want context.Canceled", err)
+	}
+	if _, err := m.PresignGetDownload(cancelled, "src", time.Minute, "x.txt"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("PresignGetDownload canceled = %v, want context.Canceled", err)
+	}
+}
+
+func TestMockStorage_SetNowFnNilUsesLiveClock(t *testing.T) {
+	m := NewMockStorage()
+	m.SetNowFn(nil)
+	if err := m.PutObject(context.Background(), PutObjectInput{Key: "import/x", Body: strings.NewReader("x")}); err != nil {
+		t.Fatalf("PutObject: %v", err)
+	}
+	before := time.Now().Add(14 * time.Minute).Unix()
+	gotURL, err := m.PresignGet(context.Background(), "import/x", 15*time.Minute)
+	if err != nil {
+		t.Fatalf("PresignGet: %v", err)
+	}
+	after := time.Now().Add(16 * time.Minute).Unix()
+	u, err := url.Parse(gotURL)
+	if err != nil {
+		t.Fatalf("URL parse: %v", err)
+	}
+	expires := u.Query().Get("expires")
+	if expires < fmtInt(before) || expires > fmtInt(after) {
+		t.Fatalf("expires = %s, want between %d and %d", expires, before, after)
+	}
+}
+
+func TestLegacyInitAndPath(t *testing.T) {
+	root := t.TempDir()
+	if err := Init(""); err == nil {
+		t.Fatal("Init empty root should error")
+	}
+	if err := Init(root); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	for _, cat := range []string{CategoryTugas, CategorySoal, CategoryMateri, CategorySubmission, CategoryImport, CategoryCredentials, CategoryBankSoal} {
+		if info, err := os.Stat(root + "/" + cat); err != nil || !info.IsDir() {
+			t.Fatalf("category dir %s: info=%v err=%v", cat, info, err)
+		}
+	}
+	got, err := Path(root, CategoryTugas, "file.pdf")
+	if err != nil || got != filepath.Join(root, CategoryTugas, "file.pdf") {
+		t.Fatalf("Path = (%q,%v)", got, err)
+	}
+	if _, err := Path(root, "bad", "file.pdf"); err == nil {
+		t.Fatal("Path unknown category should error")
+	}
+	if _, err := Path(root, CategoryTugas, ""); err == nil {
+		t.Fatal("Path empty filename should error")
 	}
 }
 

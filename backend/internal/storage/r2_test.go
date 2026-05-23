@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aws/smithy-go"
 	"time"
 )
 
@@ -24,6 +26,39 @@ func r2ConfigFromEnv(t *testing.T) (R2Config, bool) {
 		PresignTTL:      900,
 	}
 	return cfg, cfg.IsConfigured()
+}
+
+func TestR2Helpers(t *testing.T) {
+	if sanitizeASCII("") != "download" {
+		t.Fatal("empty filename should fallback to download")
+	}
+	if got := sanitizeASCII("laporan \"final\" é.pdf"); got != "laporan _final_ _.pdf" {
+		t.Fatalf("sanitizeASCII = %q", got)
+	}
+	if got := sanitizeASCII("line\nbreak\\file.txt"); got != "line_break_file.txt" {
+		t.Fatalf("sanitizeASCII controls = %q", got)
+	}
+	if got := urlPathEscape("laporan final é.csv"); got != "laporan%20final%20%C3%A9.csv" {
+		t.Fatalf("urlPathEscape = %q", got)
+	}
+}
+
+func TestIsNotFound(t *testing.T) {
+	if isNotFound(nil) {
+		t.Fatal("nil error should not be not-found")
+	}
+	if !isNotFound(&smithy.GenericAPIError{Code: "NoSuchKey", Message: "missing"}) {
+		t.Fatal("NoSuchKey should be not-found")
+	}
+	if !isNotFound(&smithy.GenericAPIError{Code: "404", Message: "missing"}) {
+		t.Fatal("404 should be not-found")
+	}
+	if isNotFound(&smithy.GenericAPIError{Code: "AccessDenied", Message: "denied"}) {
+		t.Fatal("AccessDenied should not be not-found")
+	}
+	if isNotFound(errors.New("plain error")) {
+		t.Fatal("plain error should not be not-found")
+	}
 }
 
 // TestR2Client_Integration runs a full PutObject -> ObjectExists -> GetObject
