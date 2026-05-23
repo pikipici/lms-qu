@@ -13,8 +13,16 @@ const fakeUser = {
 };
 
 test.describe('login smoke', () => {
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await page.addInitScript(() => window.localStorage.clear());
+  });
+
   test('shows validation errors before submitting', async ({ page }) => {
     await page.goto('/login');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByLabel('Email')).toBeVisible();
+    await expect(page.getByLabel('Password')).toBeVisible();
 
     await page.getByRole('button', { name: 'Masuk' }).click();
 
@@ -45,8 +53,10 @@ test.describe('login smoke', () => {
     });
 
     await page.goto('/login');
+    await page.waitForLoadState('networkidle');
     await page.getByLabel('Email').fill(fakeUser.email);
     await page.getByLabel('Password').fill('password-e2e');
+    await page.waitForTimeout(500);
     await page.getByRole('button', { name: 'Masuk' }).click();
 
     await expect(page).toHaveURL(/\/admin$/);
@@ -69,8 +79,10 @@ test.describe('login smoke', () => {
     });
 
     await page.goto('/login');
+    await page.waitForLoadState('networkidle');
     await page.getByLabel('Email').fill(fakeUser.email);
     await page.getByLabel('Password').fill('password-e2e');
+    await page.waitForTimeout(500);
     await page.getByRole('button', { name: 'Masuk' }).click();
 
     await expect(page).toHaveURL(/\/me\/security$/);
