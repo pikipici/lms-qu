@@ -49,7 +49,15 @@ Checks:
 
 ## Recommended Monitoring Next Step
 
-Add a cron/systemd timer or external uptime monitor to run the monitoring check every 1-5 minutes. Alert if either `/readyz` or systemd active check fails twice in a row.
+A reproducible user-level systemd timer installer now exists:
+
+```bash
+bash scripts/install-fase8-monitoring-user-timer.sh
+```
+
+It runs `scripts/fase8-monitoring-check.sh` every 5 minutes by default. Override with `MONITORING_INTERVAL`, `MONITORING_BOOT_DELAY`, `MONITORING_RANDOM_DELAY`, `BASE_URL`, and `SERVICE_NAME` when needed.
+
+For production alerting, prefer a system-level timer or external uptime monitor that alerts if either `/readyz` or systemd active check fails twice in a row.
 
 ## E2E Link
 
