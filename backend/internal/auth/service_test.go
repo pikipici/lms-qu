@@ -17,35 +17,35 @@ const loginTestPassword = "S3cret!Pass"
 var fixedLoginNow = time.Date(2026, 5, 19, 10, 0, 0, 0, time.UTC)
 
 type mockRepo struct {
-	userByEmail        map[string]*User
-	userByID           map[uuid.UUID]*User
-	failedCount        int64
-	findByEmailCalls   int
-	findByIDCalls      int
-	lastFindEmail      string
-	countCalls         int
-	countEmail         string
-	countIP            *string
-	countSince         time.Time
-	incCalls           int
-	resetCalls         int
-	lockCalls          int
-	lockReasons        []string
-	issueRefreshCalls  int
-	issuedRefreshes    []*RefreshToken
-	refreshByJTI       map[uuid.UUID]*RefreshToken
-	rotateCalls        int
-	revokeCalls        int
-	revokeAllUserCalls int
-	revokeAllReasons   []RevokedReason
-	chainRevokeCalls   int
-	chainRevokedJTIs   []uuid.UUID
+	userByEmail         map[string]*User
+	userByID            map[uuid.UUID]*User
+	failedCount         int64
+	findByEmailCalls    int
+	findByIDCalls       int
+	lastFindEmail       string
+	countCalls          int
+	countEmail          string
+	countIP             *string
+	countSince          time.Time
+	incCalls            int
+	resetCalls          int
+	lockCalls           int
+	lockReasons         []string
+	issueRefreshCalls   int
+	issuedRefreshes     []*RefreshToken
+	refreshByJTI        map[uuid.UUID]*RefreshToken
+	rotateCalls         int
+	revokeCalls         int
+	revokeAllUserCalls  int
+	revokeAllReasons    []RevokedReason
+	chainRevokeCalls    int
+	chainRevokedJTIs    []uuid.UUID
 	updatePasswordCalls int
 	lastPasswordHash    string
-	listSessionsResult []RefreshToken
-	loginAttempts      []*LoginAttempt
-	audits             []*AuditLog
-	errFindByEmail     error
+	listSessionsResult  []RefreshToken
+	loginAttempts       []*LoginAttempt
+	audits              []*AuditLog
+	errFindByEmail      error
 }
 
 func newTestService(t *testing.T) (*Service, *mockRepo, func()) {
@@ -975,6 +975,86 @@ func (m *mockRepo) ClearRecentFailedAttempts(ctx context.Context, email string, 
 func (m *mockRepo) LogAudit(ctx context.Context, entry *AuditLog) error {
 	m.audits = append(m.audits, entry)
 	return nil
+}
+
+func TestNewService_WiresRepoAndConfig(t *testing.T) {
+	repo := &Repo{}
+	cfg := testServiceConfig()
+
+	svc := NewService(repo, cfg)
+	if svc == nil {
+		t.Fatal("NewService() returned nil")
+	}
+	if svc.repo != repo {
+		t.Fatal("NewService() did not wire repo")
+	}
+	if svc.cfg != cfg {
+		t.Fatal("NewService() did not wire config")
+	}
+	if svc.now == nil {
+		t.Fatal("NewService() now is nil")
+	}
+}
+
+func TestVerifyAccessToken_Success(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	user.MustChangePassword = true
+	repo.addUser(user)
+	raw, _, err := IssueAccess(svc.cfg.JWT, user.ID, user.Role)
+	if err != nil {
+		t.Fatalf("IssueAccess() error = %v", err)
+	}
+
+	gotID, gotRole, gotEmail, gotMustChange, err := svc.VerifyAccessToken(raw)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken() error = %v", err)
+	}
+	if gotID != user.ID || gotRole != string(user.Role) || gotEmail != user.Email || !gotMustChange {
+		t.Fatalf("VerifyAccessToken() = (%s,%q,%q,%v), want (%s,%q,%q,true)", gotID, gotRole, gotEmail, gotMustChange, user.ID, user.Role, user.Email)
+	}
+}
+
+func TestVerifyAccessToken_InvalidToken(t *testing.T) {
+	svc, _, cleanup := newTestService(t)
+	defer cleanup()
+
+	_, _, _, _, err := svc.VerifyAccessToken("not-a-token")
+	if err == nil {
+		t.Fatal("VerifyAccessToken() error = nil, want error")
+	}
+}
+
+func TestVerifyAccessToken_InactiveUser(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Suspended, 0)
+	repo.addUser(user)
+	raw, _, err := IssueAccess(svc.cfg.JWT, user.ID, user.Role)
+	if err != nil {
+		t.Fatalf("IssueAccess() error = %v", err)
+	}
+
+	_, _, _, _, err = svc.VerifyAccessToken(raw)
+	if err == nil {
+		t.Fatal("VerifyAccessToken() error = nil, want inactive user error")
+	}
+}
+
+func TestAuditAndPointerHelpers_EmptyValues(t *testing.T) {
+	if got := auditMeta(nil); got != nil {
+		t.Fatalf("auditMeta(nil) = %s, want nil", string(got))
+	}
+	if got := auditMeta(map[string]string{}); got != nil {
+		t.Fatalf("auditMeta(empty) = %s, want nil", string(got))
+	}
+	if got := ipPtr(""); got != nil {
+		t.Fatalf("ipPtr(empty) = %v, want nil", got)
+	}
+	if got := uaPtr(""); got != nil {
+		t.Fatalf("uaPtr(empty) = %v, want nil", got)
+	}
 }
 
 func newLoginTestUser(t *testing.T, status UserStatus, failedLoginCount int) *User {

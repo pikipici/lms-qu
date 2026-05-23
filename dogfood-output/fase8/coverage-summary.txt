@@ -112,10 +112,10 @@ github.com/pikip/lms/backend/internal/auth/repo.go:413:				LogAudit			0.0%
 github.com/pikip/lms/backend/internal/auth/repo.go:420:				BulkUserNames			0.0%
 github.com/pikip/lms/backend/internal/auth/repo.go:445:				ListAuditLogs			0.0%
 github.com/pikip/lms/backend/internal/auth/repo.go:485:				CountAdmins			0.0%
-github.com/pikip/lms/backend/internal/auth/service.go:71:			NewService			0.0%
+github.com/pikip/lms/backend/internal/auth/service.go:71:			NewService			100.0%
 github.com/pikip/lms/backend/internal/auth/service.go:83:			Login				89.5%
 github.com/pikip/lms/backend/internal/auth/service.go:210:			Refresh				83.7%
-github.com/pikip/lms/backend/internal/auth/service.go:322:			VerifyAccessToken		0.0%
+github.com/pikip/lms/backend/internal/auth/service.go:322:			VerifyAccessToken		88.9%
 github.com/pikip/lms/backend/internal/auth/service.go:344:			Logout				88.9%
 github.com/pikip/lms/backend/internal/auth/service.go:361:			LogoutAll			75.0%
 github.com/pikip/lms/backend/internal/auth/service.go:371:			Me				100.0%
@@ -124,9 +124,9 @@ github.com/pikip/lms/backend/internal/auth/service.go:425:			ListSessions			75.0
 github.com/pikip/lms/backend/internal/auth/service.go:433:			logLoginAttempt			100.0%
 github.com/pikip/lms/backend/internal/auth/service.go:444:			logAudit			100.0%
 github.com/pikip/lms/backend/internal/auth/service.go:456:			logAuditTarget			100.0%
-github.com/pikip/lms/backend/internal/auth/service.go:469:			auditMeta			66.7%
-github.com/pikip/lms/backend/internal/auth/service.go:480:			ipPtr				75.0%
-github.com/pikip/lms/backend/internal/auth/service.go:488:			uaPtr				75.0%
+github.com/pikip/lms/backend/internal/auth/service.go:469:			auditMeta			83.3%
+github.com/pikip/lms/backend/internal/auth/service.go:480:			ipPtr				100.0%
+github.com/pikip/lms/backend/internal/auth/service.go:488:			uaPtr				100.0%
 github.com/pikip/lms/backend/internal/auth/service.go:496:			roleStrPtr			100.0%
 github.com/pikip/lms/backend/internal/auth/service.go:501:			strPtr				100.0%
 github.com/pikip/lms/backend/internal/bab/duplicate.go:61:			Duplicate			0.0%
@@ -903,4 +903,4 @@ github.com/pikip/lms/backend/internal/ujian/timer_cron.go:95:			RunOnce				0.0%
 github.com/pikip/lms/backend/internal/ujian/timer_cron.go:138:			gradeOne			0.0%
 github.com/pikip/lms/backend/internal/ujian/timer_cron.go:255:			Run				0.0%
 github.com/pikip/lms/backend/internal/ujian/timer_cron.go:311:			gradeAttemptInTx		0.0%
-total:										(statements)			26.3%
+total:										(statements)			26.4%
