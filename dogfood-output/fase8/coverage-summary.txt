@@ -62,11 +62,11 @@ github.com/pikip/lms/backend/internal/audit/service.go:119:			NewService			0.0%
 github.com/pikip/lms/backend/internal/audit/service.go:129:			ListByKelas			0.0%
 github.com/pikip/lms/backend/internal/auth/handler.go:42:			NewHandler			100.0%
 github.com/pikip/lms/backend/internal/auth/handler.go:66:			Login				93.8%
-github.com/pikip/lms/backend/internal/auth/handler.go:105:			Refresh				73.3%
+github.com/pikip/lms/backend/internal/auth/handler.go:105:			Refresh				93.3%
 github.com/pikip/lms/backend/internal/auth/handler.go:143:			Logout				88.9%
-github.com/pikip/lms/backend/internal/auth/handler.go:159:			LogoutAll			87.5%
-github.com/pikip/lms/backend/internal/auth/handler.go:178:			Sessions			71.4%
-github.com/pikip/lms/backend/internal/auth/handler.go:192:			Me				85.7%
+github.com/pikip/lms/backend/internal/auth/handler.go:159:			LogoutAll			100.0%
+github.com/pikip/lms/backend/internal/auth/handler.go:178:			Sessions			100.0%
+github.com/pikip/lms/backend/internal/auth/handler.go:192:			Me				100.0%
 github.com/pikip/lms/backend/internal/auth/handler.go:211:			ChangePassword			94.4%
 github.com/pikip/lms/backend/internal/auth/handler.go:244:			LoginRateLimit			80.0%
 github.com/pikip/lms/backend/internal/auth/handler.go:281:			RefreshRateLimit		66.7%

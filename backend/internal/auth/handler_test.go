@@ -283,6 +283,25 @@ func TestHandler_Refresh_ReuseDetected(t *testing.T) {
 	assertRefreshError(t, ErrRefreshReuse, fiber.StatusUnauthorized, "invalid_credentials")
 }
 
+func TestHandler_Refresh_Suspended(t *testing.T) {
+	assertRefreshError(t, ErrUserSuspended, fiber.StatusForbidden, "user_suspended")
+}
+
+func TestHandler_Refresh_Locked(t *testing.T) {
+	assertRefreshError(t, ErrUserLocked, fiber.StatusForbidden, "user_locked")
+}
+
+func TestHandler_Refresh_InvalidJSON(t *testing.T) {
+	app := testAuthApp(&stubSvc{result: testLoginResult()})
+
+	resp := postJSON(t, app, "/refresh", `{not json`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusBadRequest)
+	}
+}
+
 func TestHandler_Refresh_BadBody(t *testing.T) {
 	app := testAuthApp(&stubSvc{result: testLoginResult()})
 
@@ -366,6 +385,53 @@ func TestHandler_LogoutAll_Success(t *testing.T) {
 	}
 }
 
+func TestHandler_LogoutAll_ServiceError(t *testing.T) {
+	app := testAuthContextApp(&stubSvc{logoutAllErr: io.ErrUnexpectedEOF}, uuid.New())
+	app.Post("/logout-all", (&Handler{svc: &stubSvc{logoutAllErr: io.ErrUnexpectedEOF}}).LogoutAll)
+
+	resp := postJSON(t, app, "/logout-all", `{}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusInternalServerError)
+	}
+}
+
+func TestHandler_Sessions_NoContext(t *testing.T) {
+	app := testAuthApp(&stubSvc{})
+
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusUnauthorized)
+	}
+}
+
+func TestHandler_Sessions_ServiceError(t *testing.T) {
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals(middleware.LocalsUserID, uuid.New())
+		return c.Next()
+	})
+	app.Get("/sessions", (&Handler{svc: &stubSvc{sessionsErr: io.ErrUnexpectedEOF}}).Sessions)
+
+	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusInternalServerError)
+	}
+}
+
 func TestHandler_Sessions_Success(t *testing.T) {
 	userID := uuid.New()
 	svc := &stubSvc{
@@ -421,6 +487,21 @@ func TestHandler_Me_NoContext_401(t *testing.T) {
 
 	if resp.StatusCode != fiber.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusUnauthorized)
+	}
+}
+
+func TestHandler_Me_ServiceError(t *testing.T) {
+	app := testAuthContextApp(&stubSvc{meErr: io.ErrUnexpectedEOF}, uuid.New())
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != fiber.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusInternalServerError)
 	}
 }
 
