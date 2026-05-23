@@ -130,15 +130,14 @@ build_phase() {
   tmp_backend="/tmp/lms-api-build-$$"
   mkdir -p "$tmp_backend"
   
-  ( cd "$REMOTE_DIR/backend" ) || exit 1
-  go build -o "$tmp_backend/lms-api" ./cmd/server || {
+  ( cd "$REMOTE_DIR/backend" && go build -o "$tmp_backend/lms-api" ./cmd/server ) || {
     echo "[deploy] ERROR: lms-api build failed!" >&2
     rm -rf "$tmp_backend"
     exit 1
   }
-  go build -o "$tmp_backend/seed-admin" ./cmd/seed-admin || true
-  go build -o "$tmp_backend/reset-admin" ./cmd/reset-admin || true
-  go build -o "$tmp_backend/cleanup-dry-run" ./cmd/cleanup-dry-run || true
+  ( cd "$REMOTE_DIR/backend" && go build -o "$tmp_backend/seed-admin" ./cmd/seed-admin ) || true
+  ( cd "$REMOTE_DIR/backend" && go build -o "$tmp_backend/reset-admin" ./cmd/reset-admin ) || true
+  ( cd "$REMOTE_DIR/backend" && go build -o "$tmp_backend/cleanup-dry-run" ./cmd/cleanup-dry-run ) || true
   
   # 3. Verify binary executable
   if ! test -x "$tmp_backend/lms-api"; then
