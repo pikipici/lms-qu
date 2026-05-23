@@ -14,8 +14,7 @@ const guruUser = {
 
 test.describe('E2E Flow #1: Guru Login → Dashboard', () => {
   test('validates form before login', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
 
     await page.getByRole('button', { name: 'Masuk' }).click();
 
@@ -45,8 +44,7 @@ test.describe('E2E Flow #1: Guru Login → Dashboard', () => {
       });
     });
 
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(guruUser.email);
     await page.getByLabel('Password').fill('password-guru-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
@@ -83,8 +81,7 @@ test.describe('E2E Flow #1: Guru Login → Dashboard', () => {
       });
     });
 
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(guruUser.email);
     await page.getByLabel('Password').fill('password-guru-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();

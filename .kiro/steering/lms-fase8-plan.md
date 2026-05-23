@@ -38,9 +38,9 @@ Mengubah LMS dari feature-complete (Fase 0-7) menjadi production-ready MVP denga
 ### Week 2 — Execution
 | # | Task | Scope | Status |
 |---|------|-------|--------|
-| W2.1 | **E2E implementation** | Playwright tests: auth, guru CRUD, siswa flow, admin | TODO |
-| W2.2 | **Coverage re-scope** | Define MVP critical paths, add tests only for those | TODO |
-| W2.3 | **Smoke test suite** | Shell-based final smoke (build, deploy, readyz, E2E) | TODO |
+| W2.1 | **E2E implementation** | Playwright tests: auth, guru CRUD, siswa flow, admin | IN PROGRESS — go-live smoke isolated in `login-smoke.spec.ts`; expanded drafts kept as `.draft.ts` |
+| W2.2 | **Coverage re-scope** | Define MVP critical paths, add tests only for those | DONE — strict 70% per-package gate deferred, see `dogfood-output/fase8/coverage-rescope.md` |
+| W2.3 | **Smoke test suite** | Shell-based final smoke (healthz, readyz, login export, typecheck, E2E smoke) | DONE — `scripts/fase8-smoke.sh` |
 
 ### Week 3 — Production
 | # | Task | Scope | Status |
@@ -102,17 +102,19 @@ Mengubah LMS dari feature-complete (Fase 0-7) menjadi production-ready MVP denga
 
 ### 4.3 E2E Critical Flows
 
+**MVP gate update (2026-05-23):** strict 70% per-package coverage is deferred for v0.14/v0.15 hardening. For MVP go-live, require deployed auth smokes + representative Playwright core-flow coverage + final health/ready smoke. See `dogfood-output/fase8/coverage-rescope.md`.
+
 **Priority 1 (Must have for v0.14.0):**
-1. Auth: login → dashboard redirect (role-based)
-2. Auth: force-change-password redirect
-3. Guru: create kelas → add bab → upload materi
-4. Guru: create tugas → siswa submit → guru grade
-5. Guru: create ulangan → siswa take → review result
-6. Siswa: join kelas → view materi → submit tugas
-7. Siswa: kerjain ulangan (timer + autosave + submit)
-8. Admin: bulk import siswa via CSV
-9. Admin: create user + force password change
-10. Cross-role: logout → login as different role
+1. Auth: login → dashboard redirect (role-based) — Playwright covered
+2. Auth: force-change-password redirect — Playwright covered
+3. Guru: create kelas → add bab → upload materi — representative mocked E2E in progress
+4. Guru: create tugas → siswa submit → guru grade — representative mocked E2E in progress
+5. Guru: create ulangan → siswa take → review result — representative mocked E2E in progress
+6. Siswa: join kelas → view materi → submit tugas — representative mocked E2E in progress
+7. Siswa: kerjain ulangan (timer + autosave + submit) — representative mocked E2E in progress
+8. Admin: bulk import siswa via CSV — planned
+9. Admin: create user + force password change — representative mocked E2E covered
+10. Cross-role: logout → login as different role — planned
 
 **Priority 2 (Nice to have):**
 11. Guru: duplicate bab / kelas

@@ -28,8 +28,7 @@ test.describe('E2E Flow #2: Force-Change-Password', () => {
       });
     });
 
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(siswaUser.email);
     await page.getByLabel('Password').fill('password-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
@@ -58,7 +57,7 @@ test.describe('E2E Flow #2: Force-Change-Password', () => {
     await page.route('**/api/v1/auth/change-password', async (route) => {
       const request = route.request();
       expect(request.method()).toBe('POST');
-      const body = JSON.parse(await request.postText());
+      const body = await request.postDataJSON();
       expect(body.email).toBe(siswaUser.email);
       expect(body.current_password).toBe('password-e2e');
       expect(body.new_password).toBe('NewPassword123!');
@@ -76,8 +75,7 @@ test.describe('E2E Flow #2: Force-Change-Password', () => {
       });
     });
 
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(siswaUser.email);
     await page.getByLabel('Password').fill('password-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
@@ -114,8 +112,7 @@ test.describe('E2E Flow #2: Force-Change-Password', () => {
       });
     });
 
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(siswaUser.email);
     await page.getByLabel('Password').fill('NewPassword123!');
     await page.getByRole('button', { name: 'Masuk' }).click();

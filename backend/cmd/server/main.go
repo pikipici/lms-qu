@@ -768,12 +768,26 @@ func mountStatic(app *fiber.App, cfg *config.Config, log *slog.Logger) {
 		)
 		return
 	}
+	// Next static export writes route files as /route.html. Fiber static can
+	// fall through to index.html for extensionless routes, so resolve exported
+	// route files before mounting the static handler.
+	app.Use(func(c *fiber.Ctx) error {
+		path := c.Path()
+		if strings.HasPrefix(path, "/api/") || strings.Contains(filepath.Base(path), ".") {
+			return c.Next()
+		}
+		candidate := filepath.Join(cfg.FrontendDir, strings.TrimPrefix(path, "/")+".html")
+		if _, err := os.Stat(candidate); err == nil {
+			return c.SendFile(candidate)
+		}
+		return c.Next()
+	})
 	app.Static("/", cfg.FrontendDir, fiber.Static{
 		Compress:      true,
 		CacheDuration: 60 * time.Second,
 	})
-	// SPA fallback for client-side routes (login, dashboard, etc.). API routes
-	// are matched first because they're registered before this Use().
+	// SPA fallback for client-side routes. API routes are matched first because
+	// they're registered before this Use().
 	app.Use(func(c *fiber.Ctx) error {
 		if strings.HasPrefix(c.Path(), "/api/") {
 			return fiber.ErrNotFound

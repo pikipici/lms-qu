@@ -59,8 +59,7 @@ test.describe('Admin create user', () => {
     });
 
     // Login
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(fakeAdminUser.email);
     await page.getByLabel('Password').fill('password-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
@@ -89,7 +88,7 @@ test.describe('Admin create user', () => {
     await page.route('**/api/v1/admin/pengguna', async (route) => {
       const request = route.request();
       expect(request.method()).toBe('POST');
-      const body = JSON.parse(await request.postText());
+      const body = await request.postDataJSON();
       expect(body.email).toBe(newUserEmail);
       expect(body.status).toBe('active');
       expect(body.must_change_password).toBe(true);
@@ -141,8 +140,7 @@ test.describe('Guru login and access kelas page', () => {
     });
 
     // Login
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(fakeGuruUser.email);
     await page.getByLabel('Password').fill('password-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
@@ -190,8 +188,7 @@ test.describe('Guru access task and exam pages', () => {
     });
 
     // Login
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Masuk' }).click();
+    await page.goto('/login');
     await page.getByLabel('Email').fill(fakeGuruUser.email);
     await page.getByLabel('Password').fill('password-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
