@@ -13,6 +13,18 @@ Use this log for every backup restore drill. Do not paste credentials or full `D
 
 ## Entries
 
+### 2026-05-23 10:38 WIB
+
+- Backup file: `lms_manual_2026-05-23_033715.sql.gz`
+- Backup size: `180K`
+- Restore DB: `lms_restore_drill_20260523033818`
+- `gunzip -t`: `PASS`
+- Restore: `PASS`
+- `users_count`: `7`
+- `kelas_count`: `28`
+- Cleanup/drop DB: `PASS`
+- Notes: First drill attempt created the manual backup successfully but `lms` DB role could not create databases; restore drill rerun with `sudo -u postgres createdb/dropdb -p 5435 -O lms` against disposable DB only. `sudo -u postgres` printed harmless cwd permission warnings because postgres cannot read `/home/ubuntu/lms`.
+
 ### YYYY-MM-DD HH:MM WIB
 
 - Backup file: `<filename>.sql.gz`

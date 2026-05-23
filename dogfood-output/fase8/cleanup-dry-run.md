@@ -26,6 +26,20 @@ Use this before enabling any destructive cleanup. Do not paste credentials or fu
 - Decision: `keep dry-run`
 - Notes: `cleanup-dry-run --format=json` executed on rdpkhorur. No destructive cleanup enabled. Binary was built manually after deploy because first run could not find backend/bin/cleanup-dry-run; deploy script already includes the build step and should be rechecked on next deploy.
 
+### 2026-05-23 10:38 WIB
+
+- Commit SHA: `77d2914`
+- Backup file checked: `lms_manual_2026-05-23_033715.sql.gz`
+- Restore drill status: `PASS`
+- `login_attempts_old`: `0`
+- `refresh_tokens_expired_revoked`: `0`
+- `hasil_soal_bab_deleted_old`: `unavailable: required column missing: deleted_at`
+- `hasil_ujian_deleted_old`: `0`
+- R2 orphan candidate sample reviewed: `N/A`
+- Smoke after dry-run: `PASS` (`/api/v1/readyz`)
+- Decision: `keep dry-run`
+- Notes: `cleanup-dry-run --format=json` executed after successful disposable DB restore drill. No destructive cleanup enabled.
+
 ### YYYY-MM-DD HH:MM WIB
 
 - Commit SHA: `<sha>`
