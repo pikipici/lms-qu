@@ -85,11 +85,15 @@ pre_flight() {
     exit 1
   fi
   
-  # 4. R2 reachable
+  # 4. R2 reachable. Some S3-compatible providers reject head-bucket even
+  # when runtime object operations work, so keep this non-blocking by default.
   echo "[deploy] checking R2 connectivity..."
   if ! aws --endpoint-url="$R2_ENDPOINT" s3api head-bucket --bucket "$R2_BUCKET" 2>/dev/null; then
-    echo "[deploy] ERROR: R2 unreachable! Check R2 credentials and endpoint." >&2
-    exit 1
+    if [ "${R2_PREFLIGHT_REQUIRED:-false}" = "true" ]; then
+      echo "[deploy] ERROR: R2 unreachable! Check R2 credentials and endpoint." >&2
+      exit 1
+    fi
+    echo "[deploy] WARNING: R2 head-bucket failed; continuing because R2_PREFLIGHT_REQUIRED is not true." >&2
   fi
   
   # 5. Port 8200 check
@@ -123,7 +127,7 @@ build_phase() {
   
   # 2. Backend build (to /tmp first for verification)
   echo "[deploy] backend build..."
-  local tmp_backend="/tmp/lms-api-build-$$"
+  tmp_backend="/tmp/lms-api-build-$$"
   mkdir -p "$tmp_backend"
   
   ( cd "$REMOTE_DIR/backend" ) || exit 1
@@ -170,7 +174,7 @@ deploy_phase() {
   # 3. Copy frontend static
   echo "[deploy] copying frontend static..."
   mkdir -p "$REMOTE_DIR/public"
-  cp -r "$REMOTE_DIR/frontend/out/*" "$REMOTE_DIR/public/" || true
+  cp -r "$REMOTE_DIR"/frontend/out/. "$REMOTE_DIR/public/"
   
   # 4. Migrate up (idempotent)
   echo "[deploy] migrate up..."
