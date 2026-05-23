@@ -248,14 +248,60 @@ Trust boundary: SSH access ke server. Tidak ada self-service recovery.
 
 ---
 
-## Cleanup tasks (Fase 8)
+## Cleanup Tasks (Fase 8)
 
-Daily cron yang akan ditambah saat Fase 8 launch:
-- Orphan files `storage/uploads/*`
-- ImportJob status=preview & ExpiresAt<now (cleanup hourly, bukan daily)
-- LoginAttempt >30 hari
-- RefreshToken expired & revoked >7 hari
-- HasilSoalBab/HasilUjian deleted_at >1 tahun
-- Submission file kelas archived + 1 tahun
+Conservative rollout rule: cleanup starts as **dry-run only**. Do not hard-delete DB rows or R2 objects until dry-run counts look sane for several days and a fresh backup restore drill has passed.
 
-Belum aktif sampai Fase 8.
+Already active in app process:
+- ImportJob preview expiry hourly: `status=preview AND expires_at < now()` becomes `expired`; raw CSV R2 object is best-effort deleted.
+- ImportJob credentials eviction hourly: `status=completed AND completed_at + 1h < now()` nulls credentials CSV handle; R2 credentials file is best-effort deleted.
+
+Planned dry-run scopes:
+
+| Scope | Retention | Dry-run output | Hard-delete gate |
+|---|---:|---|---|
+| `login_attempts` | 30 days | count rows older than cutoff grouped by day/status | after 3 clean dry-runs |
+| `refresh_tokens` | expired/revoked + 7 days | count expired/revoked rows and oldest `expires_at` | after auth smoke still passes |
+| `hasil_soal_bab` soft-deleted rows | 1 year | count rows + linked jawaban/assignment counts | after nilai/rekap smoke still passes |
+| `hasil_ujian` soft-deleted rows | 1 year | count rows + linked jawaban/assignment counts | after nilai/rekap smoke still passes |
+| `submission` attachments in archived kelas | archived + 1 year | count object keys by prefix and total bytes if available | after R2 orphan report verified |
+| R2 orphan objects | no DB reference | list candidate keys only, no delete | manual review of sample keys |
+
+Manual dry-run SQL probes:
+```bash
+ssh rdpkhorur
+cd /home/ubuntu/lms
+set -a; . ./.env; set +a
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+SELECT 'login_attempts_old' AS scope, COUNT(*) AS candidate_count
+FROM login_attempts
+WHERE created_at < now() - interval '30 days';
+
+SELECT 'refresh_tokens_expired_revoked' AS scope, COUNT(*) AS candidate_count
+FROM refresh_tokens
+WHERE (expires_at < now() OR revoked_at IS NOT NULL)
+  AND COALESCE(revoked_at, expires_at) < now() - interval '7 days';
+
+SELECT 'hasil_soal_bab_deleted_old' AS scope, COUNT(*) AS candidate_count
+FROM hasil_soal_bab
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < now() - interval '1 year';
+
+SELECT 'hasil_ujian_deleted_old' AS scope, COUNT(*) AS candidate_count
+FROM hasil_ujian
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < now() - interval '1 year';
+SQL
+```
+
+Dry-run pass criteria:
+- Counts are logged to `dogfood-output/fase8/cleanup-dry-run.md` with timestamp and commit SHA.
+- Candidate counts are explainable by retention policy; unexpected spikes block hard-delete.
+- A backup exists from the same day and disposable restore drill has passed.
+- App smoke after dry-run is still green.
+
+Implementation recommendation:
+- Add a separate `internal/cleanup` package with `RunOnce(ctx, opts)` returning structured counts.
+- Start with CLI/admin-trigger dry-run (`--dry-run=true`) before background goroutine.
+- Require explicit env flag for destructive mode, e.g. `CLEANUP_DESTRUCTIVE=true`; default false in production.
+- For R2 cleanup, list candidates and sample first; delete only keys with exact DB negative lookup and category prefix allowlist (`tugas/`, `soalbab/`, `soal-bank/`, `materi/`, `submission/`, `import/`).
