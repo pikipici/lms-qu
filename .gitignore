@@ -21,6 +21,7 @@ frontend/dist/
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/
+frontend/tsconfig.tsbuildinfo
 
 # --- runtime / storage ---
 storage/uploads/
