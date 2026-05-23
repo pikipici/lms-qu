@@ -41,7 +41,7 @@
 - Roadmap & locked decisions: `.kiro/steering/lms-roadmap.md` (v0.13.0 — **Fase 7 CLOSED 12/12**, head `7abb804`).
   - Fase 4 14/14, Fase 5 15/15 + UX/QA pass `22d2095`, Fase 6 15/15 + UX/QA pass `6e10888`, **Fase 7 ✅ CLOSED 12/12** v0.13.0 release `7abb804` (7.A.1+7.A.2+7.B+7.C+7.D+7.E+7.F all green, smoke 96/96 hijau).
 - 94 locked decisions (v0.10.0 add #76-#82 Fase 5; v0.11.0 add #83-#88 Fase 6; v0.12.0 add #89-#94 Fase 7). 10 open decisions.
-- Active focus: **Fase 8 — Polish + E2E** (production hardening, backup/restore drill, cleanup cron, coverage gate, Playwright E2E core flows). Started with error key naming cleanup deferred from 7.F: guru audit invalid kelas id now returns generic `invalid_id`; coverage baseline measured (`auth` 55.8% after constructor/rate-limit/table-name tests, `admin` 75.4%, `soalbab` 3.9% after enum/validation/setting helper tests, `ujian` 5.5% after enum/table/helper/start-helper tests, `nilai` 13.2% after helper tests).
+- Active focus: **Fase 8 — Polish + E2E** (production hardening, backup/restore drill, cleanup cron, coverage gate, Playwright E2E core flows). Started with error key naming cleanup deferred from 7.F: guru audit invalid kelas id now returns generic `invalid_id`; coverage baseline measured (`auth` 55.8% after constructor/rate-limit/table-name tests, `admin` 75.4%, `soalbab` 3.9% after enum/validation/setting helper tests, `ujian` 5.5% after enum/table/helper/start-helper tests, `nilai` 13.2% after helper tests). Backup/restore runbook now documented in `docs/DEPLOY.md`, with drill log template at `dogfood-output/fase8/backup-restore-drill.md`.
 
 ## Phase tracker
 - [x] Fase 0 — Setup (DONE, smoke test passed, migrate 000001_init applied)

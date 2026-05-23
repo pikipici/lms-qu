@@ -159,15 +159,64 @@ migrate -path backend/migrations -database "$DATABASE_URL" down 1
 
 ---
 
-## Backup (#51)
+## Backup & Restore Drill (#51)
 
-```cron
-# /etc/cron.d/lms-backup
-0 2 * * * ubuntu pg_dump -U lms lms | gzip > /home/ubuntu/backups/lms_$(date +\%F).sql.gz
-0 3 * * 0 ubuntu find /home/ubuntu/backups -name 'lms_*.sql.gz' -mtime +30 -delete
+Runtime facts:
+- PostgreSQL listens on port `5435`, DB `lms`, user `lms`.
+- Source `.env` before running commands so `DATABASE_URL` includes the password and `sslmode=disable`.
+- Backups are written outside the repo to `/home/ubuntu/lms-backups`.
+
+Install cron:
+```bash
+ssh rdpkhorur
+sudo install -d -o ubuntu -g ubuntu -m 750 /home/ubuntu/lms-backups/daily /home/ubuntu/lms-backups/monthly
+sudo tee /etc/cron.d/lms-backup >/dev/null <<'CRON'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Daily rolling backups, retain 30 days.
+0 2 * * * ubuntu cd /home/ubuntu/lms && set -a; . ./.env; set +a; pg_dump "$DATABASE_URL" | gzip -9 > /home/ubuntu/lms-backups/daily/lms_$(date +\%F).sql.gz
+30 2 * * * ubuntu find /home/ubuntu/lms-backups/daily -type f -name 'lms_*.sql.gz' -mtime +30 -delete
+
+# Monthly archive, retain 1 year.
+0 3 1 * * ubuntu cd /home/ubuntu/lms && set -a; . ./.env; set +a; pg_dump "$DATABASE_URL" | gzip -9 > /home/ubuntu/lms-backups/monthly/lms_$(date +\%Y-\%m).sql.gz
+30 3 1 * * ubuntu find /home/ubuntu/lms-backups/monthly -type f -name 'lms_*.sql.gz' -mtime +366 -delete
+CRON
+sudo chmod 644 /etc/cron.d/lms-backup
 ```
 
-Test restore di staging minimal 1× sebelum go-live (#51 + #11 risk).
+Manual backup smoke:
+```bash
+ssh rdpkhorur
+cd /home/ubuntu/lms
+set -a; . ./.env; set +a
+mkdir -p /home/ubuntu/lms-backups/daily
+pg_dump "$DATABASE_URL" | gzip -9 > /home/ubuntu/lms-backups/daily/lms_manual_$(date +%F_%H%M%S).sql.gz
+ls -lh /home/ubuntu/lms-backups/daily/lms_manual_*.sql.gz | tail -1
+```
+
+Restore drill to disposable DB only — never restore into live `lms`:
+```bash
+ssh rdpkhorur
+cd /home/ubuntu/lms
+set -a; . ./.env; set +a
+BACKUP=/home/ubuntu/lms-backups/daily/<backup-file>.sql.gz
+DRILL_DB=lms_restore_drill_$(date +%Y%m%d_%H%M%S)
+
+createdb -h localhost -p 5435 -U lms "$DRILL_DB"
+gunzip -c "$BACKUP" | psql -h localhost -p 5435 -U lms -d "$DRILL_DB" -v ON_ERROR_STOP=1
+psql -h localhost -p 5435 -U lms -d "$DRILL_DB" -c "SELECT COUNT(*) AS users_count FROM users;"
+psql -h localhost -p 5435 -U lms -d "$DRILL_DB" -c "SELECT COUNT(*) AS kelas_count FROM kelas;"
+dropdb -h localhost -p 5435 -U lms "$DRILL_DB"
+```
+
+Restore drill pass criteria:
+- `gunzip -t <backup>` exits 0.
+- `psql -v ON_ERROR_STOP=1` restore exits 0.
+- Sanity queries for critical tables (`users`, `kelas`) return counts without errors.
+- Disposable DB is dropped after verification.
+
+Log each drill in `dogfood-output/fase8/backup-restore-drill.md` with backup filename, restore DB name, query counts, and cleanup result. Test restore in staging/disposable DB minimal 1x before go-live (#51 + #11 risk).
 
 ---
 
