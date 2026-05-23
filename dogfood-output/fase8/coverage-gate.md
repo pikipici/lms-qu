@@ -39,3 +39,18 @@ Locked decision #50 sets backend package coverage target at 70% for:
   - `internal/nilai`: `23.6%` — below 70%, improved from `13.2%`
 - Added coverage: `internal/nilai` HTTP handler success/error paths for siswa kelas nilai, siswa list, guru rekap JSON/CSV, role rejection, and service error mapping.
 - Decision: coverage gate remains open; next highest-impact work is DB-backed repo/service coverage for `nilai` and flow handler/service coverage for `soalbab`/`ujian`.
+
+## 2026-05-23 11:05 WIB
+
+- Commit under test: `9937ab2` + local `soalbab/bulk_parser_test.go` + local `ujian/handler_parser_test.go`
+- Target: `rdpkhorur`
+- Command: `cd /home/ubuntu/lms/backend && go test -cover ./internal/auth ./internal/admin ./internal/soalbab ./internal/ujian ./internal/nilai`
+- Result: `PASS` for test execution, `FAIL` for coverage gate readiness.
+- Coverage:
+  - `internal/auth`: `55.8%` — below 70%
+  - `internal/admin`: `75.4%` — meets 70%
+  - `internal/soalbab`: `7.6%` — below 70%, improved from `3.9%`
+  - `internal/ujian`: `9.0%` — below 70%, improved from `5.5%`
+  - `internal/nilai`: `23.6%` — below 70%
+- Added coverage: SoalBab bulk parser line splitting, escaped pipes, valid parse, all stable line-error reasons; Ujian source parser, timestamp parser, service error mapper, friendly-message extraction.
+- Decision: coverage gate remains open; low-level helper tests are no longer enough. Next step should be handler/service tests with mocks or DB-backed repo tests to move package coverage materially.
