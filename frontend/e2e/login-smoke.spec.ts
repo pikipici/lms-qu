@@ -14,7 +14,8 @@ const fakeUser = {
 
 test.describe('login smoke', () => {
   test('shows validation errors before submitting', async ({ page }) => {
-    await page.goto('/login');
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Masuk' }).click();
 
     await page.getByRole('button', { name: 'Masuk' }).click();
 
@@ -44,7 +45,8 @@ test.describe('login smoke', () => {
       });
     });
 
-    await page.goto('/login');
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Masuk' }).click();
     await page.getByLabel('Email').fill(fakeUser.email);
     await page.getByLabel('Password').fill('password-e2e');
     await page.getByRole('button', { name: 'Masuk' }).click();
