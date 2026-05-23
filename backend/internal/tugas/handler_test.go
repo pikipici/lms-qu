@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -720,5 +721,97 @@ func TestHandler_Delete_NotFound(t *testing.T) {
 	resp, _ := doReq(t, app, "DELETE", "/tugas/"+id.String(), nil)
 	if resp.StatusCode != fiber.StatusNotFound {
 		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestStatusValid(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Status
+		want bool
+	}{
+		{name: "draft", in: StatusDraft, want: true},
+		{name: "published", in: StatusPublished, want: true},
+		{name: "archived", in: StatusArchived, want: true},
+		{name: "unknown", in: Status("deleted"), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.in.Valid(); got != tt.want {
+				t.Fatalf("Valid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTableNames(t *testing.T) {
+	if got := (Tugas{}).TableName(); got != "tugas" {
+		t.Fatalf("Tugas.TableName() = %q", got)
+	}
+	if got := (Attachment{}).TableName(); got != "tugas_attachment" {
+		t.Fatalf("Attachment.TableName() = %q", got)
+	}
+}
+
+func TestFriendlyMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		fallback string
+		want     string
+	}{
+		{name: "nil", err: nil, fallback: "fallback", want: "fallback"},
+		{name: "plain", err: errors.New("bad"), fallback: "fallback", want: "fallback"},
+		{name: "single wrap", err: errors.New("invalid input: judul wajib"), fallback: "fallback", want: "judul wajib"},
+		{name: "double wrap", err: errors.New("service: invalid input: judul wajib"), fallback: "fallback", want: "judul wajib"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := friendlyMessage(tt.err, tt.fallback); got != tt.want {
+				t.Fatalf("friendlyMessage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMapServiceErr(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "invalid", err: fmt.Errorf("wrap: %w: judul wajib", ErrInvalidInput), wantStatus: fiber.StatusBadRequest, wantCode: "invalid_body"},
+		{name: "deskripsi too long", err: ErrDeskripsiTooLong, wantStatus: fiber.StatusRequestEntityTooLarge, wantCode: "payload_too_large"},
+		{name: "bab mismatch", err: ErrBabNotInKelas, wantStatus: fiber.StatusBadRequest, wantCode: "bab_not_in_kelas"},
+		{name: "unsupported mime", err: ErrAttachmentUnsupportedMime, wantStatus: fiber.StatusUnsupportedMediaType, wantCode: "unsupported_mime"},
+		{name: "attachment too large", err: ErrAttachmentTooLarge, wantStatus: fiber.StatusRequestEntityTooLarge, wantCode: "payload_too_large"},
+		{name: "attachment limit", err: ErrAttachmentLimitReached, wantStatus: fiber.StatusBadRequest, wantCode: "attachment_limit_reached"},
+		{name: "upload failed", err: ErrAttachmentUploadFailed, wantStatus: fiber.StatusInternalServerError, wantCode: "r2_put_failed"},
+		{name: "r2 required", err: ErrR2Required, wantStatus: fiber.StatusServiceUnavailable, wantCode: "r2_unavailable"},
+		{name: "not found", err: gorm.ErrRecordNotFound, wantStatus: fiber.StatusNotFound, wantCode: "not_found"},
+		{name: "forbidden", err: ErrForbidden, wantStatus: fiber.StatusForbidden, wantCode: "forbidden"},
+		{name: "archived", err: ErrKelasArchived, wantStatus: fiber.StatusConflict, wantCode: "kelas_archived"},
+		{name: "version conflict", err: ErrVersionConflict, wantStatus: fiber.StatusConflict, wantCode: "version_conflict"},
+		{name: "default", err: errors.New("boom"), wantStatus: fiber.StatusInternalServerError, wantCode: "internal"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := fiber.New()
+			app.Get("/", func(c *fiber.Ctx) error {
+				return mapServiceErr(c, tt.err)
+			})
+			resp, body := doReq(t, app, "GET", "/", nil)
+			if resp.StatusCode != tt.wantStatus {
+				t.Fatalf("status %d body %s", resp.StatusCode, body)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(body, &got); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if got["code"] != tt.wantCode {
+				t.Fatalf("code %v, want %q (body %s)", got["code"], tt.wantCode, body)
+			}
+		})
 	}
 }
