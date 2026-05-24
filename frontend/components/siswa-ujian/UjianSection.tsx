@@ -62,16 +62,18 @@ import {
 } from '@/lib/siswa-ujian-api';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { UjianPlayer } from '@/components/siswa-ujian/UjianPlayer';
 import { UjianReview } from '@/components/siswa-ujian/UjianReview';
+import {
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 type Mode =
   | { kind: 'lobby' }
@@ -158,18 +160,12 @@ export function UjianSection({ ujianID, kelasID }: UjianSectionProps) {
   if (mode.kind === 'playing') {
     return (
       <div className="space-y-3">
-        <Button
-          asChild
-          variant="ghost"
-          size="sm"
-          className="-ml-3"
-          // Disable link when sedang submit; UjianPlayer handle abort via prop.
-        >
+        <SiswaButton asChild tone="ghost" size="sm" className="-ml-2">
           <Link href="/siswa/ujian">
             <ArrowLeft className="size-4" />
             Daftar ujian
           </Link>
-        </Button>
+        </SiswaButton>
         <UjianPlayer
           hasilID={mode.hasilID}
           onDone={(summary) => {
@@ -189,15 +185,15 @@ export function UjianSection({ ujianID, kelasID }: UjianSectionProps) {
   if (mode.kind === 'review') {
     return (
       <div className="space-y-3">
-        <Button
-          variant="ghost"
+        <SiswaButton
+          tone="ghost"
           size="sm"
-          className="-ml-3"
+          className="-ml-2"
           onClick={() => setMode({ kind: 'lobby' })}
         >
           <ArrowLeft className="size-4" />
           Kembali ke lobi
-        </Button>
+        </SiswaButton>
         <UjianReview
           hasilID={mode.hasilID}
           onBack={() => setMode({ kind: 'lobby' })}
@@ -225,8 +221,8 @@ export function UjianSection({ ujianID, kelasID }: UjianSectionProps) {
   if (ujianQuery.isPending || hasilQuery.isPending) {
     return (
       <div className="space-y-3">
-        <div className="h-7 w-32 animate-pulse rounded bg-muted" />
-        <div className="h-48 animate-pulse rounded-md border bg-muted/40" />
+        <div className="h-7 w-32 animate-pulse rounded bg-siswa-text/10" />
+        <div className="h-48 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60" />
       </div>
     );
   }
@@ -238,31 +234,31 @@ export function UjianSection({ ujianID, kelasID }: UjianSectionProps) {
       ? friendlySiswaUjianError(apiErr, 'list')
       : 'Gagal memuat ujian.';
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gagal memuat ujian</CardTitle>
-          <CardDescription>{msg}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Gagal memuat ujian</SiswaCardTitle>
+          <SiswaCardDescription>{msg}</SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <div className="flex flex-wrap gap-2">
-            <Button
+            <SiswaButton
               type="button"
               size="sm"
-              variant="outline"
+              tone="surface"
               onClick={() => ujianQuery.refetch()}
             >
               <RotateCcw className="size-4" />
               Coba lagi
-            </Button>
-            <Button asChild type="button" size="sm" variant="ghost">
+            </SiswaButton>
+            <SiswaButton asChild type="button" size="sm" tone="ghost">
               <Link href="/siswa/ujian">
                 <ArrowLeft className="size-4" />
                 Daftar ujian
               </Link>
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -324,28 +320,28 @@ function LobbyPanel({
 
   return (
     <div className="space-y-4">
-      <Button asChild variant="ghost" size="sm" className="-ml-3">
+      <SiswaButton asChild tone="ghost" size="sm" className="-ml-2">
         <Link href="/siswa/ujian">
           <ArrowLeft className="size-4" />
           Daftar ujian
         </Link>
-      </Button>
+      </SiswaButton>
 
-      <Card>
-        <CardHeader>
+      <SiswaCard tone="ulangan" shadow="md">
+        <SiswaCardHeader>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-base">{ujian.judul}</CardTitle>
+                <SiswaCardTitle>{ujian.judul}</SiswaCardTitle>
                 <WindowBadge state={window_.state} />
               </div>
-              <CardDescription>
+              <SiswaCardDescription>
                 {ujian.deskripsi || 'Ulangan harian — dinilai. Pastikan koneksi stabil sebelum mulai.'}
-              </CardDescription>
+              </SiswaCardDescription>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        </SiswaCardHeader>
+        <SiswaCardBody className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <InfoTile
               icon={Timer}
@@ -370,11 +366,11 @@ function LobbyPanel({
             />
           </div>
 
-          <div className="rounded-md border bg-muted/40 p-3">
-            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+          <div className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3">
+            <div className="flex items-start gap-2 text-xs text-siswa-text-muted">
               <CalendarRange className="mt-0.5 size-3.5 shrink-0" />
               <div className="space-y-1">
-                <div className="font-medium text-foreground">
+                <div className="font-semibold text-siswa-text">
                   {formatRangeJakarta(ujian)}
                 </div>
                 <CountdownLine info={window_} now={now} />
@@ -385,22 +381,23 @@ function LobbyPanel({
           <ReviewPolicyNote ujian={ujian} />
 
           {startError ? (
-            <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <div className="flex items-start gap-2 rounded-siswa border-2 border-siswa-danger bg-rose-50 p-3 text-sm font-semibold">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2.5} />
               <span>{friendlySiswaUjianError(startError, 'start')}</span>
             </div>
           ) : null}
 
           <div className="flex flex-wrap gap-2">
             {inflight ? (
-              <Button
+              <SiswaButton
                 type="button"
+                tone="primary"
                 onClick={() => onResume(inflight.hasil_id)}
                 disabled={starting}
               >
-                <PlayCircle className="size-4" />
+                <PlayCircle className="size-4" strokeWidth={2.5} />
                 Lanjutkan ujian
-              </Button>
+              </SiswaButton>
             ) : (
               <PrimaryStartButton
                 window={window_}
@@ -411,21 +408,21 @@ function LobbyPanel({
               />
             )}
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Riwayat attempt</CardTitle>
-          <CardDescription>
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Riwayat attempt</SiswaCardTitle>
+          <SiswaCardDescription>
             {myItems.length === 0
               ? 'Belum ada attempt untuk ujian ini.'
               : `Total ${attemptCount} attempt selesai${cancelledCount > 0 ? `, ${cancelledCount} dibatalkan guru` : ''}.`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           {myItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-siswa-text-muted">
               Begitu lu mulai ujian, attempt akan tampil di sini.
             </p>
           ) : (
@@ -445,8 +442,8 @@ function LobbyPanel({
                 ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     </div>
   );
 }
@@ -473,23 +470,23 @@ function ResultPanel({
   const reviewMsg = reviewable ? null : reviewLockedMsg(summary, ujian);
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
+      <SiswaCard tone="ulangan" shadow="md">
+        <SiswaCardHeader>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <CardTitle className="text-base">
-                <CheckCircle2 className="mr-1 inline size-5 text-emerald-600" />
+              <SiswaCardTitle>
+                <CheckCircle2 className="mr-1 inline size-5 text-emerald-600" strokeWidth={2.5} />
                 Ujian selesai
-              </CardTitle>
-              <CardDescription>
+              </SiswaCardTitle>
+              <SiswaCardDescription>
                 {summary.already_submitted
                   ? 'Attempt ini sudah disubmit sebelumnya — menampilkan rekap nilai.'
                   : 'Nilai sudah keluar. Lu bisa lihat pembahasan kalau guru aktivasi.'}
-              </CardDescription>
+              </SiswaCardDescription>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        </SiswaCardHeader>
+        <SiswaCardBody className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-4">
             <SummaryCell label="Total soal" value={total} />
             <SummaryCell label="Benar" value={benar} accent="emerald" />
@@ -504,27 +501,27 @@ function ResultPanel({
               accent="primary"
             />
           </div>
-          <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3 text-sm">
-            <span className="text-muted-foreground">Persentase benar:</span>
-            <strong className="text-base">{persen}%</strong>
+          <div className="flex items-center justify-between rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-3 text-sm">
+            <span className="text-siswa-text-muted">Persentase benar:</span>
+            <strong className="siswa-display text-base">{persen}%</strong>
           </div>
           {reviewMsg ? (
-            <p className="text-xs text-muted-foreground">{reviewMsg}</p>
+            <p className="text-xs text-siswa-text-muted">{reviewMsg}</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {reviewable ? (
-              <Button onClick={onReview}>
-                <Eye className="size-4" />
+              <SiswaButton tone="primary" onClick={onReview}>
+                <Eye className="size-4" strokeWidth={2.5} />
                 Lihat pembahasan
-              </Button>
+              </SiswaButton>
             ) : null}
-            <Button variant="outline" onClick={onBackLobby}>
+            <SiswaButton tone="surface" onClick={onBackLobby}>
               <ArrowLeft className="size-4" />
               Kembali ke lobi
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     </div>
   );
 }
@@ -542,16 +539,15 @@ function InfoTile({ icon: Icon, label, value, accent = 'default' }: InfoTileProp
   return (
     <div
       className={cn(
-        'rounded-md border bg-card p-3',
-        accent === 'emerald' &&
-          'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
+        'rounded-siswa border-2 border-siswa-border bg-siswa-surface p-3',
+        accent === 'emerald' && 'bg-siswa-green/40',
       )}
     >
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-siswa-text-muted">
         <Icon className="size-3.5" />
         {label}
       </div>
-      <div className="mt-1 text-sm font-medium">{value}</div>
+      <div className="siswa-display mt-1 text-sm font-bold">{value}</div>
     </div>
   );
 }
@@ -581,37 +577,24 @@ function computeWindow(now: number, ujian: Ujian) {
 function WindowBadge({ state }: { state: WindowState }) {
   const map: Record<
     WindowState,
-    { label: string; cn: string; icon: React.ComponentType<{ className?: string }> }
+    {
+      label: string;
+      tone: React.ComponentProps<typeof SiswaBadge>['tone'];
+      icon: React.ComponentType<{ className?: string }>;
+    }
   > = {
-    mendatang: {
-      label: 'Mendatang',
-      cn: 'bg-amber-100 text-amber-800',
-      icon: Clock,
-    },
-    aktif: { label: 'Aktif', cn: 'bg-emerald-100 text-emerald-800', icon: PlayCircle },
-    berakhir: {
-      label: 'Berakhir',
-      cn: 'bg-zinc-200 text-zinc-700',
-      icon: XCircle,
-    },
-    'tanpa-window': {
-      label: 'Tersedia',
-      cn: 'bg-sky-100 text-sky-800',
-      icon: PlayCircle,
-    },
+    mendatang: { label: 'Mendatang', tone: 'warning', icon: Clock },
+    aktif: { label: 'Aktif', tone: 'success', icon: PlayCircle },
+    berakhir: { label: 'Berakhir', tone: 'neutral', icon: XCircle },
+    'tanpa-window': { label: 'Tersedia', tone: 'blue', icon: PlayCircle },
   };
   const cfg = map[state];
   const Icon = cfg.icon;
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-        cfg.cn,
-      )}
-    >
+    <SiswaBadge tone={cfg.tone}>
       <Icon className="size-3" />
       {cfg.label}
-    </span>
+    </SiswaBadge>
   );
 }
 
@@ -641,7 +624,7 @@ function CountdownLine({
 function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
   if (!ujian.izinkan_review_setelah_submit) {
     return (
-      <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+      <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
         Guru tidak mengaktifkan pembahasan untuk ujian ini.
       </p>
     );
@@ -653,13 +636,13 @@ function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
       timeZone: 'Asia/Jakarta',
     });
     return (
-      <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
-        Pembahasan dibuka mulai <strong>{t}</strong>.
+      <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
+        Pembahasan dibuka mulai <strong className="text-siswa-text">{t}</strong>.
       </p>
     );
   }
   return (
-    <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+    <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
       Pembahasan tersedia langsung setelah lu submit attempt.
     </p>
   );
@@ -682,30 +665,30 @@ function PrimaryStartButton({
 }: PrimaryStartButtonProps) {
   if (window.state === 'mendatang' && window.target) {
     return (
-      <Button disabled>
+      <SiswaButton tone="surface" disabled>
         <Clock className="size-4" />
         Mulai dalam {formatCountdown(Math.max(0, window.target - now))}
-      </Button>
+      </SiswaButton>
     );
   }
   if (window.state === 'berakhir') {
     return (
-      <Button disabled variant="outline">
+      <SiswaButton tone="surface" disabled>
         <XCircle className="size-4" />
         Window berakhir
-      </Button>
+      </SiswaButton>
     );
   }
   return (
-    <Button onClick={onStart} disabled={starting}>
+    <SiswaButton tone="primary" onClick={onStart} disabled={starting}>
       {starting ? (
         <Loader2 className="size-4 animate-spin" />
       ) : (
-        <PlayCircle className="size-4" />
+        <PlayCircle className="size-4" strokeWidth={2.5} />
       )}
       {attemptCount > 0 ? 'Mulai ujian baru' : 'Mulai ujian'}
-      <ArrowRight className="size-4" />
-    </Button>
+      <ArrowRight className="size-4" strokeWidth={2.5} />
+    </SiswaButton>
   );
 }
 
@@ -723,15 +706,15 @@ function HistoryRow({ hasil, ujian, now, onReview, onResume }: HistoryRowProps) 
   const reviewLockReason = reviewLockMessage(hasil, ujian, now);
 
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 rounded-md border bg-card p-3">
+    <li className="flex flex-wrap items-start justify-between gap-3 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3">
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">
+          <span className="siswa-display text-sm font-bold">
             Attempt #{hasil.attempt_no}
           </span>
           <StatusBadge status={hasil.status} />
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-siswa-text-muted">
           {mulaiAt
             ? `Mulai ${mulaiAt.toLocaleString('id-ID', {
                 dateStyle: 'medium',
@@ -751,27 +734,27 @@ function HistoryRow({ hasil, ujian, now, onReview, onResume }: HistoryRowProps) 
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {hasil.status === 'berlangsung' ? (
-          <Button type="button" size="sm" onClick={onResume}>
-            <PlayCircle className="size-3.5" />
+          <SiswaButton type="button" tone="primary" size="sm" onClick={onResume}>
+            <PlayCircle className="size-3.5" strokeWidth={2.5} />
             Lanjutkan
-          </Button>
+          </SiswaButton>
         ) : null}
         {hasil.status === 'selesai' ? (
-          <Button
+          <SiswaButton
             type="button"
             size="sm"
-            variant="outline"
+            tone="surface"
             onClick={onReview}
             disabled={!reviewable}
             title={reviewable ? 'Lihat pembahasan' : reviewLockReason ?? undefined}
           >
-            <Eye className="size-3.5" />
+            <Eye className="size-3.5" strokeWidth={2.5} />
             Lihat pembahasan
-          </Button>
+          </SiswaButton>
         ) : null}
       </div>
       {!reviewable && reviewLockReason && hasil.status === 'selesai' ? (
-        <p className="basis-full text-xs text-muted-foreground">
+        <p className="basis-full text-xs text-siswa-text-muted">
           {reviewLockReason}
         </p>
       ) : null}
@@ -782,32 +765,14 @@ function HistoryRow({ hasil, ujian, now, onReview, onResume }: HistoryRowProps) 
 function StatusBadge({ status }: { status: UjianHasilSummary['status'] }) {
   const map: Record<
     UjianHasilSummary['status'],
-    { label: string; cn: string }
+    { label: string; tone: React.ComponentProps<typeof SiswaBadge>['tone'] }
   > = {
-    berlangsung: {
-      label: 'Berlangsung',
-      cn: 'bg-amber-100 text-amber-800',
-    },
-    selesai: {
-      label: 'Selesai',
-      cn: 'bg-emerald-100 text-emerald-800',
-    },
-    dibatalkan: {
-      label: 'Dibatalkan',
-      cn: 'bg-rose-100 text-rose-800',
-    },
+    berlangsung: { label: 'Berlangsung', tone: 'warning' },
+    selesai: { label: 'Selesai', tone: 'success' },
+    dibatalkan: { label: 'Dibatalkan', tone: 'danger' },
   };
   const cfg = map[status];
-  return (
-    <span
-      className={cn(
-        'rounded-full px-2 py-0.5 text-[11px] font-medium',
-        cfg.cn,
-      )}
-    >
-      {cfg.label}
-    </span>
-  );
+  return <SiswaBadge tone={cfg.tone}>{cfg.label}</SiswaBadge>;
 }
 
 function SummaryCell({
@@ -820,15 +785,17 @@ function SummaryCell({
   accent?: 'default' | 'emerald' | 'rose' | 'primary';
 }) {
   const accentClass = {
-    default: 'border-border',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    rose: 'border-rose-200 bg-rose-50 text-rose-700',
-    primary: 'border-primary/30 bg-primary/5 text-foreground',
+    default: 'border-siswa-border bg-siswa-surface',
+    emerald: 'border-siswa-border bg-siswa-green/40 text-emerald-700',
+    rose: 'border-siswa-border bg-rose-100 text-rose-700',
+    primary: 'border-siswa-border bg-siswa-yellow text-siswa-text',
   }[accent];
   return (
-    <div className={cn('rounded-md border p-3 text-center', accentClass)}>
-      <div className="text-xs uppercase tracking-wide opacity-80">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+    <div className={cn('rounded-siswa border-2 p-3 text-center', accentClass)}>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+        {label}
+      </div>
+      <div className="siswa-display mt-1 text-2xl font-bold">{value}</div>
     </div>
   );
 }

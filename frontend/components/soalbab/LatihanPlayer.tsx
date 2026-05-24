@@ -80,6 +80,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import {
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 const OPSI_LIST: { key: SoalJawaban; label: string }[] = [
   { key: 'a', label: 'A' },
@@ -258,46 +267,49 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
   // ---- Render: Idle ----
   if (!hasilID) {
     return (
-      <Card>
-        <CardHeader>
+      <SiswaCard tone="latihan" shadow="md">
+        <SiswaCardHeader>
           <div className="flex items-center gap-2">
-            <Sparkles className="size-5 text-muted-foreground" />
-            <CardTitle className="text-base">Latihan Bab</CardTitle>
+            <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+              <Sparkles className="size-4" strokeWidth={2.5} />
+            </span>
+            <SiswaCardTitle>Latihan Bab</SiswaCardTitle>
           </div>
-          <CardDescription>
+          <SiswaCardDescription>
             Latihan formative — kerjakan soal bebas, dapat feedback langsung tiap jawaban.
             Tidak ada batas waktu, tidak ada nilai persist. Re-attempt sebanyak yang lu mau.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <SiswaButton
             type="button"
+            tone="primary"
             onClick={() => startMu.mutate()}
             disabled={disabled || startMu.isPending}
           >
             {startMu.isPending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
-              <PlayCircle className="size-4" />
+              <PlayCircle className="size-4" strokeWidth={2.5} />
             )}
             Mulai latihan
-          </Button>
-        </CardContent>
-      </Card>
+          </SiswaButton>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
   // ---- Render: Loading items ----
   if (itemsQuery.isPending) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Memuat soal latihan…</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-32 animate-pulse rounded-md border bg-muted/40" />
-        </CardContent>
-      </Card>
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Memuat soal latihan…</SiswaCardTitle>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <div className="h-32 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60" />
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -308,33 +320,33 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
         ? friendlyAttemptError(itemsQuery.error, 'items')
         : 'Gagal memuat soal latihan.';
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gagal memuat latihan</CardTitle>
-          <CardDescription>{msg}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Gagal memuat latihan</SiswaCardTitle>
+          <SiswaCardDescription>{msg}</SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <div className="flex flex-wrap gap-2">
-            <Button
+            <SiswaButton
               type="button"
               size="sm"
-              variant="outline"
+              tone="surface"
               onClick={() => itemsQuery.refetch()}
             >
               <RotateCcw className="size-4" />
               Coba lagi
-            </Button>
-            <Button
+            </SiswaButton>
+            <SiswaButton
               type="button"
               size="sm"
-              variant="ghost"
+              tone="ghost"
               onClick={() => setHasilID(null)}
             >
               Reset
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -344,22 +356,25 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
   // ---- Render: Playing ----
   return (
     <>
-      <Card>
-        <CardHeader>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="text-base">Latihan Bab — {att.total} soal</CardTitle>
-              <CardDescription>
+              <SiswaCardTitle>
+                Latihan Bab — {att.total} soal
+              </SiswaCardTitle>
+              <SiswaCardDescription>
                 Jawab semua soal lalu klik Selesai. Feedback muncul tiap kali pilih jawaban.
-              </CardDescription>
+              </SiswaCardDescription>
             </div>
-            <div className="text-sm text-muted-foreground">
-              Terjawab: <strong className="text-foreground">{answeredCount}</strong> /{' '}
+            <div className="text-sm text-siswa-text-muted">
+              Terjawab:{' '}
+              <strong className="siswa-display text-siswa-text">{answeredCount}</strong> /{' '}
               {att.total}
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <ol className="space-y-4">
             {att.items.map((item, idx) => (
               <SoalCard
@@ -372,23 +387,24 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
               />
             ))}
           </ol>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t-2 border-siswa-border-soft pt-4">
+            <p className="text-sm text-siswa-text-muted">
               {answeredCount === att.total
                 ? 'Semua soal sudah dijawab. Lu bisa Selesai sekarang.'
                 : `Masih ada ${att.total - answeredCount} soal yang belum dijawab.`}
             </p>
-            <Button
+            <SiswaButton
               type="button"
+              tone="primary"
               onClick={() => setConfirmFinish(true)}
               disabled={disabled || finishMu.isPending || finishing}
             >
               {finishMu.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
               Selesai
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
 
       <Dialog open={confirmFinish} onOpenChange={(o) => !finishMu.isPending && setConfirmFinish(o)}>
         <DialogContent className="max-w-md">
@@ -437,21 +453,22 @@ interface SoalCardProps {
 function SoalCard({ item, index, feedback, onChoose, disabled }: SoalCardProps) {
   const pertanyaanImg = imageURLForSlot(item, 'pertanyaan');
   return (
-    <li className="rounded-md border bg-card p-4">
+    <li className="rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Soal {index + 1} <span className="font-normal text-foreground">— {item.poin} poin</span>
+        <p className="siswa-display text-sm font-bold uppercase tracking-wide text-siswa-text-muted">
+          Soal {index + 1}{' '}
+          <span className="font-semibold normal-case tracking-normal text-siswa-text">
+            — {item.poin} poin
+          </span>
         </p>
-        {feedback ? (
-          <FeedbackBadge feedback={feedback} />
-        ) : null}
+        {feedback ? <FeedbackBadge feedback={feedback} /> : null}
       </div>
 
       <div className="space-y-2">
         {item.pertanyaan ? (
           <p className="whitespace-pre-wrap text-sm">{item.pertanyaan}</p>
         ) : (
-          <p className="text-sm italic text-muted-foreground">(soal hanya gambar)</p>
+          <p className="text-sm italic text-siswa-text-muted">(soal hanya gambar)</p>
         )}
         {pertanyaanImg ? <SlotImage url={pertanyaanImg} alt="Gambar pertanyaan" /> : null}
       </div>
@@ -467,11 +484,13 @@ function SoalCard({ item, index, feedback, onChoose, disabled }: SoalCardProps) 
             <li key={key}>
               <label
                 className={cn(
-                  'flex gap-3 rounded-md border p-3 transition-colors',
-                  disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-muted/40',
-                  checked && feedback?.isBenar && 'border-emerald-300 bg-emerald-50',
-                  wronglyChosen && 'border-rose-300 bg-rose-50',
-                  !checked && isCorrectKey && 'border-emerald-300 bg-emerald-50/60',
+                  'flex gap-3 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3 transition-colors',
+                  disabled
+                    ? 'cursor-not-allowed opacity-70'
+                    : 'cursor-pointer hover:bg-siswa-cream/40',
+                  checked && feedback?.isBenar && 'border-siswa-border bg-siswa-green/40',
+                  wronglyChosen && 'border-siswa-border bg-rose-100',
+                  !checked && isCorrectKey && 'border-siswa-border bg-siswa-green/30',
                 )}
               >
                 <input
@@ -485,14 +504,20 @@ function SoalCard({ item, index, feedback, onChoose, disabled }: SoalCardProps) 
                 />
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold uppercase">{label}.</span>
+                    <span className="font-mono text-sm font-bold uppercase">
+                      {label}.
+                    </span>
                     {text ? (
                       <span className="whitespace-pre-wrap text-sm">{text}</span>
                     ) : (
-                      <span className="text-xs italic text-muted-foreground">(tanpa teks)</span>
+                      <span className="text-xs italic text-siswa-text-muted">
+                        (tanpa teks)
+                      </span>
                     )}
                   </div>
-                  {slotImg ? <SlotImage url={slotImg} alt={`Gambar opsi ${label}`} /> : null}
+                  {slotImg ? (
+                    <SlotImage url={slotImg} alt={`Gambar opsi ${label}`} />
+                  ) : null}
                 </div>
               </label>
             </li>
@@ -506,18 +531,20 @@ function SoalCard({ item, index, feedback, onChoose, disabled }: SoalCardProps) 
 function FeedbackBadge({ feedback }: { feedback: FeedbackState }) {
   if (feedback.isBenar) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-        <CheckCircle2 className="size-3.5" />
+      <SiswaBadge tone="success">
+        <CheckCircle2 className="size-3" strokeWidth={2.5} />
         Benar (+{feedback.poinDapat || 0})
-      </span>
+      </SiswaBadge>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs text-rose-700">
-      <XCircle className="size-3.5" />
+    <SiswaBadge tone="danger">
+      <XCircle className="size-3" strokeWidth={2.5} />
       Salah
-      {feedback.jawabanBenar ? ` — jawaban: ${feedback.jawabanBenar.toUpperCase()}` : ''}
-    </span>
+      {feedback.jawabanBenar
+        ? ` — jawaban: ${feedback.jawabanBenar.toUpperCase()}`
+        : ''}
+    </SiswaBadge>
   );
 }
 
@@ -525,20 +552,19 @@ function SlotImage({ url, alt }: { url: string; alt: string }) {
   const [errored, setErrored] = React.useState(false);
   if (errored) {
     return (
-      <div className="flex h-20 items-center justify-center gap-2 rounded-md border border-dashed text-xs text-muted-foreground">
+      <div className="flex h-20 items-center justify-center gap-2 rounded-siswa border-2 border-dashed border-siswa-border-soft text-xs text-siswa-text-muted">
         <ImageOff className="size-4" />
         Gambar gagal dimuat
       </div>
     );
   }
-  // Static export — no next/image.
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
       src={url}
       alt={alt}
       onError={() => setErrored(true)}
-      className="max-h-64 rounded-md border bg-card object-contain"
+      className="max-h-64 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface object-contain"
     />
   );
 }
@@ -550,39 +576,58 @@ interface LatihanResultCardProps {
   starting?: boolean;
 }
 
-function LatihanResultCard({ summary, onRestart, disabled, starting }: LatihanResultCardProps) {
-  const persen = summary.total === 0 ? 0 : Math.round((summary.benar / summary.total) * 100);
+function LatihanResultCard({
+  summary,
+  onRestart,
+  disabled,
+  starting,
+}: LatihanResultCardProps) {
+  const persen =
+    summary.total === 0
+      ? 0
+      : Math.round((summary.benar / summary.total) * 100);
   return (
-    <Card>
-      <CardHeader>
+    <SiswaCard tone="latihan" shadow="md">
+      <SiswaCardHeader>
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="size-5 text-emerald-600" />
-          <CardTitle className="text-base">Latihan Selesai</CardTitle>
+          <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+            <CheckCircle2 className="size-4 text-emerald-600" strokeWidth={2.5} />
+          </span>
+          <SiswaCardTitle>Latihan Selesai</SiswaCardTitle>
         </div>
-        <CardDescription>
-          Sip, latihan ini sudah selesai. Latihan formative — nilai tidak dipersist, tapi lu
-          bisa pakai feedback ini buat refleksi.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        <SiswaCardDescription>
+          Sip, latihan ini sudah selesai. Latihan formative — nilai tidak
+          dipersist, tapi lu bisa pakai feedback ini buat refleksi.
+        </SiswaCardDescription>
+      </SiswaCardHeader>
+      <SiswaCardBody>
         <div className="grid gap-3 sm:grid-cols-4">
           <SummaryCell label="Total soal" value={summary.total} />
           <SummaryCell label="Benar" value={summary.benar} accent="emerald" />
           <SummaryCell label="Salah" value={summary.salah} accent="rose" />
           <SummaryCell label="Skip" value={summary.skip} accent="muted" />
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-          <span className="text-muted-foreground">Persentase benar:</span>
-          <strong className="text-base">{persen}%</strong>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-3 text-sm">
+          <span className="text-siswa-text-muted">Persentase benar:</span>
+          <strong className="siswa-display text-base">{persen}%</strong>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" onClick={onRestart} disabled={disabled || starting}>
-            {starting ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
+          <SiswaButton
+            type="button"
+            tone="primary"
+            onClick={onRestart}
+            disabled={disabled || starting}
+          >
+            {starting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <PlayCircle className="size-4" strokeWidth={2.5} />
+            )}
             Mulai latihan baru
-          </Button>
+          </SiswaButton>
         </div>
-      </CardContent>
-    </Card>
+      </SiswaCardBody>
+    </SiswaCard>
   );
 }
 
@@ -596,15 +641,17 @@ function SummaryCell({
   accent?: 'default' | 'emerald' | 'rose' | 'muted';
 }) {
   const accentClass = {
-    default: 'border-border',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    rose: 'border-rose-200 bg-rose-50 text-rose-700',
-    muted: 'border-border bg-muted/30 text-muted-foreground',
+    default: 'border-siswa-border bg-siswa-surface',
+    emerald: 'border-siswa-border bg-siswa-green/40 text-emerald-700',
+    rose: 'border-siswa-border bg-rose-100 text-rose-700',
+    muted: 'border-siswa-border-soft bg-siswa-cream/30 text-siswa-text-muted',
   }[accent];
   return (
-    <div className={cn('rounded-md border p-3 text-center', accentClass)}>
-      <div className="text-xs uppercase tracking-wide opacity-80">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+    <div className={cn('rounded-siswa border-2 p-3 text-center', accentClass)}>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+        {label}
+      </div>
+      <div className="siswa-display mt-1 text-2xl font-bold">{value}</div>
     </div>
   );
 }

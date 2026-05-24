@@ -32,18 +32,18 @@ import {
   type UlanganSubmitResult,
 } from '@/lib/soalbab-ulangan-api';
 import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { UlanganLobby } from '@/components/soalbab/UlanganLobby';
 import { UlanganPlayer } from '@/components/soalbab/UlanganPlayer';
 import { UlanganReview } from '@/components/soalbab/UlanganReview';
+import {
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 type Mode =
   | { kind: 'lobby' }
@@ -148,19 +148,21 @@ export function UlanganSection({ babID, disabled }: UlanganSectionProps) {
 
     return (
       <div className="space-y-4">
-        <Card>
-          <CardHeader>
+        <SiswaCard tone="ulangan" shadow="md">
+          <SiswaCardHeader>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="size-5 text-emerald-600" />
-              <CardTitle className="text-base">Ulangan Selesai</CardTitle>
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <CheckCircle2 className="size-4 text-emerald-600" strokeWidth={2.5} />
+              </span>
+              <SiswaCardTitle>Ulangan Selesai</SiswaCardTitle>
             </div>
-            <CardDescription>
+            <SiswaCardDescription>
               {summary.already_submitted
                 ? 'Attempt ini sudah disubmit sebelumnya. Berikut nilai yang tersimpan.'
                 : 'Sip, jawaban lu sudah dinilai. Berikut rekapnya.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-4">
               <SummaryCell label="Total soal" value={summary.jawaban_total} />
               <SummaryCell label="Benar" value={summary.jawaban_benar_count} accent="emerald" />
@@ -171,36 +173,37 @@ export function UlanganSection({ babID, disabled }: UlanganSectionProps) {
               />
               <SummaryCell label="Nilai" value={summary.nilai_total} accent="primary" />
             </div>
-            <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3 text-sm">
-              <span className="text-muted-foreground">Persentase benar:</span>
-              <strong className="text-base">{persen}%</strong>
+            <div className="flex items-center justify-between rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-3 text-sm">
+              <span className="text-siswa-text-muted">Persentase benar:</span>
+              <strong className="siswa-display text-base">{persen}%</strong>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
+              <SiswaButton
                 type="button"
+                tone="primary"
                 onClick={() => setMode({ kind: 'review', hasilID: summary.hasil_id })}
                 disabled={!reviewable}
                 title={reviewable ? 'Lihat pembahasan jawaban' : reviewLockMsg ?? undefined}
               >
-                <Eye className="size-4" />
+                <Eye className="size-4" strokeWidth={2.5} />
                 Lihat pembahasan
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setMode({ kind: 'lobby' })}>
+              </SiswaButton>
+              <SiswaButton type="button" tone="surface" onClick={() => setMode({ kind: 'lobby' })}>
                 <ArrowLeft className="size-4" />
                 Kembali ke lobi
-              </Button>
+              </SiswaButton>
             </div>
             {!reviewable && reviewLockMsg ? (
-              <p className="text-xs text-muted-foreground">{reviewLockMsg}</p>
+              <p className="text-xs text-siswa-text-muted">{reviewLockMsg}</p>
             ) : null}
             {setting && setting.batas_attempt > 0 && historyQuery.data ? (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-siswa-text-muted">
                 Attempt terpakai:{' '}
                 {historyQuery.data.hasil.attempt_count} / {setting.batas_attempt}
               </p>
             ) : null}
-          </CardContent>
-        </Card>
+          </SiswaCardBody>
+        </SiswaCard>
       </div>
     );
   }
@@ -218,14 +221,14 @@ export function UlanganSection({ babID, disabled }: UlanganSectionProps) {
   // ---- lobby ----
   if (lobbyQuery.isPending || historyQuery.isPending) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Memuat info ulangan…</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-32 animate-pulse rounded-md border bg-muted/40" />
-        </CardContent>
-      </Card>
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Memuat info ulangan…</SiswaCardTitle>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <div className="h-32 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60" />
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -238,16 +241,16 @@ export function UlanganSection({ babID, disabled }: UlanganSectionProps) {
           : null;
     const msg = apiErr ? friendlyUlanganError(apiErr, 'lobby') : 'Gagal memuat info ulangan.';
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gagal memuat ulangan</CardTitle>
-          <CardDescription>{msg}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Gagal memuat ulangan</SiswaCardTitle>
+          <SiswaCardDescription>{msg}</SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <SiswaButton
             type="button"
             size="sm"
-            variant="outline"
+            tone="surface"
             onClick={() => {
               lobbyQuery.refetch();
               historyQuery.refetch();
@@ -255,9 +258,9 @@ export function UlanganSection({ babID, disabled }: UlanganSectionProps) {
           >
             <RotateCcw className="size-4" />
             Coba lagi
-          </Button>
-        </CardContent>
-      </Card>
+          </SiswaButton>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -294,15 +297,17 @@ function SummaryCell({
   accent?: 'default' | 'emerald' | 'rose' | 'primary';
 }) {
   const accentClass = {
-    default: 'border-border',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    rose: 'border-rose-200 bg-rose-50 text-rose-700',
-    primary: 'border-primary/30 bg-primary/5 text-foreground',
+    default: 'border-siswa-border bg-siswa-surface',
+    emerald: 'border-siswa-border bg-siswa-green/40 text-emerald-700',
+    rose: 'border-siswa-border bg-rose-100 text-rose-700',
+    primary: 'border-siswa-border bg-siswa-yellow text-siswa-text',
   }[accent];
   return (
-    <div className={cn('rounded-md border p-3 text-center', accentClass)}>
-      <div className="text-xs uppercase tracking-wide opacity-80">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+    <div className={cn('rounded-siswa border-2 p-3 text-center', accentClass)}>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+        {label}
+      </div>
+      <div className="siswa-display mt-1 text-2xl font-bold">{value}</div>
     </div>
   );
 }

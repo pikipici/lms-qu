@@ -3,23 +3,8 @@
 /**
  * UjianReview — siswa pembahasan post-submit (Task 6.G.2).
  *
- * Mirror SoalBab UlanganReview pattern (5.G.2 commit `6c10d19`).
- * Render review payload dari GET /siswa/hasil-ujian/:id/review.
- * Backend handle gating (#81): kalau gated, response 403 review_locked /
- * review_disabled — kita map ke friendly notice + tombol Refresh.
- *
- * Per soal:
- *   - Card dengan pertanyaan + opsi A-E.
- *   - Highlight:
- *     · jawaban_benar  → border emerald + bg emerald
- *     · jawaban_siswa salah → border rose + bg rose
- *     · jawaban_siswa benar → sama dengan jawaban_benar
- *   - Badge top-right: "Benar +N poin" / "Salah" / "Tidak dijawab".
- *
- * Note: BE Review payload TIDAK include images (anti-cheat retroactive
- * supaya post-submit doesn't expose extra image data). Kalau guru hapus
- * soal post-submit, BE return placeholder pertanyaan="(soal sudah dihapus
- * guru)" dengan opsi kosong — kita render minimal + skip A-E checks.
+ * Visual: neo-brutalism + pastel pop. Header card ulangan tone, soal cards
+ * surface dengan emerald/rose highlight per jawaban.
  */
 
 import * as React from 'react';
@@ -41,15 +26,16 @@ import {
   type UjianReviewResult,
   type UjianSoalJawaban,
 } from '@/lib/siswa-ujian-api';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import {
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 const OPSI_LIST: { key: UjianSoalJawaban; label: string }[] = [
   { key: 'a', label: 'A' },
@@ -94,14 +80,14 @@ export function UjianReview({ hasilID, onBack }: UjianReviewProps) {
 
   if (reviewQuery.isPending) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Memuat pembahasan…</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-32 animate-pulse rounded-md border bg-muted/40" />
-        </CardContent>
-      </Card>
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Memuat pembahasan…</SiswaCardTitle>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <div className="h-32 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60" />
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -112,29 +98,29 @@ export function UjianReview({ hasilID, onBack }: UjianReviewProps) {
       ? friendlySiswaUjianError(apiErr, 'review')
       : 'Gagal memuat pembahasan.';
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gagal memuat pembahasan</CardTitle>
-          <CardDescription>{msg}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Gagal memuat pembahasan</SiswaCardTitle>
+          <SiswaCardDescription>{msg}</SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <div className="flex flex-wrap gap-2">
-            <Button
+            <SiswaButton
               type="button"
               size="sm"
-              variant="outline"
+              tone="surface"
               onClick={() => reviewQuery.refetch()}
             >
               <RotateCcw className="size-4" />
               Coba lagi
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={onBack}>
+            </SiswaButton>
+            <SiswaButton type="button" size="sm" tone="ghost" onClick={onBack}>
               <ArrowLeft className="size-4" />
               Kembali
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -165,12 +151,12 @@ function ReviewBody({
   const persen = total === 0 ? 0 : Math.round((benar / total) * 100);
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
+      <SiswaCard tone="ulangan" shadow="md">
+        <SiswaCardHeader>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <CardTitle className="text-base">Pembahasan Ujian</CardTitle>
-              <CardDescription>
+              <SiswaCardTitle>Pembahasan Ujian</SiswaCardTitle>
+              <SiswaCardDescription>
                 Attempt #{review.attempt_no} ·{' '}
                 {review.selesai_at
                   ? new Date(review.selesai_at).toLocaleString('id-ID', {
@@ -179,13 +165,13 @@ function ReviewBody({
                       timeZone: 'Asia/Jakarta',
                     })
                   : '—'}
-              </CardDescription>
+              </SiswaCardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
+              <SiswaButton
                 type="button"
                 size="sm"
-                variant="outline"
+                tone="surface"
                 onClick={onRefresh}
                 disabled={refreshing}
               >
@@ -195,15 +181,15 @@ function ReviewBody({
                   <RotateCcw className="size-4" />
                 )}
                 Refresh
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={onBack}>
+              </SiswaButton>
+              <SiswaButton type="button" size="sm" tone="ghost" onClick={onBack}>
                 <ArrowLeft className="size-4" />
                 Kembali
-              </Button>
+              </SiswaButton>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <div className="grid gap-3 sm:grid-cols-4">
             <SummaryCell label="Total soal" value={total} />
             <SummaryCell label="Benar" value={benar} accent="emerald" />
@@ -222,12 +208,12 @@ function ReviewBody({
               accent="primary"
             />
           </div>
-          <div className="mt-3 flex items-center justify-between rounded-md border bg-muted/30 p-3 text-sm">
-            <span className="text-muted-foreground">Persentase benar:</span>
-            <strong className="text-base">{persen}%</strong>
+          <div className="mt-3 flex items-center justify-between rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-3 text-sm">
+            <span className="text-siswa-text-muted">Persentase benar:</span>
+            <strong className="siswa-display text-base">{persen}%</strong>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
 
       <ol className="space-y-4">
         {review.items.map((item, idx) => (
@@ -252,15 +238,17 @@ function SummaryCell({
   accent?: 'default' | 'emerald' | 'rose' | 'primary';
 }) {
   const accentClass = {
-    default: 'border-border',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    rose: 'border-rose-200 bg-rose-50 text-rose-700',
-    primary: 'border-primary/30 bg-primary/5 text-foreground',
+    default: 'border-siswa-border bg-siswa-surface',
+    emerald: 'border-siswa-border bg-siswa-green/40 text-emerald-700',
+    rose: 'border-siswa-border bg-rose-100 text-rose-700',
+    primary: 'border-siswa-border bg-siswa-yellow text-siswa-text',
   }[accent];
   return (
-    <div className={cn('rounded-md border p-3 text-center', accentClass)}>
-      <div className="text-xs uppercase tracking-wide opacity-80">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
+    <div className={cn('rounded-siswa border-2 p-3 text-center', accentClass)}>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+        {label}
+      </div>
+      <div className="siswa-display mt-1 text-2xl font-bold">{value}</div>
     </div>
   );
 }
@@ -278,29 +266,29 @@ function ReviewSoalCard({
   const isDeleted = item.pertanyaan === '(soal sudah dihapus guru)';
 
   return (
-    <li className="rounded-md border bg-card p-4">
+    <li className="rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="siswa-display text-sm font-bold uppercase tracking-wide text-siswa-text-muted">
           Soal {index + 1}{' '}
-          <span className="font-normal text-foreground">
+          <span className="font-semibold normal-case tracking-normal text-siswa-text">
             — {item.poin_maksimal} poin
           </span>
         </p>
         {isDeleted ? null : tidakDijawab ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-            <AlertCircle className="size-3.5" />
+          <SiswaBadge tone="warning">
+            <AlertCircle className="size-3" strokeWidth={2.5} />
             Tidak dijawab
-          </span>
+          </SiswaBadge>
         ) : benar ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-            <CheckCircle2 className="size-3.5" />
+          <SiswaBadge tone="success">
+            <CheckCircle2 className="size-3" strokeWidth={2.5} />
             Benar (+{item.poin_dapat})
-          </span>
+          </SiswaBadge>
         ) : salah ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs text-rose-700">
-            <XCircle className="size-3.5" />
+          <SiswaBadge tone="danger">
+            <XCircle className="size-3" strokeWidth={2.5} />
             Salah
-          </span>
+          </SiswaBadge>
         ) : null}
       </div>
 
@@ -308,13 +296,13 @@ function ReviewSoalCard({
         <p
           className={cn(
             'whitespace-pre-wrap text-sm',
-            isDeleted && 'italic text-muted-foreground',
+            isDeleted && 'italic text-siswa-text-muted',
           )}
         >
           {item.pertanyaan}
         </p>
       ) : (
-        <p className="text-sm italic text-muted-foreground">(tanpa teks)</p>
+        <p className="text-sm italic text-siswa-text-muted">(tanpa teks)</p>
       )}
 
       {!isDeleted ? (
@@ -329,21 +317,19 @@ function ReviewSoalCard({
               <li
                 key={key}
                 className={cn(
-                  'flex gap-3 rounded-md border p-3 transition-colors',
-                  isCorrect && 'border-emerald-300 bg-emerald-50/70',
-                  wronglyPicked && 'border-rose-300 bg-rose-50/70',
+                  'flex gap-3 rounded-siswa border-2 border-siswa-border-soft p-3 transition-colors',
+                  isCorrect && 'border-siswa-border bg-siswa-green/40',
+                  wronglyPicked && 'border-siswa-border bg-rose-100',
                 )}
               >
                 <span
                   className={cn(
-                    'mt-0.5 inline-flex size-5 items-center justify-center rounded-full border text-xs font-semibold uppercase',
+                    'mt-0.5 inline-flex size-5 items-center justify-center rounded-full border-2 text-xs font-bold uppercase',
                     isCorrect &&
-                      'border-emerald-400 bg-emerald-100 text-emerald-800',
+                      'border-siswa-border bg-siswa-green text-emerald-800',
                     wronglyPicked &&
-                      'border-rose-400 bg-rose-100 text-rose-800',
-                    !isCorrect &&
-                      !wronglyPicked &&
-                      'border-muted-foreground/30',
+                      'border-siswa-border bg-rose-200 text-rose-800',
+                    !isCorrect && !wronglyPicked && 'border-siswa-border-soft',
                   )}
                 >
                   {label}
@@ -352,11 +338,11 @@ function ReviewSoalCard({
                   {text ? (
                     <span className="whitespace-pre-wrap text-sm">{text}</span>
                   ) : (
-                    <span className="text-xs italic text-muted-foreground">
+                    <span className="text-xs italic text-siswa-text-muted">
                       (tanpa teks)
                     </span>
                   )}
-                  <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex flex-wrap gap-2 text-xs font-semibold">
                     {isCorrect ? (
                       <span className="text-emerald-700">Jawaban benar</span>
                     ) : null}

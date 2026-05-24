@@ -3,23 +3,21 @@
 /**
  * MateriViewer — dispatcher per-tipe untuk siswa render materi.
  *
+ * Visual: neo-brutalism + pastel pop. Header dengan icon block + tipe
+ * badge berwarna pop.
+ *
  * Switch by `materi.tipe`:
- *   - pdf      → <PdfViewer> (presigned URL + iframe + debounced mark-read)
- *   - youtube  → <YouTubeEmbed> (nocookie iframe + mark-read on mount)
- *   - markdown → <MarkdownView> (react-markdown + mark-read on mount)
- *
- * Dipakai di Task 3.E.2 page `/siswa/kelas/detail/bab` Tab Materi —
- * expand-on-click pakai komponen ini sebagai body.
- *
- * Header standar: judul + badge tipe + meta (size_bytes utk pdf,
- * video_id utk yt). Body delegasi ke viewer per-tipe.
+ *   - pdf      → <PdfViewer>
+ *   - youtube  → <YouTubeEmbed>
+ *   - markdown → <MarkdownView>
  */
 
 import * as React from 'react';
 import { FileText, Type, Youtube } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import type { Materi, MateriTipe } from '@/lib/materi-api';
-import { cn } from '@/lib/utils';
+import { SiswaBadge } from '@/components/siswa-ui';
 import { MarkdownView } from './MarkdownView';
 import { PdfViewer } from './PdfViewer';
 import { YouTubeEmbed } from './YouTubeEmbed';
@@ -30,7 +28,7 @@ interface MateriViewerProps {
   hideHeader?: boolean;
 }
 
-function tipeIcon(t: MateriTipe) {
+function tipeIcon(t: MateriTipe): LucideIcon {
   switch (t) {
     case 'pdf':
       return FileText;
@@ -41,24 +39,27 @@ function tipeIcon(t: MateriTipe) {
   }
 }
 
-function tipeBadge(t: MateriTipe) {
+function tipeBadgeTone(
+  t: MateriTipe,
+): React.ComponentProps<typeof SiswaBadge>['tone'] {
   switch (t) {
     case 'pdf':
-      return {
-        label: 'PDF',
-        class:
-          'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-      };
+      return 'pink';
     case 'youtube':
-      return {
-        label: 'YouTube',
-        class: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
-      };
+      return 'danger';
     case 'markdown':
-      return {
-        label: 'Markdown',
-        class: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-      };
+      return 'blue';
+  }
+}
+
+function tipeBadgeLabel(t: MateriTipe): string {
+  switch (t) {
+    case 'pdf':
+      return 'PDF';
+    case 'youtube':
+      return 'YouTube';
+    case 'markdown':
+      return 'Markdown';
   }
 }
 
@@ -71,29 +72,25 @@ function formatBytes(n: number | null | undefined): string {
 
 export function MateriViewer({ materi, hideHeader }: MateriViewerProps) {
   const Icon = tipeIcon(materi.tipe);
-  const badge = tipeBadge(materi.tipe);
+  const tone = tipeBadgeTone(materi.tipe);
+  const label = tipeBadgeLabel(materi.tipe);
 
   return (
     <article className="space-y-3">
-      {!hideHeader && (
-        <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-2">
+      {!hideHeader ? (
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-siswa-border-soft pb-3">
           <div className="flex min-w-0 items-start gap-3">
-            <Icon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+            <span className="grid size-10 shrink-0 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+              <Icon className="size-5" strokeWidth={2.5} />
+            </span>
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-base font-semibold">
+                <h3 className="siswa-display truncate text-base font-bold">
                   {materi.judul}
                 </h3>
-                <span
-                  className={cn(
-                    'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-                    badge.class,
-                  )}
-                >
-                  {badge.label}
-                </span>
+                <SiswaBadge tone={tone}>{label}</SiswaBadge>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-siswa-text-muted">
                 {materi.tipe === 'pdf' && materi.size_bytes
                   ? formatBytes(materi.size_bytes)
                   : null}
@@ -109,7 +106,7 @@ export function MateriViewer({ materi, hideHeader }: MateriViewerProps) {
             </div>
           </div>
         </header>
-      )}
+      ) : null}
 
       <div>
         {materi.tipe === 'pdf' && (

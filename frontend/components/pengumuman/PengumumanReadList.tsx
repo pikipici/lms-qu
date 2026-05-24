@@ -3,19 +3,9 @@
 /**
  * PengumumanReadList — siswa-side read-only list pengumuman.
  *
- * Backend pakai endpoint `/siswa/kelas/:id/pengumuman?bab_id=...` yang
- * server-side udah filter status=published + enrollment guard. Siswa
- * gak punya endpoint untuk get archived — kalau guru archive, langsung
- * hilang dari sini.
- *
- * Render:
- *   - Card per pengumuman, sort newest (sudah di-handle BE).
- *   - Badge "Baru" kalau created_at < 7 hari (locked #66, calc client-side).
- *   - Body markdown via react-markdown, expand-on-demand untuk hemat space.
- *   - No mark-read action (locked #66 passive timestamp).
- *
- * Dipakai di /siswa/kelas/detail Tab Pengumuman (kelas-wide, babID=null) dan
- * /siswa/kelas/detail/bab Tab Pengumuman (bab-scoped, babID=<uuid>).
+ * Visual: neo-brutalism + pastel pop. Card per pengumuman dengan badge
+ * "Baru" pop kuning kalau < 7 hari (locked #66). Body markdown via
+ * react-markdown, expand-on-demand.
  */
 
 import * as React from 'react';
@@ -36,8 +26,8 @@ import {
   isPengumumanNew,
   listSiswaPengumuman,
 } from '@/lib/pengumuman-api';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { SiswaBadge, SiswaButton } from '@/components/siswa-ui';
 
 export interface PengumumanReadListProps {
   kelasID: string;
@@ -98,22 +88,15 @@ export function PengumumanReadList({
   );
   const now = React.useMemo(
     () =>
-      listQuery.dataUpdatedAt
-        ? new Date(listQuery.dataUpdatedAt)
-        : new Date(),
+      listQuery.dataUpdatedAt ? new Date(listQuery.dataUpdatedAt) : new Date(),
     [listQuery.dataUpdatedAt],
   );
 
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
   const wasInitialized = React.useRef(false);
 
-  // Expand pertama hanya sekali (saat data pertama datang) kalau prop set.
   React.useEffect(() => {
-    if (
-      expandFirst &&
-      !wasInitialized.current &&
-      items.length > 0
-    ) {
+    if (expandFirst && !wasInitialized.current && items.length > 0) {
       const first = items[0];
       if (first) {
         wasInitialized.current = true;
@@ -133,11 +116,11 @@ export function PengumumanReadList({
 
   if (listQuery.isPending) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         {[0, 1].map((i) => (
           <div
             key={i}
-            className="h-20 animate-pulse rounded-md border bg-muted/40"
+            className="h-20 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60"
           />
         ))}
       </div>
@@ -148,37 +131,39 @@ export function PengumumanReadList({
     const err = listQuery.error;
     const apiErr = err instanceof ApiError ? err : null;
     const isForbidden = apiErr?.code === 'forbidden';
-    const requestId = apiErr?.requestId;
     return (
-      <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-        <p className="font-medium">
+      <div className="space-y-3 rounded-siswa border-2 border-siswa-danger bg-siswa-surface p-4 text-sm">
+        <p className="font-bold">
           {isForbidden ? 'Akses ditolak' : 'Gagal memuat pengumuman'}
         </p>
-        <p>
+        <p className="text-siswa-text-muted">
           {isForbidden
             ? 'Lu tidak terdaftar aktif di kelas ini.'
             : apiErr?.message ?? 'Terjadi kesalahan tidak terduga.'}
-          {requestId ? ` (req: ${requestId})` : ''}
+          {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
         </p>
-        <Button
+        <SiswaButton
           type="button"
-          variant="outline"
+          tone="surface"
           size="sm"
           onClick={() => listQuery.refetch()}
           disabled={listQuery.isFetching}
         >
           <RotateCcw className="size-4" />
           Coba lagi
-        </Button>
+        </SiswaButton>
       </div>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="rounded-md border border-dashed p-6 text-center">
-        <Megaphone className="mx-auto mb-2 size-6 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
+      <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-siswa-surface/60 p-6 text-center">
+        <Megaphone
+          className="mx-auto mb-2 size-8 text-siswa-text-muted"
+          strokeWidth={2.5}
+        />
+        <p className="text-sm text-siswa-text-muted">
           {emptyState ?? 'Belum ada pengumuman.'}
         </p>
       </div>
@@ -186,7 +171,7 @@ export function PengumumanReadList({
   }
 
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-3">
       {items.map((p) => (
         <PengumumanReadCard
           key={p.id}
@@ -217,52 +202,58 @@ function PengumumanReadCard({
   createdAt,
 }: PengumumanReadCardProps) {
   return (
-    <li className="rounded-md border bg-card">
+    <li className="overflow-hidden rounded-siswa siswa-border bg-siswa-surface siswa-shadow-sm">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-accent/40"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-siswa-cream/60"
       >
-        <span className="mt-0.5">
-          {expanded ? (
-            <ChevronDown className="size-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-4 text-muted-foreground" />
-          )}
+        <span className="grid size-8 shrink-0 place-items-center rounded-siswa siswa-border bg-siswa-cream/70">
+          <Megaphone className="size-4" strokeWidth={2.5} />
         </span>
-        <Megaphone className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <p
-              className={cn('truncate text-sm font-medium')}
+              className={cn('siswa-display truncate text-sm font-bold')}
               title={pengumuman.judul}
             >
               {pengumuman.judul}
             </p>
-            {isNew && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                <Sparkles className="size-3" />
+            {isNew ? (
+              <SiswaBadge tone="yellow">
+                <Sparkles className="size-3" strokeWidth={2.5} />
                 Baru
-              </span>
-            )}
+              </SiswaBadge>
+            ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">{createdAt}</p>
+          <p className="text-xs text-siswa-text-muted">{createdAt}</p>
         </div>
+        {expanded ? (
+          <ChevronDown
+            className="mt-1 size-4 shrink-0 text-siswa-text-muted"
+            strokeWidth={2.5}
+          />
+        ) : (
+          <ChevronRight
+            className="mt-1 size-4 shrink-0 text-siswa-text-muted"
+            strokeWidth={2.5}
+          />
+        )}
       </button>
-      {expanded && (
-        <div className="border-t bg-background px-3 py-3">
+      {expanded ? (
+        <div className="border-t-2 border-siswa-border bg-siswa-bg px-4 py-3">
           {pengumuman.isi.trim() ? (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="prose prose-sm max-w-none">
               <Markdown remarkPlugins={[remarkGfm]}>{pengumuman.isi}</Markdown>
             </div>
           ) : (
-            <p className="text-xs italic text-muted-foreground">
+            <p className="text-xs italic text-siswa-text-muted">
               Pengumuman ini tidak punya isi.
             </p>
           )}
         </div>
-      )}
+      ) : null}
     </li>
   );
 }

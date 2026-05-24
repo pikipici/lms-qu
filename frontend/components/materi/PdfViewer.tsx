@@ -3,17 +3,11 @@
 /**
  * PdfViewer — render materi tipe='pdf' read-only untuk siswa.
  *
- * Flow:
- *   1. Fetch presigned R2 GET URL via TanStack Query (staleTime 10min,
- *      locked roadmap §3.D.2). URL TTL 15 menit di server (locked #62);
- *      staleTime 10min kasih buffer 5min sebelum expire.
- *   2. Render `<iframe src={url}>` (browser's built-in PDF renderer).
- *   3. Auto mark-as-read setelah debounce 2s (locked roadmap §3.D.2 —
- *      hindari fire saat user scroll-by tab atau swipe).
+ * Visual: neo-brutalism + pastel pop. Header chip dengan filename +
+ * tombol "Buka di tab baru". Iframe wrapped dalam siswa-border.
  *
- * Tradeoff: iframe sengaja simple — no PDF.js. Browser native cukup
- * untuk MVP, dan loading lebih cepet. Bisa upgrade ke PDF.js nanti
- * kalau perlu page navigation API atau text-search.
+ * Flow: presigned R2 GET URL via TanStack Query (staleTime 10min) →
+ * iframe browser-native → debounced mark-as-read 2s setelah mount.
  */
 
 import * as React from 'react';
@@ -22,7 +16,7 @@ import { ExternalLink, FileText, Loader2 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import { friendlyMateriError, getMateriFileURL } from '@/lib/materi-api';
-import { Button } from '@/components/ui/button';
+import { SiswaButton } from '@/components/siswa-ui';
 import { useMarkMateriRead } from './useMarkMateriRead';
 
 interface PdfViewerProps {
@@ -39,11 +33,10 @@ export function PdfViewer({ materiID, originalFilename }: PdfViewerProps) {
   const urlQuery = useQuery({
     queryKey: ['siswa', 'materi', 'file-url', materiID],
     queryFn: () => getMateriFileURL(materiID),
-    staleTime: 10 * 60 * 1000, // 10 menit; URL valid 15 menit di server.
+    staleTime: 10 * 60 * 1000,
     retry: false,
   });
 
-  // Debounced mark-read: fire 2s setelah viewer mount (locked roadmap §3.D.2).
   React.useEffect(() => {
     const t = setTimeout(() => markRead(), READ_DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -52,8 +45,8 @@ export function PdfViewer({ materiID, originalFilename }: PdfViewerProps) {
 
   if (urlQuery.isPending) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-md border bg-muted/20">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex h-64 items-center justify-center rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/60">
+        <div className="flex items-center gap-2 text-sm text-siswa-text-muted">
           <Loader2 className="size-4 animate-spin" />
           Menyiapkan PDF…
         </div>
@@ -67,16 +60,16 @@ export function PdfViewer({ materiID, originalFilename }: PdfViewerProps) {
       ? friendlyMateriError(apiErr, 'file-url')
       : 'Gagal memuat URL PDF.';
     return (
-      <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-        <p>{message}</p>
-        <Button
+      <div className="space-y-2 rounded-siswa border-2 border-siswa-danger bg-siswa-surface p-4 text-sm">
+        <p className="font-semibold">{message}</p>
+        <SiswaButton
           type="button"
-          variant="outline"
+          tone="surface"
           size="sm"
           onClick={() => urlQuery.refetch()}
         >
           Coba lagi
-        </Button>
+        </SiswaButton>
       </div>
     );
   }
@@ -89,26 +82,21 @@ export function PdfViewer({ materiID, originalFilename }: PdfViewerProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          <FileText className="size-3.5" />
-          <span title={safeName} className="truncate">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 px-3 py-2 text-xs text-siswa-text-muted">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileText className="size-3.5 shrink-0" strokeWidth={2.5} />
+          <span title={safeName} className="truncate font-semibold text-siswa-text">
             {safeName}
           </span>
         </div>
-        <Button
-          asChild
-          variant="ghost"
-          size="sm"
-          className="h-auto p-1 text-xs"
-        >
+        <SiswaButton asChild tone="ghost" size="sm">
           <a href={url} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="size-3.5" />
+            <ExternalLink className="size-3.5" strokeWidth={2.5} />
             Buka di tab baru
           </a>
-        </Button>
+        </SiswaButton>
       </div>
-      <div className="overflow-hidden rounded-md border bg-muted">
+      <div className="overflow-hidden rounded-siswa siswa-border bg-siswa-surface siswa-shadow-sm">
         <iframe
           src={url}
           title={`PDF materi: ${safeName}`}

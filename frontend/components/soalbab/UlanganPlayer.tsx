@@ -52,13 +52,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -67,6 +60,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import {
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 const OPSI_LIST: { key: SoalJawaban; label: string }[] = [
   { key: 'a', label: 'A' },
@@ -275,37 +276,37 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
       ? friendlyUlanganError(apiErr, 'lobby')
       : 'Gagal memuat soal ulangan.';
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gagal memuat ulangan</CardTitle>
-          <CardDescription>{msg}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Gagal memuat ulangan</SiswaCardTitle>
+          <SiswaCardDescription>{msg}</SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => itemsQuery.refetch()}>
+            <SiswaButton type="button" size="sm" tone="surface" onClick={() => itemsQuery.refetch()}>
               <RotateCcw className="size-4" />
               Coba lagi
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={onAbort}>
+            </SiswaButton>
+            <SiswaButton type="button" size="sm" tone="ghost" onClick={onAbort}>
               Kembali ke lobi
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
   // ---- Render: loading ----
   if (itemsQuery.isPending || !att) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Memuat soal ulangan…</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-32 animate-pulse rounded-md border bg-muted/40" />
-        </CardContent>
-      </Card>
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Memuat soal ulangan…</SiswaCardTitle>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <div className="h-32 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60" />
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -315,39 +316,40 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
 
   return (
     <>
-      <Card>
-        <CardHeader className="space-y-3">
+      <SiswaCard tone="ulangan" shadow="md">
+        <SiswaCardHeader className="space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <CardTitle className="text-base">Ulangan Bab — {att.total} soal</CardTitle>
-              <CardDescription>
+              <SiswaCardTitle>Ulangan Bab — {att.total} soal</SiswaCardTitle>
+              <SiswaCardDescription>
                 Jawab semua soal lalu klik Submit. Tidak ada feedback per soal — nilai keluar
                 setelah submit.
-              </CardDescription>
+              </SiswaCardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <div
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-sm tabular-nums',
-                  timerCritical && 'border-rose-300 bg-rose-50 text-rose-700',
-                  timerWarn && !timerCritical && 'border-amber-300 bg-amber-50 text-amber-700',
-                  !timerWarn && !timerCritical && 'border-border bg-card',
+                  'inline-flex items-center gap-1.5 rounded-siswa border-2 border-siswa-border bg-siswa-surface px-3 py-1.5 font-mono text-sm font-bold tabular-nums siswa-shadow-sm',
+                  timerCritical && 'bg-rose-200 text-rose-900',
+                  timerWarn && !timerCritical && 'bg-siswa-yellow text-siswa-text',
                 )}
                 aria-live="polite"
               >
-                <Clock className="size-4" />
+                <Clock className="size-4" strokeWidth={2.5} />
                 {deadline ? formatRemaining(remaining) : '—'}
               </div>
-              <span className="text-muted-foreground">
+              <span className="font-semibold text-siswa-text-muted">
                 {answeredCount}/{att.total} terjawab
               </span>
             </div>
           </div>
           {att.attempt_no ? (
-            <div className="text-xs text-muted-foreground">Attempt #{att.attempt_no}</div>
+            <div className="text-xs font-semibold text-siswa-text-muted">
+              Attempt #{att.attempt_no}
+            </div>
           ) : null}
-        </CardHeader>
-        <CardContent>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           <ol className="space-y-4">
             {att.items.map((item, idx) => (
               <SoalCard
@@ -360,23 +362,28 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
               />
             ))}
           </ol>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t-2 border-siswa-border-soft pt-4">
+            <p className="text-sm text-siswa-text-muted">
               {answeredCount === att.total
                 ? 'Semua soal sudah dijawab. Submit kalau lu yakin.'
                 : `Masih ada ${att.total - answeredCount} soal yang belum dijawab.`}
             </p>
-            <Button
+            <SiswaButton
               type="button"
+              tone="primary"
               onClick={() => setConfirmSubmit(true)}
               disabled={disabled || submitMu.isPending}
             >
-              {submitMu.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {submitMu.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" strokeWidth={2.5} />
+              )}
               Submit ulangan
-            </Button>
+            </SiswaButton>
           </div>
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
 
       <Dialog
         open={confirmSubmit}
@@ -425,11 +432,13 @@ interface SoalCardProps {
 function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardProps) {
   const pertanyaanImg = imageURLForSlot(item, 'pertanyaan');
   return (
-    <li className="rounded-md border bg-card p-4">
+    <li className="rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="siswa-display text-sm font-bold uppercase tracking-wide text-siswa-text-muted">
           Soal {index + 1}{' '}
-          <span className="font-normal text-foreground">— {item.poin} poin</span>
+          <span className="font-semibold normal-case tracking-normal text-siswa-text">
+            — {item.poin} poin
+          </span>
         </p>
       </div>
 
@@ -437,7 +446,7 @@ function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardP
         {item.pertanyaan ? (
           <p className="whitespace-pre-wrap text-sm">{item.pertanyaan}</p>
         ) : (
-          <p className="text-sm italic text-muted-foreground">(soal hanya gambar)</p>
+          <p className="text-sm italic text-siswa-text-muted">(soal hanya gambar)</p>
         )}
         {pertanyaanImg ? (
           <SlotImage url={pertanyaanImg} alt="Gambar pertanyaan" />
@@ -453,11 +462,11 @@ function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardP
             <li key={key}>
               <label
                 className={cn(
-                  'flex gap-3 rounded-md border p-3 transition-colors',
+                  'flex gap-3 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3 transition-colors',
                   disabled
                     ? 'cursor-not-allowed opacity-70'
-                    : 'cursor-pointer hover:bg-muted/40',
-                  checked && 'border-primary bg-primary/5',
+                    : 'cursor-pointer hover:bg-siswa-cream/40',
+                  checked && 'border-siswa-border bg-siswa-yellow/40',
                 )}
               >
                 <input
@@ -471,11 +480,11 @@ function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardP
                 />
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold uppercase">{label}.</span>
+                    <span className="font-mono text-sm font-bold uppercase">{label}.</span>
                     {text ? (
                       <span className="whitespace-pre-wrap text-sm">{text}</span>
                     ) : (
-                      <span className="text-xs italic text-muted-foreground">(tanpa teks)</span>
+                      <span className="text-xs italic text-siswa-text-muted">(tanpa teks)</span>
                     )}
                   </div>
                   {slotImg ? <SlotImage url={slotImg} alt={`Gambar opsi ${label}`} /> : null}
@@ -487,8 +496,8 @@ function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardP
       </ul>
 
       {autosaveErrMsg ? (
-        <div className="mt-2 flex items-start gap-1.5 rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
-          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+        <div className="mt-2 flex items-start gap-1.5 rounded-siswa border-2 border-siswa-danger bg-rose-50 p-2 text-xs font-semibold">
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={2.5} />
           <span>
             Gagal simpan: {autosaveErrMsg} Klik ulang jawaban untuk coba lagi.
           </span>
@@ -502,20 +511,19 @@ function SlotImage({ url, alt }: { url: string; alt: string }) {
   const [errored, setErrored] = React.useState(false);
   if (errored) {
     return (
-      <div className="flex h-20 items-center justify-center gap-2 rounded-md border border-dashed text-xs text-muted-foreground">
+      <div className="flex h-20 items-center justify-center gap-2 rounded-siswa border-2 border-dashed border-siswa-border-soft text-xs text-siswa-text-muted">
         <AlertCircle className="size-4" />
         Gambar gagal dimuat
       </div>
     );
   }
-  // Static export — no next/image.
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
       src={url}
       alt={alt}
       onError={() => setErrored(true)}
-      className="max-h-64 rounded-md border bg-card object-contain"
+      className="max-h-64 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface object-contain"
     />
   );
 }
