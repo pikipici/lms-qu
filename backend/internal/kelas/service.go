@@ -93,16 +93,10 @@ func (s *Service) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, 
 	if nama == "" {
 		return nil, fmt.Errorf("%w: nama is required", ErrInvalidInput)
 	}
-	bobotSoalUlangan := in.BobotSoalUlangan
-	bobotTugas := in.BobotTugas
-	if bobotSoalUlangan == 0 && bobotTugas == 0 {
-		// Nilai default kalau caller gak set.
-		bobotSoalUlangan = 50
-		bobotTugas = 50
-	}
-	if err := validateBobot(bobotSoalUlangan, bobotTugas); err != nil {
-		return nil, err
-	}
+	// Class-level bobot is deprecated. Keep persisted defaults for backwards
+	// compatibility, but do not allow API callers to customize it anymore.
+	bobotSoalUlangan := 50
+	bobotTugas := 50
 
 	kode, err := GenerateKodeInvite(ctx, s.repo)
 	if err != nil {
@@ -358,22 +352,14 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 		return nil, ErrForbidden
 	}
 
-	// Resolve final values: caller-supplied wins, otherwise carry existing.
+	// Resolve final values. Class-level bobot is deprecated, so PATCH payloads
+	// that still send bobot fields are ignored and existing values are retained.
 	deskripsi := existing.Deskripsi
 	if in.Deskripsi != nil {
 		deskripsi = strings.TrimSpace(*in.Deskripsi)
 	}
 	bobotSoalUlangan := existing.BobotSoalUlangan
-	if in.BobotSoalUlangan != nil {
-		bobotSoalUlangan = *in.BobotSoalUlangan
-	}
 	bobotTugas := existing.BobotTugas
-	if in.BobotTugas != nil {
-		bobotTugas = *in.BobotTugas
-	}
-	if err := validateBobot(bobotSoalUlangan, bobotTugas); err != nil {
-		return nil, err
-	}
 
 	if err := s.repo.UpdateBasic(ctx, id, in.ExpectedVersion, nama, deskripsi, bobotSoalUlangan, bobotTugas); err != nil {
 		switch {
@@ -392,13 +378,9 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 	}
 
 	s.logAudit(ctx, "kelas_updated", &callerID, &id, &id, ip, userAgent, map[string]any{
-		"old_nama":               existing.Nama,
-		"new_nama":               fresh.Nama,
-		"old_bobot_soal_ulangan": existing.BobotSoalUlangan,
-		"new_bobot_soal_ulangan": fresh.BobotSoalUlangan,
-		"old_bobot_tugas":        existing.BobotTugas,
-		"new_bobot_tugas":        fresh.BobotTugas,
-		"new_version":            fresh.Version,
+		"old_nama":    existing.Nama,
+		"new_nama":    fresh.Nama,
+		"new_version": fresh.Version,
 	})
 
 	return fresh, nil

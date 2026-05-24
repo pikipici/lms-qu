@@ -13,7 +13,8 @@ func TestComputeWeightedTotal(t *testing.T) {
 		wTugas   int
 		want     *float64
 	}{
-		{name: "both components weighted", ulangan: fptr(80), tugas: fptr(100), wUlangan: 60, wTugas: 40, want: fptr(88)},
+		{name: "legacy class weights no longer used by callers", ulangan: fptr(80), tugas: fptr(100), wUlangan: 1, wTugas: 1, want: fptr(90)},
+		{name: "weighted helper still supports explicit weights", ulangan: fptr(80), tugas: fptr(100), wUlangan: 60, wTugas: 40, want: fptr(88)},
 		{name: "skip nil ulangan and renormalize", ulangan: nil, tugas: fptr(75), wUlangan: 60, wTugas: 40, want: fptr(75)},
 		{name: "skip nil tugas and renormalize", ulangan: fptr(90), tugas: nil, wUlangan: 60, wTugas: 40, want: fptr(90)},
 		{name: "zero weight component skipped", ulangan: fptr(20), tugas: fptr(90), wUlangan: 0, wTugas: 100, want: fptr(90)},

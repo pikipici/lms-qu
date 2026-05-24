@@ -336,8 +336,8 @@ func TestService_Create_HappyPath(t *testing.T) {
 	if k.Version != 1 {
 		t.Fatalf("version expected 1, got %d", k.Version)
 	}
-	if k.BobotSoalUlangan != 60 || k.BobotTugas != 40 {
-		t.Fatalf("bobot mismatch %d/%d", k.BobotSoalUlangan, k.BobotTugas)
+	if k.BobotSoalUlangan != 50 || k.BobotTugas != 50 {
+		t.Fatalf("class-level bobot should use legacy defaults, got %d/%d", k.BobotSoalUlangan, k.BobotTugas)
 	}
 	if len(k.KodeInvite) != KodeInviteLength {
 		t.Fatalf("kode invite len: %d", len(k.KodeInvite))
@@ -370,15 +370,18 @@ func TestService_Create_RejectsBlankNama(t *testing.T) {
 	}
 }
 
-func TestService_Create_RejectsBobotMismatch(t *testing.T) {
+func TestService_Create_IgnoresDeprecatedBobot(t *testing.T) {
 	svc, _, _ := newSvc(t)
-	_, err := svc.Create(context.Background(), uuid.New(), CreateInput{
+	k, err := svc.Create(context.Background(), uuid.New(), CreateInput{
 		Nama:             "X",
 		BobotSoalUlangan: 70,
 		BobotTugas:       40,
 	}, "", "")
-	if !errors.Is(err, ErrBobotInvalid) {
-		t.Fatalf("expected ErrBobotInvalid, got %v", err)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if k.BobotSoalUlangan != 50 || k.BobotTugas != 50 {
+		t.Fatalf("deprecated bobot should be ignored, got %d/%d", k.BobotSoalUlangan, k.BobotTugas)
 	}
 }
 
@@ -427,8 +430,8 @@ func TestService_Update_HappyPath(t *testing.T) {
 	if updated.Version != 2 {
 		t.Fatalf("expected version 2, got %d", updated.Version)
 	}
-	if updated.BobotSoalUlangan != 70 {
-		t.Fatalf("bobot mismatch: %d", updated.BobotSoalUlangan)
+	if updated.BobotSoalUlangan != 50 || updated.BobotTugas != 50 {
+		t.Fatalf("deprecated bobot should be retained, got %d/%d", updated.BobotSoalUlangan, updated.BobotTugas)
 	}
 	if got := lastAuditAction(audit); got != "kelas_updated" {
 		t.Fatalf("expected kelas_updated audit, got %q", got)
