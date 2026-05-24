@@ -2,12 +2,13 @@
 // at-query-time (locked #90 — read-only, no persisted denormalize).
 //
 // Formula references:
-//   - Section 6.2 NilaiBab = weighted_avg(NilaiUlanganBab, NilaiTugasBab,
-//     weights = (Kelas.BobotSoalUlangan, Kelas.BobotTugas), skip NULL).
+//   - NilaiBab = average(NilaiUlanganBab, NilaiTugasBab), skip NULL.
+//     Class-level bobot is deprecated; item-level bobot is applied inside
+//     tugas/ujian components.
 //   - NilaiUlanganBab = TotalNilai HasilSoalBab(mode=ulangan, deleted_at IS
 //     NULL, status=selesai) terbaru per (BabID, SiswaID), normalize ke 0..100
 //     pakai SUM SoalBab.Poin (mode=ulangan,keduanya).
-//   - NilaiTugasBab = AVG NilaiSetelahPenalty / MaxNilai × 100 untuk
+//   - NilaiTugasBab = weighted average NilaiSetelahPenalty by Tugas.Bobot untuk
 //     submission status=graded di tugas yang BabID=bab tsb.
 //   - NilaiUlanganHarian = TotalNilai HasilUjian(deleted_at IS NULL,
 //     status=selesai) terbaik per (UjianID, SiswaID).
@@ -92,8 +93,9 @@ type SiswaListResponse struct {
 }
 
 // computeWeightedTotal applies weighted average with NULL-skip
-// re-normalization (locked #48 + Section 6.2). Returns nil if all
-// components are nil OR total weight is zero.
+// re-normalization. For bab totals, callers pass equal component weights
+// because class-level bobot is deprecated. Returns nil if all components
+// are nil OR total weight is zero.
 func computeWeightedTotal(ulangan, tugas *float64, wUlangan, wTugas int) *float64 {
 	var num float64
 	var den int

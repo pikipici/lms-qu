@@ -293,8 +293,10 @@ func (s *Service) guruSiswaKelasNilai(ctx context.Context, kelasID, siswaID uuid
 		return nil, err
 	}
 
-	wUlangan := k.BobotSoalUlangan
-	wTugas := k.BobotTugas
+	// Class-level bobot is deprecated. Bab total now treats ulangan-bab and
+	// tugas as peer components; item-level bobot is applied inside each component.
+	wUlangan := 1
+	wTugas := 1
 
 	babRows := make([]NilaiBabRow, 0, len(babs))
 	for _, b := range babs {
