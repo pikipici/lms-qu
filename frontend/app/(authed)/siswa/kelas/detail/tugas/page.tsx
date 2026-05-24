@@ -13,17 +13,16 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-
 import { SubmissionPanel } from '@/components/submission/SubmissionPanel';
 import { getTugas } from '@/lib/tugas-api';
+import {
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 export default function SiswaTugasDetailPage() {
   const searchParams = useSearchParams();
@@ -32,22 +31,22 @@ export default function SiswaTugasDetailPage() {
 
   if (!kelasID || !tugasID) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Parameter tidak lengkap</CardTitle>
-          <CardDescription>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Parameter tidak lengkap</SiswaCardTitle>
+          <SiswaCardDescription>
             URL ini butuh <code>?id=:kelasID&tid=:tugasID</code>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline" size="sm">
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <SiswaButton asChild tone="surface" size="sm">
             <Link href="/siswa">
               <ArrowLeft className="size-4" />
               Daftar kelas
             </Link>
-          </Button>
-        </CardContent>
-      </Card>
+          </SiswaButton>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -61,8 +60,6 @@ function SiswaTugasDetailContent({
   kelasID: string;
   tugasID: string;
 }) {
-  // Hydrate deskripsi via getTugas (BE branches by role: siswa hanya
-  // dapet kalau status=published + enrollment).
   const tugasQuery = useQuery({
     queryKey: ['siswa', 'tugas', 'detail', tugasID],
     queryFn: () => getTugas(tugasID),
@@ -70,14 +67,12 @@ function SiswaTugasDetailContent({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/siswa/kelas/detail?id=${kelasID}`}>
-            <ArrowLeft className="size-4" />
-            Kembali ke kelas
-          </Link>
-        </Button>
-      </div>
+      <SiswaButton asChild tone="ghost" size="sm" className="-ml-2">
+        <Link href={`/siswa/kelas/detail?id=${kelasID}`}>
+          <ArrowLeft className="size-4" />
+          Kembali ke kelas
+        </Link>
+      </SiswaButton>
 
       <SubmissionPanel
         tugasID={tugasID}

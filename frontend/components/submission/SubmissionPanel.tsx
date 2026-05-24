@@ -69,6 +69,15 @@ import {
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import {
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 export const submissionQueryKey = (tugasID: string) =>
   ['submission', 'mine', tugasID] as const;
@@ -146,12 +155,12 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
 
   if (myQuery.isPending) {
     return (
-      <Card>
-        <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardBody className="flex items-center gap-2 py-6 text-sm text-siswa-text-muted">
           <Loader2 className="size-4 animate-spin" />
           Memuat tugas…
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -159,24 +168,24 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
     const err = myQuery.error;
     const apiErr = err instanceof ApiError ? err : null;
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gagal memuat tugas</CardTitle>
-          <CardDescription>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Gagal memuat tugas</SiswaCardTitle>
+          <SiswaCardDescription>
             {apiErr ? friendlySubmissionError(apiErr, 'get') : (err as Error).message}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <SiswaButton
             type="button"
-            variant="outline"
+            tone="surface"
             size="sm"
             onClick={() => myQuery.refetch()}
           >
             Coba lagi
-          </Button>
-        </CardContent>
-      </Card>
+          </SiswaButton>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -226,71 +235,71 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{tugas.judul}</CardTitle>
-          <CardDescription className="flex flex-wrap items-center gap-3 text-xs">
+      <SiswaCard tone="tugas" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>{tugas.judul}</SiswaCardTitle>
+          <SiswaCardDescription className="flex flex-wrap items-center gap-3 text-xs">
             <span className="inline-flex items-center gap-1">
               <Calendar className="size-3.5" />
               Deadline: {formatDeadline(tugas.deadline)}
             </span>
-            {tugas.izinkan_late && tugas.penalty_persen > 0 && (
-              <span className="inline-flex items-center gap-1 text-amber-600">
-                <Clock className="size-3.5" />
+            {tugas.izinkan_late && tugas.penalty_persen > 0 ? (
+              <SiswaBadge tone="warning">
+                <Clock className="size-3" strokeWidth={2.5} />
                 Late penalty {tugas.penalty_persen}%
-              </span>
-            )}
-            {tugas.wajib_attachment && (
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Paperclip className="size-3.5" />
+              </SiswaBadge>
+            ) : null}
+            {tugas.wajib_attachment ? (
+              <SiswaBadge tone="cream">
+                <Paperclip className="size-3" strokeWidth={2.5} />
                 Wajib lampiran
-              </span>
-            )}
-          </CardDescription>
-        </CardHeader>
-        {initialDeskripsi && initialDeskripsi.trim() && (
-          <CardContent className="text-sm text-foreground/90 whitespace-pre-wrap">
+              </SiswaBadge>
+            ) : null}
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        {initialDeskripsi && initialDeskripsi.trim() ? (
+          <SiswaCardBody className="text-sm text-siswa-text whitespace-pre-wrap">
             {initialDeskripsi}
-          </CardContent>
-        )}
-      </Card>
+          </SiswaCardBody>
+        ) : null}
+      </SiswaCard>
 
       {/* Lampiran soal dari guru */}
       <TugasAttachments tugasID={tugasID} query={tugasAttQuery} />
 
       {/* Status submission existing */}
       {sub && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <CheckCircle2 className="size-4 text-emerald-600" />
+        <SiswaCard tone="surface" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 text-emerald-600" strokeWidth={2.5} />
               {statusLabel(sub.status)}
-            </CardTitle>
-            <CardDescription className="flex flex-wrap items-center gap-3 text-xs">
+            </SiswaCardTitle>
+            <SiswaCardDescription className="flex flex-wrap items-center gap-3 text-xs">
               <span>Versi {sub.version}</span>
               <span>Terkirim: {formatSubmissionTimestamp(sub.submitted_at)}</span>
-              {sub.is_late && (
-                <span className="inline-flex items-center gap-1 text-amber-600">
-                  <Clock className="size-3.5" /> LATE
-                </span>
-              )}
-              {sub.graded_at && (
+              {sub.is_late ? (
+                <SiswaBadge tone="warning">
+                  <Clock className="size-3" strokeWidth={2.5} /> LATE
+                </SiswaBadge>
+              ) : null}
+              {sub.graded_at ? (
                 <span>Dinilai: {formatSubmissionTimestamp(sub.graded_at)}</span>
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+              ) : null}
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody className="space-y-3">
             {sub.catatan && (
               <div>
-                <p className="text-xs font-medium text-muted-foreground">
+                <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
                   Catatan lu
                 </p>
-                <p className="text-sm whitespace-pre-wrap">{sub.catatan}</p>
+                <p className="mt-1 text-sm whitespace-pre-wrap">{sub.catatan}</p>
               </div>
             )}
             {sub.attachments && sub.attachments.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-muted-foreground">
+                <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
                   Lampiran lu
                 </p>
                 <SubmissionAttachmentLinks
@@ -301,25 +310,25 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
             )}
             {isGraded && (
               <>
-                <hr className="my-2 border-border" />
-                <div className="grid gap-2 rounded-md bg-emerald-50 p-3 text-sm dark:bg-emerald-900/20">
+                <div className="border-t-2 border-siswa-border-soft my-2" />
+                <div className="grid gap-2 rounded-siswa border-2 border-siswa-border bg-siswa-green/40 p-4 text-sm siswa-shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Nilai</span>
-                    <span className="text-2xl font-bold">
+                    <span className="font-bold uppercase tracking-wide text-xs">Nilai</span>
+                    <span className="siswa-display text-3xl font-bold">
                       {sub.nilai_setelah_penalty?.toFixed(2) ?? '—'}
                     </span>
                   </div>
                   {sub.is_late &&
                     sub.penalty_persen_applied != null &&
                     sub.penalty_persen_applied > 0 && (
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs text-siswa-text-muted">
                         Nilai asli {sub.nilai_asli?.toFixed(2)} × (1 -{' '}
                         {sub.penalty_persen_applied}%) = nilai akhir.
                       </div>
                     )}
                   {sub.feedback && (
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
                         Feedback guru
                       </p>
                       <p className="whitespace-pre-wrap">{sub.feedback}</p>
@@ -328,33 +337,35 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </SiswaCardBody>
+        </SiswaCard>
       )}
 
       {/* Composer */}
       {!isGraded && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
+        <SiswaCard tone="surface" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle>
               {sub ? 'Kirim ulang (resubmit)' : 'Kirim tugas'}
-            </CardTitle>
-            <CardDescription>
+            </SiswaCardTitle>
+            <SiswaCardDescription>
               {blockedSubmit
                 ? 'Deadline sudah lewat dan late submission tidak diizinkan.'
                 : sub
                   ? 'Resubmit overwrite versi lama. Lampiran lama bakal diganti yang baru.'
                   : 'Tulis catatan + opsional upload lampiran (PDF, DOCX, JPG, PNG, ZIP).'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody className="space-y-3">
             {!sub || composerOpen ? (
               <>
                 <div className="space-y-1.5">
-                  <Label htmlFor="submission-catatan">Catatan</Label>
+                  <Label htmlFor="submission-catatan" className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
+                    Catatan
+                  </Label>
                   <textarea
                     id="submission-catatan"
-                    className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex min-h-[120px] w-full rounded-siswa border-2 border-siswa-border bg-siswa-surface px-3 py-2 text-sm placeholder:text-siswa-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-yellow disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Tulis jawaban / catatan lu di sini…"
                     value={catatan}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -363,14 +374,14 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                     disabled={blockedSubmit || submitMu.isPending}
                     rows={6}
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-siswa-text-muted">
                     {(catatan.length / 1024).toFixed(1)} KB /{' '}
                     {MAX_SUBMISSION_CATATAN_BYTES / 1024} KB
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="submission-files">
+                  <Label htmlFor="submission-files" className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
                     Lampiran (opsional, max {MAX_SUBMISSION_ATTACHMENTS} file ×{' '}
                     {MAX_SUBMISSION_ATTACHMENT_BYTES / (1024 * 1024)} MB)
                   </Label>
@@ -388,9 +399,10 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                       onPickFiles(e.target.files);
                       e.target.value = '';
                     }}
+                    className="rounded-siswa border-2 border-siswa-border bg-siswa-surface"
                   />
                   {files.length > 0 && (
-                    <ul className="space-y-1 rounded-md border bg-muted/30 p-2 text-sm">
+                    <ul className="space-y-1 rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-2 text-sm">
                       {files.map((f, i) => (
                         <li
                           key={`${f.name}-${i}`}
@@ -399,7 +411,7 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                           <span className="flex items-center gap-2 truncate">
                             <FileText className="size-3.5 shrink-0" />
                             <span className="truncate">{f.name}</span>
-                            <span className="shrink-0 text-xs text-muted-foreground">
+                            <span className="shrink-0 text-xs text-siswa-text-muted">
                               {(f.size / 1024).toFixed(1)} KB
                             </span>
                           </span>
@@ -419,30 +431,31 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                 </div>
 
                 {error && (
-                  <p className="text-sm text-destructive" role="alert">
+                  <p className="text-sm font-semibold text-siswa-danger" role="alert">
                     {error}
                   </p>
                 )}
 
                 <div className="flex flex-wrap gap-2">
-                  <Button
+                  <SiswaButton
                     type="button"
+                    tone="primary"
                     onClick={onSubmitClick}
                     disabled={blockedSubmit || submitMu.isPending}
                   >
                     {submitMu.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : sub ? (
-                      <Upload className="size-4" />
+                      <Upload className="size-4" strokeWidth={2.5} />
                     ) : (
-                      <Send className="size-4" />
+                      <Send className="size-4" strokeWidth={2.5} />
                     )}
                     {sub ? 'Resubmit' : 'Kirim'}
-                  </Button>
+                  </SiswaButton>
                   {sub && composerOpen && (
-                    <Button
+                    <SiswaButton
                       type="button"
-                      variant="outline"
+                      tone="surface"
                       onClick={() => {
                         setComposerOpen(false);
                         setCatatan(sub.catatan ?? '');
@@ -452,26 +465,26 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                       disabled={submitMu.isPending}
                     >
                       Batal
-                    </Button>
+                    </SiswaButton>
                   )}
                 </div>
               </>
             ) : (
-              <Button
+              <SiswaButton
                 type="button"
-                variant="outline"
+                tone="surface"
                 onClick={() => {
                   setComposerOpen(true);
                   setError(null);
                 }}
                 disabled={blockedSubmit}
               >
-                <Upload className="size-4" />
+                <Upload className="size-4" strokeWidth={2.5} />
                 Kirim ulang
-              </Button>
+              </SiswaButton>
             )}
-          </CardContent>
-        </Card>
+          </SiswaCardBody>
+        </SiswaCard>
       )}
     </div>
   );
@@ -490,12 +503,12 @@ function TugasAttachments({
 
   if (query.isPending) {
     return (
-      <Card>
-        <CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+      <SiswaCard tone="surface" shadow="sm">
+        <SiswaCardBody className="flex items-center gap-2 py-4 text-sm text-siswa-text-muted">
           <Loader2 className="size-4 animate-spin" />
           Memuat lampiran soal…
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
@@ -523,21 +536,21 @@ function TugasAttachments({
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Lampiran soal dari guru</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <SiswaCard tone="surface" shadow="sm">
+      <SiswaCardHeader className="pb-2">
+        <SiswaCardTitle className="text-sm">Lampiran soal dari guru</SiswaCardTitle>
+      </SiswaCardHeader>
+      <SiswaCardBody>
         <ul className="space-y-1">
           {items.map((att) => (
             <li
               key={att.id}
-              className="flex items-center justify-between gap-2 rounded-md border bg-card p-2"
+              className="flex items-center justify-between gap-2 rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-2"
             >
               <span className="flex min-w-0 items-center gap-2 truncate">
                 <FileText className="size-4 shrink-0" />
                 <span className="truncate text-sm">{att.original_filename}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
+                <span className="shrink-0 text-xs text-siswa-text-muted">
                   {(att.size_bytes / 1024).toFixed(1)} KB
                 </span>
               </span>
@@ -557,8 +570,8 @@ function TugasAttachments({
             </li>
           ))}
         </ul>
-      </CardContent>
-    </Card>
+      </SiswaCardBody>
+    </SiswaCard>
   );
 }
 
@@ -597,7 +610,7 @@ function SubmissionAttachmentLinks({
       {list.map((att) => (
         <li
           key={att.id}
-          className="flex items-center justify-between gap-2 rounded-md border bg-card p-2"
+          className="flex items-center justify-between gap-2 rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40 p-2"
         >
           <span className="flex min-w-0 items-center gap-2 truncate">
             <FileText className="size-4 shrink-0" />

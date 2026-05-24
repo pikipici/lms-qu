@@ -1,32 +1,19 @@
 'use client';
 
 /**
- * /siswa/kelas/detail/bab?id=:kelasID&bid=:babID — siswa bab detail page
- * (Task 3.E.2).
+ * /siswa/kelas/detail/bab?id=:kelasID&bid=:babID — siswa bab detail page.
  *
- * Static export (Next 14 `output: 'export'`) tidak izinkan dynamic route
- * tanpa generateStaticParams. Mirror pola query-string seperti
- * /guru/kelas/detail/bab.
+ * Refactor: neo-brutalism + pastel pop.
  *
- * Render:
- *   - Header: nama bab + nomor + breadcrumb (kelas → bab) + progress bar.
- *   - Tab Materi (default + sole): list materi card. Klik card → expand
- *     pakai <MateriViewer hideHeader> sebagai body. Mark-as-read fired
- *     by viewer subcomponents (mount-side / debounced).
- *   - Tab placeholder Soal/Tugas/Pengumuman → pointer ke fase berikutnya
- *     (mirror GuruBabDetail pola).
+ * Header: tone deterministic dari kelas_id (konsistensi sama header
+ * /siswa/kelas/detail). Tab nav pill-style berwarna per section accent:
+ *   - Materi   → blue
+ *   - Soal     → yellow
+ *   - Tugas    → pink
+ *   - Pengumuman → cream
  *
- * Backend dependency:
- *   - GET /siswa/bab/:id (Task 3.E.1) returns SiswaBabDetail
- *     { bab: SiswaBabItem, materi: SiswaMateriCard[] }.
- *   - POST /siswa/materi/:id/read (Task 3.C.4) idempotent — auto-fired
- *     by viewer per-tipe.
- *
- * Read state UX:
- *   - Card tampilin badge "✓ dibaca" kalau sudah_dibaca=true.
- *   - Setelah viewer fire markRead, kita refetch detail biar progress +
- *     read-set ke-update. Refetch debounced 3s setelah pertama buka
- *     (cukup buat PdfViewer 2s debounce + 1s buffer).
+ * Materi card pakai SiswaCard surface + press feedback. Mark-as-read
+ * still fired by viewer subcomponents on mount (debounced for PDF).
  */
 
 import * as React from 'react';
@@ -46,6 +33,7 @@ import {
   Type,
   Youtube,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import { listMyKelas, type MyKelasItem } from '@/lib/siswa-api';
@@ -54,14 +42,6 @@ import {
   type SiswaMateriCard,
   type SiswaMateriTipe,
 } from '@/lib/siswa-bab-api';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { MateriViewer } from '@/components/materi/MateriViewer';
 import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
@@ -70,6 +50,18 @@ import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
 import { SiswaTugasList } from '@/components/submission/SiswaTugasList';
 import { LatihanPlayer } from '@/components/soalbab/LatihanPlayer';
 import { UlanganSection } from '@/components/soalbab/UlanganSection';
+import {
+  SECTION_META,
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+  kelasToneFromId,
+} from '@/components/siswa-ui';
+import type { SiswaSectionKind } from '@/components/siswa-ui';
 
 // ---------- Sub-tab definition ----------
 
@@ -78,17 +70,18 @@ type SubTabKey = 'materi' | 'soal' | 'tugas' | 'pengumuman';
 const SUB_TABS: {
   key: SubTabKey;
   label: string;
-  Icon: React.ComponentType<{ className?: string }>;
+  Icon: LucideIcon;
+  section: SiswaSectionKind;
 }[] = [
-  { key: 'materi', label: 'Materi', Icon: FileText },
-  { key: 'soal', label: 'Soal', Icon: BookOpen },
-  { key: 'tugas', label: 'Tugas', Icon: ClipboardList },
-  { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
+  { key: 'materi', label: 'Materi', Icon: FileText, section: 'materi' },
+  { key: 'soal', label: 'Soal', Icon: BookOpen, section: 'ulangan' },
+  { key: 'tugas', label: 'Tugas', Icon: ClipboardList, section: 'tugas' },
+  { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone, section: 'umum' },
 ];
 
 // ---------- Helpers ----------
 
-function tipeIcon(t: SiswaMateriTipe): React.ComponentType<{ className?: string }> {
+function tipeIcon(t: SiswaMateriTipe): LucideIcon {
   switch (t) {
     case 'pdf':
       return FileText;
@@ -110,14 +103,14 @@ function tipeLabel(t: SiswaMateriTipe): string {
   }
 }
 
-function tipeBadgeColor(t: SiswaMateriTipe): string {
+function tipeBadgeTone(t: SiswaMateriTipe): React.ComponentProps<typeof SiswaBadge>['tone'] {
   switch (t) {
     case 'pdf':
-      return 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300';
+      return 'pink';
     case 'youtube':
-      return 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300';
+      return 'danger';
     case 'markdown':
-      return 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300';
+      return 'blue';
   }
 }
 
@@ -137,9 +130,6 @@ function MateriRow({
   const Icon = tipeIcon(card.tipe);
   const wasExpandedRef = React.useRef(false);
 
-  // Schedule a refetch after the user opens this card the first time so the
-  // sudah_dibaca flag + parent progress catch up. Debounce 3s ≥ PDF mark-read
-  // debounce (2s) + small buffer. Subsequent toggles tidak trigger ulang.
   React.useEffect(() => {
     if (expanded && !wasExpandedRef.current) {
       wasExpandedRef.current = true;
@@ -150,43 +140,48 @@ function MateriRow({
   }, [expanded, onOpened]);
 
   return (
-    <div className="rounded-md border bg-card">
+    <div className="overflow-hidden rounded-siswa siswa-border bg-siswa-surface siswa-shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-start gap-3 p-3 text-left hover:bg-accent/40"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-siswa-cream/60 focus-visible:outline-none focus-visible:bg-siswa-cream/70"
       >
-        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1 space-y-1">
+        <span className="grid size-9 shrink-0 place-items-center rounded-siswa border-2 border-siswa-border bg-siswa-surface">
+          <Icon className="size-4" strokeWidth={2.5} />
+        </span>
+        <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium">{card.judul}</span>
-            <span
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-                tipeBadgeColor(card.tipe),
-              )}
-            >
-              {tipeLabel(card.tipe)}
+            <span className="siswa-display truncate text-sm font-bold leading-tight">
+              {card.judul}
             </span>
-            {card.sudah_dibaca && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                <CheckCircle2 className="size-3" />
+            <SiswaBadge tone={tipeBadgeTone(card.tipe)}>
+              {tipeLabel(card.tipe)}
+            </SiswaBadge>
+            {card.sudah_dibaca ? (
+              <SiswaBadge tone="success" className="text-siswa-text">
+                <CheckCircle2 className="size-3" strokeWidth={2.5} />
                 Dibaca
-              </span>
-            )}
+              </SiswaBadge>
+            ) : null}
           </div>
         </div>
         {expanded ? (
-          <ChevronDown className="mt-1 size-4 shrink-0 text-muted-foreground" />
+          <ChevronDown
+            className="mt-1 size-4 shrink-0 text-siswa-text-muted"
+            strokeWidth={2.5}
+          />
         ) : (
-          <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
+          <ChevronRight
+            className="mt-1 size-4 shrink-0 text-siswa-text-muted"
+            strokeWidth={2.5}
+          />
         )}
       </button>
-      {expanded && (
-        <div className="border-t bg-background p-3">
+      {expanded ? (
+        <div className="border-t-2 border-siswa-border bg-siswa-bg p-4">
           <MateriViewer materi={siswaCardToMateri(card)} hideHeader />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -204,9 +199,12 @@ function MateriTab({
 
   if (materi.length === 0) {
     return (
-      <div className="rounded-md border border-dashed p-8 text-center">
-        <FileText className="mx-auto mb-2 size-6 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
+      <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-siswa-surface/60 p-8 text-center">
+        <FileText
+          className="mx-auto mb-2 size-8 text-siswa-text-muted"
+          strokeWidth={2.5}
+        />
+        <p className="text-sm text-siswa-text-muted">
           Belum ada materi di bab ini. Tunggu guru lu nge-upload.
         </p>
       </div>
@@ -214,13 +212,15 @@ function MateriTab({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {materi.map((card) => (
         <MateriRow
           key={card.id}
           card={card}
           expanded={openID === card.id}
-          onToggle={() => setOpenID((prev) => (prev === card.id ? null : card.id))}
+          onToggle={() =>
+            setOpenID((prev) => (prev === card.id ? null : card.id))
+          }
           onOpened={onRefresh}
         />
       ))}
@@ -236,31 +236,30 @@ function SoalTabContent({ babID }: { babID: string }) {
   const [sub, setSub] = React.useState<SoalSubTab>('latihan');
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-md border bg-card p-1">
-        <button
-          type="button"
-          onClick={() => setSub('latihan')}
-          className={cn(
-            'rounded px-3 py-1.5 text-sm transition-colors',
-            sub === 'latihan'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          Latihan
-        </button>
-        <button
-          type="button"
-          onClick={() => setSub('ulangan')}
-          className={cn(
-            'rounded px-3 py-1.5 text-sm transition-colors',
-            sub === 'ulangan'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          Ulangan Bab
-        </button>
+      <div className="inline-flex gap-1 rounded-siswa siswa-border bg-siswa-surface p-1 siswa-shadow-sm">
+        {(
+          [
+            { key: 'latihan', label: 'Latihan', tone: 'bg-siswa-green' },
+            { key: 'ulangan', label: 'Ulangan Bab', tone: 'bg-siswa-yellow' },
+          ] as const
+        ).map(({ key, label, tone }) => {
+          const active = sub === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSub(key)}
+              className={cn(
+                'rounded-[calc(var(--siswa-radius)-4px)] px-4 py-1.5 text-sm font-semibold transition-colors',
+                active
+                  ? cn('border-2 border-siswa-border', tone)
+                  : 'text-siswa-text/70 hover:bg-siswa-cream/60',
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {sub === 'latihan' ? (
@@ -273,35 +272,6 @@ function SoalTabContent({ babID }: { babID: string }) {
 }
 
 // ---------- Page content ----------
-
-function PlaceholderTab({
-  Icon,
-  title,
-  body,
-  taskRef,
-}: {
-  Icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  body: string;
-  taskRef: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Icon className="size-5 text-muted-foreground" />
-          <CardTitle className="text-base">{title}</CardTitle>
-        </div>
-        <CardDescription>{body}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Akan tersedia di {taskRef}.
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function SiswaBabDetailContent({
   kelasID,
@@ -333,9 +303,6 @@ function SiswaBabDetailContent({
     },
   });
 
-  // Refresh handler dipanggil oleh MateriRow setelah viewer di-buka
-  // (debounced 3s). Invalidate kedua query: detail (read state) + parent
-  // list (progress per bab di /siswa/kelas/detail page).
   const handleMateriOpened = React.useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: ['siswa', 'bab', 'detail', babID],
@@ -352,9 +319,9 @@ function SiswaBabDetailContent({
   if (detailQuery.isPending || enrollmentQuery.isPending) {
     return (
       <div className="space-y-4">
-        <div className="h-6 w-48 animate-pulse rounded bg-muted" />
-        <div className="h-32 animate-pulse rounded-md border bg-muted/40" />
-        <div className="h-64 animate-pulse rounded-md border bg-muted/40" />
+        <div className="h-6 w-48 animate-pulse rounded bg-siswa-text/10" />
+        <div className="h-32 animate-pulse rounded-siswa siswa-border bg-siswa-surface" />
+        <div className="h-64 animate-pulse rounded-siswa siswa-border bg-siswa-surface" />
       </div>
     );
   }
@@ -364,100 +331,127 @@ function SiswaBabDetailContent({
     const apiErr = err instanceof ApiError ? err : null;
     const isNotFound = apiErr?.code === 'not_found';
     const isForbidden = apiErr?.code === 'forbidden';
-    const requestId = apiErr?.requestId;
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>
             {isNotFound
               ? 'Bab tidak ditemukan'
               : isForbidden
                 ? 'Akses ditolak'
                 : 'Gagal memuat bab'}
-          </CardTitle>
-          <CardDescription>
+          </SiswaCardTitle>
+          <SiswaCardDescription>
             {isNotFound
               ? 'Bab ini belum dipublish atau sudah dihapus oleh guru.'
               : isForbidden
                 ? 'Lu tidak terdaftar aktif di kelas bab ini.'
                 : apiErr?.message ?? 'Terjadi kesalahan tidak terduga.'}
-            {requestId ? ` (req: ${requestId})` : ''}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline" size="sm">
+            {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <SiswaButton asChild tone="surface" size="sm">
             <Link href={`/siswa/kelas/detail?id=${kelasID}`}>
               <ArrowLeft className="size-4" />
               Kembali ke kelas
             </Link>
-          </Button>
-        </CardContent>
-      </Card>
+          </SiswaButton>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 
   const detail = detailQuery.data!;
   const bab = detail.bab;
   const kelasNama = enrollment?.kelas.nama ?? 'kelas';
+  const tone = kelasToneFromId(kelasID);
+  const meta = SECTION_META[tone];
+  const KelasIcon = meta.Icon;
 
   return (
     <div className="space-y-6">
-      <header className="space-y-3">
-        <Button asChild variant="ghost" size="sm" className="-ml-3">
-          <Link href={`/siswa/kelas/detail?id=${kelasID}`}>
-            <ArrowLeft className="size-4" />
-            Kelas {kelasNama}
-          </Link>
-        </Button>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <span className="text-sm text-muted-foreground">Bab {bab.nomor}</span>
-            <h1 className="text-2xl font-semibold tracking-tight">{bab.judul}</h1>
-            {bab.deskripsi && (
-              <p className="max-w-3xl text-sm text-muted-foreground">
+      <SiswaButton asChild tone="ghost" size="sm" className="-ml-2">
+        <Link href={`/siswa/kelas/detail?id=${kelasID}`}>
+          <ArrowLeft className="size-4" />
+          Kelas {kelasNama}
+        </Link>
+      </SiswaButton>
+
+      {/* Header card */}
+      <SiswaCard tone={tone} shadow="lg" className="overflow-hidden">
+        <div className="flex items-start gap-4 border-b-2 border-siswa-border bg-siswa-surface/70 px-6 py-5">
+          <span className="grid size-12 shrink-0 place-items-center rounded-siswa siswa-border bg-siswa-surface siswa-shadow-sm">
+            <KelasIcon className="size-6" strokeWidth={2.5} />
+          </span>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-siswa-text-muted">
+                Bab {bab.nomor}
+              </span>
+              <SiswaBadge tone="cream">{kelasNama}</SiswaBadge>
+            </div>
+            <h1 className="siswa-display text-2xl font-bold leading-tight sm:text-3xl">
+              {bab.judul}
+            </h1>
+            {bab.deskripsi ? (
+              <p className="max-w-3xl text-sm text-siswa-text">
                 {bab.deskripsi}
               </p>
-            )}
+            ) : null}
           </div>
-          <Button
+          <SiswaButton
             type="button"
-            variant="outline"
+            tone="surface"
             size="sm"
             onClick={() => detailQuery.refetch()}
             disabled={detailQuery.isFetching}
           >
             <RotateCcw className="size-4" />
             Refresh
-          </Button>
+          </SiswaButton>
         </div>
-        <div className="max-w-md">
-          <SiswaBabProgressBar
-            persen={bab.progress.persen}
-            materiRead={bab.progress.materi_read}
-            materiTotal={bab.progress.materi_total}
-            babKosong={bab.progress.bab_kosong}
-            size="md"
-          />
+        <div className="px-6 py-5">
+          <div className="max-w-md">
+            <SiswaBabProgressBar
+              persen={bab.progress.persen}
+              materiRead={bab.progress.materi_read}
+              materiTotal={bab.progress.materi_total}
+              babKosong={bab.progress.bab_kosong}
+              size="md"
+              variant="siswa"
+            />
+          </div>
         </div>
-      </header>
+      </SiswaCard>
 
-      {/* Tab nav */}
-      <div className="flex gap-1 overflow-x-auto border-b">
-        {SUB_TABS.map(({ key, label, Icon }) => {
+      {/* Tab nav — pill-style berwarna per section accent */}
+      <div
+        className="flex flex-wrap gap-2 rounded-siswa siswa-border bg-siswa-surface p-2 siswa-shadow-sm"
+        role="tablist"
+        aria-label="Bagian bab"
+      >
+        {SUB_TABS.map(({ key, label, Icon, section }) => {
           const active = tab === key;
+          const sectionMeta = SECTION_META[section];
           return (
             <button
               key={key}
               type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => setTab(key)}
               className={cn(
-                'flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors',
+                'flex items-center gap-2 rounded-[calc(var(--siswa-radius)-4px)] px-3 py-2 text-sm font-semibold transition-all',
                 active
-                  ? 'border-primary font-medium text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
+                  ? cn(
+                      'border-2 border-siswa-border siswa-shadow-sm',
+                      sectionMeta.solid,
+                    )
+                  : 'border-2 border-transparent text-siswa-text/70 hover:bg-siswa-cream/60 hover:text-siswa-text',
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4" strokeWidth={2.5} />
               {label}
             </button>
           );
@@ -465,62 +459,90 @@ function SiswaBabDetailContent({
       </div>
 
       {/* Tab content */}
-      {tab === 'materi' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Materi bab</CardTitle>
-            <CardDescription>
-              Klik card buat baca / tonton. Status bacaan otomatis ke-track.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MateriTab
-              materi={detail.materi}
-              onRefresh={handleMateriOpened}
-            />
-          </CardContent>
-        </Card>
-      )}
+      {tab === 'materi' ? (
+        <SiswaCard tone="materi" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <FileText className="size-4" strokeWidth={2.5} />
+              </span>
+              Materi bab
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Klik card buat baca atau tonton. Status bacaan otomatis ke-track.
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <MateriTab materi={detail.materi} onRefresh={handleMateriOpened} />
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
 
-      {tab === 'soal' && (
-        <SoalTabContent babID={babID} />
-      )}
+      {tab === 'soal' ? (
+        <SiswaCard tone="ulangan" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <BookOpen className="size-4" strokeWidth={2.5} />
+              </span>
+              Soal bab
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Latihan tanpa nilai (formative) — atau Ulangan Bab yang masuk
+              rapor.
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <SoalTabContent babID={babID} />
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
 
-      {tab === 'tugas' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Tugas bab</CardTitle>
-            <CardDescription>
+      {tab === 'tugas' ? (
+        <SiswaCard tone="tugas" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <ClipboardList className="size-4" strokeWidth={2.5} />
+              </span>
+              Tugas bab
+            </SiswaCardTitle>
+            <SiswaCardDescription>
               Tugas yang ditujukan untuk bab ini. Buka untuk submit/resubmit.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
             <SiswaTugasList
               kelasID={kelasID}
               babID={babID}
               emptyState="Belum ada tugas untuk bab ini."
             />
-          </CardContent>
-        </Card>
-      )}
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
 
-      {tab === 'pengumuman' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Pengumuman bab</CardTitle>
-            <CardDescription>
+      {tab === 'pengumuman' ? (
+        <SiswaCard tone="umum" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <Megaphone className="size-4" strokeWidth={2.5} />
+              </span>
+              Pengumuman bab
+            </SiswaCardTitle>
+            <SiswaCardDescription>
               Pengumuman dari guru terkait bab ini.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
             <PengumumanReadList
               kelasID={kelasID}
               babID={babID}
               emptyState="Belum ada pengumuman untuk bab ini."
             />
-          </CardContent>
-        </Card>
-      )}
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
     </div>
   );
 }
@@ -532,23 +554,23 @@ export default function SiswaBabDetailPage() {
 
   if (!kelasID || !babID) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Parameter tidak lengkap</CardTitle>
-          <CardDescription>
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Parameter tidak lengkap</SiswaCardTitle>
+          <SiswaCardDescription>
             URL ini butuh <code>?id=:kelasID&bid=:babID</code>. Kembali ke
             daftar kelas untuk pilih bab.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline" size="sm">
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
+          <SiswaButton asChild tone="surface" size="sm">
             <Link href="/siswa">
               <ArrowLeft className="size-4" />
               Daftar kelas
             </Link>
-          </Button>
-        </CardContent>
-      </Card>
+          </SiswaButton>
+        </SiswaCardBody>
+      </SiswaCard>
     );
   }
 

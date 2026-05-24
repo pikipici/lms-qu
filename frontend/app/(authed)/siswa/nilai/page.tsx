@@ -3,14 +3,8 @@
 /**
  * /siswa/nilai — cross-class rekap nilai dashboard (Task 7.A.2).
  *
- * Sumber: GET /siswa/nilai → SiswaListResponse.items[] = one card per
- * active enrollment with total_kelas + bab_count + ulangan_count.
- *
- * UI:
- *   - Header + summary (total kelas yang punya nilai)
- *   - Grid card: kelas nama, guru, total kelas (warna), bab/ujian count,
- *     CTA "Lihat detail" → /siswa/kelas/detail/nilai?id=:id
- *   - Empty state: belum gabung kelas / belum ada nilai sama sekali
+ * Visual: neo-brutalism + pastel pop. Stat header + KelasNilaiCard dengan
+ * kelas tone deterministic + breakdown bab inline.
  */
 
 import * as React from 'react';
@@ -26,20 +20,24 @@ import {
   type SiswaKelasNilaiResponse,
   type SiswaKelasSummary,
 } from '@/lib/nilai-api';
-import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  SECTION_META,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+  SiswaPageHeader,
+  SiswaStat,
+  kelasToneFromId,
+} from '@/components/siswa-ui';
 
 function totalClass(n: number | null): string {
-  if (n === null) return 'text-muted-foreground';
-  if (n >= 75) return 'text-emerald-700 dark:text-emerald-400';
-  if (n >= 60) return 'text-amber-700 dark:text-amber-400';
-  return 'text-rose-700 dark:text-rose-400';
+  if (n === null) return 'text-siswa-text-muted';
+  if (n >= 75) return 'text-emerald-700';
+  if (n >= 60) return 'text-amber-700';
+  return 'text-rose-700';
 }
 
 function KelasNilaiCard({
@@ -52,64 +50,82 @@ function KelasNilaiCard({
   detailLoading?: boolean;
 }) {
   const babRows = detail?.bab ?? [];
+  const tone = kelasToneFromId(item.kelas_id);
+  const meta = SECTION_META[tone];
+  const KelasIcon = meta.Icon;
 
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader className="space-y-1.5 pb-3">
-        <CardTitle className="text-base">{item.kelas_nama}</CardTitle>
-        <CardDescription className="flex items-center gap-1 text-xs">
-          <User2 className="size-3" />
-          {item.guru_nama || 'guru belum diatur'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-3">
+    <SiswaCard tone={tone} shadow="md" className="flex h-full flex-col overflow-hidden">
+      <div className="flex items-start gap-3 border-b-2 border-siswa-border bg-siswa-surface/70 px-5 py-4">
+        <span className="grid size-10 shrink-0 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+          <KelasIcon className="size-5" strokeWidth={2.5} />
+        </span>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <h3 className="siswa-display truncate text-base font-bold leading-tight">
+            {item.kelas_nama}
+          </h3>
+          <p className="flex items-center gap-1 text-xs text-siswa-text-muted">
+            <User2 className="size-3" />
+            {item.guru_nama || 'guru belum diatur'}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col gap-4 p-5">
         <div>
-          <p className="text-xs text-muted-foreground">Total nilai kelas</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
+            Total nilai kelas
+          </p>
           <p
-            className={`text-3xl font-bold tabular-nums ${totalClass(item.total_kelas)}`}
+            className={`siswa-display text-4xl font-bold tabular-nums ${totalClass(item.total_kelas)}`}
           >
             {formatNilai(item.total_kelas)}
           </p>
-          {item.total_kelas === null && (
-            <p className="text-xs text-muted-foreground">
+          {item.total_kelas === null ? (
+            <p className="text-xs text-siswa-text-muted">
               Belum ada bab dengan nilai.
             </p>
-          )}
+          ) : null}
         </div>
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span className="rounded bg-muted px-2 py-0.5 tabular-nums">
+        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="rounded-full border-2 border-siswa-border bg-siswa-surface px-2 py-0.5 tabular-nums">
             {item.bab_count} bab
           </span>
-          <span className="rounded bg-muted px-2 py-0.5 tabular-nums">
+          <span className="rounded-full border-2 border-siswa-border bg-siswa-surface px-2 py-0.5 tabular-nums">
             {item.ulangan_count} ulangan harian
           </span>
         </div>
-        <div className="rounded-md border bg-muted/20">
-          <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+        <div className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface">
+          <div className="border-b-2 border-siswa-border-soft px-3 py-2 text-xs font-bold uppercase tracking-wide text-siswa-text-muted">
             Breakdown nilai per bab
           </div>
           {detailLoading ? (
             <div className="space-y-2 p-3">
-              <div className="h-4 animate-pulse rounded bg-muted" />
-              <div className="h-4 animate-pulse rounded bg-muted" />
+              <div className="h-4 animate-pulse rounded bg-siswa-text/10" />
+              <div className="h-4 animate-pulse rounded bg-siswa-text/10" />
             </div>
           ) : babRows.length === 0 ? (
-            <p className="p-3 text-xs text-muted-foreground">
+            <p className="p-3 text-xs text-siswa-text-muted">
               Belum ada bab yang punya data nilai.
             </p>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y-2 divide-siswa-border-soft">
               {babRows.map((bab) => (
-                <div key={bab.bab_id} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-xs">
+                <div
+                  key={bab.bab_id}
+                  className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-xs"
+                >
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-foreground">
+                    <p className="truncate font-semibold">
                       Bab {bab.nomor}. {bab.judul}
                     </p>
-                    <p className="text-muted-foreground">
-                      Tugas {formatNilai(bab.nilai_tugas_bab)} · Ulangan {formatNilai(bab.nilai_ulangan_bab)}
+                    <p className="text-siswa-text-muted">
+                      Tugas {formatNilai(bab.nilai_tugas_bab)} · Ulangan{' '}
+                      {formatNilai(bab.nilai_ulangan_bab)}
                     </p>
                   </div>
-                  <div className={`self-center text-right font-semibold tabular-nums ${totalClass(bab.total)}`}>
+                  <div
+                    className={`self-center text-right font-bold tabular-nums ${totalClass(bab.total)}`}
+                  >
                     {formatNilai(bab.total)}
                   </div>
                 </div>
@@ -118,15 +134,15 @@ function KelasNilaiCard({
           )}
         </div>
         <div className="mt-auto pt-2">
-          <Button asChild variant="outline" size="sm" className="w-full">
+          <SiswaButton asChild tone="surface" size="sm" className="w-full">
             <Link href={`/siswa/kelas/detail/nilai?id=${item.kelas_id}`}>
               Lihat detail
-              <ArrowRight className="size-4" />
+              <ArrowRight className="size-4" strokeWidth={2.5} />
             </Link>
-          </Button>
+          </SiswaButton>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SiswaCard>
   );
 }
 
@@ -137,7 +153,10 @@ export default function SiswaNilaiPage() {
     staleTime: 15_000,
   });
 
-  const items = React.useMemo(() => nilaiQ.data?.items ?? [], [nilaiQ.data?.items]);
+  const items = React.useMemo(
+    () => nilaiQ.data?.items ?? [],
+    [nilaiQ.data?.items],
+  );
 
   const detailQueries = useQueries({
     queries: items.map((item) => ({
@@ -174,63 +193,56 @@ export default function SiswaNilaiPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Nilai saya</h1>
-          <p className="text-sm text-muted-foreground">
-            Rekap total nilai lu di semua kelas. Klik salah satu kelas buat
-            buka breakdown bab + ulangan harian.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => nilaiQ.refetch()}
-          disabled={nilaiQ.isFetching}
-        >
-          <RotateCcw className="size-4" />
-          Refresh
-        </Button>
-      </header>
+      <SiswaPageHeader
+        eyebrow="Nilai saya"
+        title="Rekap nilai"
+        description="Total nilai lu di semua kelas. Klik salah satu kelas buat buka breakdown bab + ulangan harian."
+        actions={
+          <SiswaButton
+            type="button"
+            tone="surface"
+            size="sm"
+            onClick={() => nilaiQ.refetch()}
+            disabled={nilaiQ.isFetching}
+          >
+            <RotateCcw className="size-4" />
+            Refresh
+          </SiswaButton>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-sm">Kelas dengan nilai</CardTitle>
-              <CardDescription>Sudah ada bab dinilai</CardDescription>
-            </div>
-            <TrendingUp className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-semibold tabular-nums">
+        <SiswaStat
+          label="Kelas dengan nilai"
+          value={
+            <>
               {counts.withNilai}
-              <span className="ml-1 text-sm font-normal text-muted-foreground">
+              <span className="ml-1 text-base font-semibold text-siswa-text-muted">
                 / {counts.total}
               </span>
-            </span>
-          </CardContent>
-        </Card>
-
-        <Card className="sm:col-span-2">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-sm">Rata-rata lintas kelas</CardTitle>
-              <CardDescription>
-                Mean dari total kelas yang sudah punya nilai. Bukan nilai resmi
-                — sekadar gambaran.
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <span
-              className={`text-2xl font-semibold tabular-nums ${totalClass(counts.avgKelas)}`}
-            >
-              {formatNilai(counts.avgKelas)}
-            </span>
-          </CardContent>
-        </Card>
+            </>
+          }
+          hint="Sudah ada bab dinilai"
+          Icon={TrendingUp}
+          tone="nilai"
+        />
+        <SiswaStat
+          label="Rata-rata kelas"
+          value={formatNilai(counts.avgKelas)}
+          hint="Mean dari kelas berdata"
+          Icon={TrendingUp}
+          tone="latihan"
+          className={counts.avgKelas != null ? '' : ''}
+        />
+        <SiswaCard tone="umum" shadow="sm" className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
+            Catatan
+          </p>
+          <p className="mt-1 text-sm text-siswa-text-muted">
+            Mean lintas-kelas bukan nilai resmi. Setiap kelas punya bobot
+            sendiri yang diatur guru.
+          </p>
+        </SiswaCard>
       </div>
 
       {nilaiQ.isPending ? (
@@ -238,43 +250,43 @@ export default function SiswaNilaiPage() {
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="h-48 animate-pulse rounded-md border bg-muted/40"
+              className="h-48 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60"
             />
           ))}
         </div>
       ) : nilaiQ.isError ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Gagal memuat nilai</CardTitle>
-            <CardDescription>
+        <SiswaCard tone="surface" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle>Gagal memuat nilai</SiswaCardTitle>
+            <SiswaCardDescription>
               {nilaiQ.error instanceof ApiError
                 ? `${nilaiQ.error.message}${nilaiQ.error.requestId ? ` (req: ${nilaiQ.error.requestId})` : ''}`
                 : 'Terjadi kesalahan tidak terduga.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <SiswaButton
               type="button"
-              variant="outline"
+              tone="surface"
               size="sm"
               onClick={() => nilaiQ.refetch()}
               disabled={nilaiQ.isFetching}
             >
               <RotateCcw className="size-4" />
               Coba lagi
-            </Button>
-          </CardContent>
-        </Card>
+            </SiswaButton>
+          </SiswaCardBody>
+        </SiswaCard>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="text-sm text-muted-foreground">
+        <SiswaCard tone="surface" shadow="md">
+          <SiswaCardBody className="p-8 text-center">
+            <p className="text-sm text-siswa-text-muted">
               Lu belum gabung kelas apapun. Gabung kelas dulu pakai kode invite
               di /siswa/gabung — nilai bakal muncul di sini begitu ada bab atau
               tugas yang dinilai.
             </p>
-          </CardContent>
-        </Card>
+          </SiswaCardBody>
+        </SiswaCard>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((it, index) => (

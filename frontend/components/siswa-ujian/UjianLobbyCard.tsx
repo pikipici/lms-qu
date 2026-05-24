@@ -3,18 +3,8 @@
 /**
  * UjianLobbyCard — siswa lobby card per Ujian (Task 6.G.1).
  *
- * Mirror SoalBab UlanganLobby pre-flight pattern, tapi as a single
- * standalone card untuk dipakai di list page `/siswa/ujian` (cross-kelas).
- *
- * Tampilan:
- *   - Header: judul + status window badge (mendatang/aktif/lewat).
- *   - Tile grid: durasi, jumlah soal, source mode hint, attempt aggregate
- *     (count, nilai_terbaik, status_terakhir).
- *   - Window range Asia/Jakarta + countdown ke waktu_mulai/waktu_selesai
- *     (auto re-render setiap detik).
- *   - Review policy note (configured guru).
- *   - CTA: "Mulai" / "Lanjutkan" / "Lihat hasil" / "Mulai dalam ..."
- *     bergantung kondisi window + attempt state.
+ * Visual: neo-brutalism + pastel pop (siswa-only). Tone "ulangan" (yellow)
+ * untuk header strip, surface body. CTA pakai SiswaButton.
  *
  * Conditions:
  *   - inflight attempt (status='berlangsung')        → CTA "Lanjutkan"
@@ -22,10 +12,6 @@
  *   - now > waktu_selesai                            → CTA disabled "Berakhir"
  *   - default + attempt selesai                      → CTA "Mulai ujian baru"
  *   - default                                        → CTA "Mulai ujian"
- *
- * CTA navigates ke /siswa/kelas/detail/ujian?id=:kelasID&uid=:ujianID
- * (target 6.G.2 player+review). Sampai 6.G.2 deploy, route ini 404 —
- * deliberate two-stage rollout (lobby ship dulu).
  */
 
 import * as React from 'react';
@@ -43,21 +29,23 @@ import {
   Timer,
   XCircle,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import {
   type Ujian,
   type SiswaUjianHasilListResult,
   type UjianHasilSummary,
 } from '@/lib/siswa-ujian-api';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import {
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+} from '@/components/siswa-ui';
 
 // ---------- Public props ----------
 
@@ -77,8 +65,12 @@ function computeWindowState(
   now: number,
   ujian: Ujian,
 ): { state: WindowState; targetMillis?: number } {
-  const startMs = ujian.waktu_mulai ? new Date(ujian.waktu_mulai).getTime() : null;
-  const endMs = ujian.waktu_selesai ? new Date(ujian.waktu_selesai).getTime() : null;
+  const startMs = ujian.waktu_mulai
+    ? new Date(ujian.waktu_mulai).getTime()
+    : null;
+  const endMs = ujian.waktu_selesai
+    ? new Date(ujian.waktu_selesai).getTime()
+    : null;
   if (startMs && now < startMs) {
     return { state: 'mendatang', targetMillis: startMs };
   }
@@ -152,7 +144,9 @@ function pickInflight(items: UjianHasilSummary[]): UjianHasilSummary | null {
   return items.find((h) => h.status === 'berlangsung') ?? null;
 }
 
-function pickLatestSelesai(items: UjianHasilSummary[]): UjianHasilSummary | null {
+function pickLatestSelesai(
+  items: UjianHasilSummary[],
+): UjianHasilSummary | null {
   let best: UjianHasilSummary | null = null;
   for (const h of items) {
     if (h.status !== 'selesai') continue;
@@ -188,7 +182,10 @@ export function UjianLobbyCard({
     return () => window.clearInterval(id);
   }, []);
 
-  const windowInfo = React.useMemo(() => computeWindowState(now, ujian), [now, ujian]);
+  const windowInfo = React.useMemo(
+    () => computeWindowState(now, ujian),
+    [now, ujian],
+  );
 
   const myItems = React.useMemo(() => {
     if (!hasilAggregate) return [] as UjianHasilSummary[];
@@ -200,7 +197,9 @@ export function UjianLobbyCard({
   const bestNilai = React.useMemo(() => pickBestNilai(myItems), [myItems]);
 
   const attemptCount = myItems.filter((h) => h.status === 'selesai').length;
-  const cancelledCount = myItems.filter((h) => h.status === 'dibatalkan').length;
+  const cancelledCount = myItems.filter(
+    (h) => h.status === 'dibatalkan',
+  ).length;
 
   const jumlahSoal = jumlahSoalEstimasi(ujian);
   const sourceLabel = sourceModeLabel(ujian);
@@ -209,23 +208,31 @@ export function UjianLobbyCard({
   const ctaHref = `/siswa/kelas/detail/ujian?id=${ujian.kelas_id}&uid=${ujian.id}`;
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <CardTitle className="truncate text-base">{ujian.judul}</CardTitle>
-            <WindowBadge state={windowInfo.state} />
-            <SourceBadge label={sourceLabel} />
+    <SiswaCard tone="ulangan" shadow="md" className="overflow-hidden">
+      <SiswaCardHeader className="bg-siswa-surface/70 border-b-2 border-siswa-border">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <SiswaCardTitle className="truncate text-base">
+                {ujian.judul}
+              </SiswaCardTitle>
+              <WindowBadge state={windowInfo.state} />
+              <SiswaBadge tone="blue">{sourceLabel}</SiswaBadge>
+            </div>
+            <SiswaCardDescription className="space-y-0.5">
+              {kelasName ? (
+                <div className="font-semibold text-siswa-text">
+                  {kelasName}
+                </div>
+              ) : null}
+              {ujian.deskripsi ? (
+                <div className="line-clamp-2 text-sm">{ujian.deskripsi}</div>
+              ) : null}
+            </SiswaCardDescription>
           </div>
-          <CardDescription className="space-y-0.5">
-            {kelasName ? <div className="text-foreground">{kelasName}</div> : null}
-            {ujian.deskripsi ? (
-              <div className="line-clamp-2 text-sm">{ujian.deskripsi}</div>
-            ) : null}
-          </CardDescription>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      </SiswaCardHeader>
+      <SiswaCardBody className="space-y-4">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <InfoTile
             icon={Timer}
@@ -250,11 +257,11 @@ export function UjianLobbyCard({
           />
         </div>
 
-        <div className="rounded-md border bg-muted/40 p-3">
-          <div className="flex items-start gap-2 text-xs text-muted-foreground">
+        <div className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3">
+          <div className="flex items-start gap-2 text-xs text-siswa-text-muted">
             <CalendarRange className="mt-0.5 size-3.5 shrink-0" />
             <div className="space-y-1">
-              <div className="font-medium text-foreground">{range}</div>
+              <div className="font-semibold text-siswa-text">{range}</div>
               <CountdownLine windowInfo={windowInfo} now={now} />
             </div>
           </div>
@@ -262,9 +269,9 @@ export function UjianLobbyCard({
 
         <ReviewPolicyNote ujian={ujian} />
 
-        {latest && (
+        {latest ? (
           <LastAttemptLine latest={latest} ujian={ujian} now={now} />
-        )}
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
           <PrimaryCTA
@@ -275,45 +282,50 @@ export function UjianLobbyCard({
             targetMillis={windowInfo.targetMillis}
             attemptCount={attemptCount}
           />
-          {latest && latest.status === 'selesai' && canViewReview(ujian, latest, now) ? (
-            <Button asChild variant="outline" size="sm">
+          {latest &&
+          latest.status === 'selesai' &&
+          canViewReview(ujian, latest, now) ? (
+            <SiswaButton asChild tone="surface" size="sm">
               <Link href={ctaHref}>
                 <Eye className="size-3.5" />
                 Lihat pembahasan terakhir
               </Link>
-            </Button>
+            </SiswaButton>
           ) : null}
         </div>
-      </CardContent>
-    </Card>
+      </SiswaCardBody>
+    </SiswaCard>
   );
 }
 
 // ---------- Sub-components ----------
 
 interface InfoTileProps {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   label: string;
   value: string;
   accent?: 'default' | 'emerald' | 'rose';
 }
 
-function InfoTile({ icon: Icon, label, value, accent = 'default' }: InfoTileProps) {
+function InfoTile({
+  icon: Icon,
+  label,
+  value,
+  accent = 'default',
+}: InfoTileProps) {
   return (
     <div
       className={cn(
-        'rounded-md border bg-card p-3',
-        accent === 'emerald' &&
-          'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
-        accent === 'rose' &&
-          'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200',
+        'rounded-siswa border-2 border-siswa-border bg-siswa-surface p-3',
+        accent === 'emerald' && 'bg-siswa-green/40',
+        accent === 'rose' && 'bg-rose-100',
       )}
     >
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-siswa-text-muted">
         <Icon className="size-3.5" />
         {label}
       </div>
-      <div className="mt-1 text-sm font-medium">{value}</div>
+      <div className="siswa-display mt-1 text-sm font-bold">{value}</div>
     </div>
   );
 }
@@ -321,49 +333,24 @@ function InfoTile({ icon: Icon, label, value, accent = 'default' }: InfoTileProp
 function WindowBadge({ state }: { state: WindowState }) {
   const map: Record<
     WindowState,
-    { label: string; cn: string; icon: React.ComponentType<{ className?: string }> }
+    {
+      label: string;
+      tone: React.ComponentProps<typeof SiswaBadge>['tone'];
+      icon: LucideIcon;
+    }
   > = {
-    mendatang: {
-      label: 'Mendatang',
-      cn: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
-      icon: Clock,
-    },
-    aktif: {
-      label: 'Aktif',
-      cn: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-      icon: PlayCircle,
-    },
-    berakhir: {
-      label: 'Berakhir',
-      cn: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
-      icon: XCircle,
-    },
-    'tanpa-window': {
-      label: 'Tersedia',
-      cn: 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200',
-      icon: PlayCircle,
-    },
+    mendatang: { label: 'Mendatang', tone: 'warning', icon: Clock },
+    aktif: { label: 'Aktif', tone: 'success', icon: PlayCircle },
+    berakhir: { label: 'Berakhir', tone: 'neutral', icon: XCircle },
+    'tanpa-window': { label: 'Tersedia', tone: 'blue', icon: PlayCircle },
   };
   const cfg = map[state];
   const Icon = cfg.icon;
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-        cfg.cn,
-      )}
-    >
-      <Icon className="size-3" />
+    <SiswaBadge tone={cfg.tone}>
+      <Icon className="size-3" strokeWidth={2.5} />
       {cfg.label}
-    </span>
-  );
-}
-
-function SourceBadge({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-      {label}
-    </span>
+    </SiswaBadge>
   );
 }
 
@@ -394,7 +381,7 @@ function CountdownLine({
 function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
   if (!ujian.izinkan_review_setelah_submit) {
     return (
-      <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+      <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
         Guru tidak mengaktifkan pembahasan untuk ujian ini.
       </p>
     );
@@ -406,13 +393,14 @@ function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
       timeZone: 'Asia/Jakarta',
     });
     return (
-      <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
-        Pembahasan dibuka mulai <strong>{t}</strong>.
+      <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
+        Pembahasan dibuka mulai{' '}
+        <strong className="text-siswa-text">{t}</strong>.
       </p>
     );
   }
   return (
-    <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+    <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
       Pembahasan tersedia langsung setelah lu submit attempt.
     </p>
   );
@@ -430,54 +418,44 @@ function LastAttemptLine({
   const reviewable = canViewReview(ujian, latest, now);
   const reviewMsg = reviewable ? null : reviewLockMessage(ujian, latest, now);
   return (
-    <div className="rounded-md border bg-card p-3 text-xs">
+    <div className="rounded-siswa border-2 border-siswa-border bg-siswa-surface p-3 text-xs siswa-shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">Attempt terakhir #{latest.attempt_no}</span>
+        <span className="siswa-display font-bold">
+          Attempt terakhir #{latest.attempt_no}
+        </span>
         <StatusBadge status={latest.status} />
         {latest.nilai_total != null ? (
-          <span className="text-muted-foreground">
-            Nilai <strong className="text-foreground">{formatNilai(latest.nilai_total)}</strong>
+          <span className="text-siswa-text-muted">
+            Nilai{' '}
+            <strong className="text-siswa-text">
+              {formatNilai(latest.nilai_total)}
+            </strong>
           </span>
         ) : null}
         {latest.jawaban_benar_count != null && latest.jawaban_total != null ? (
-          <span className="text-muted-foreground">
+          <span className="text-siswa-text-muted">
             ({latest.jawaban_benar_count}/{latest.jawaban_total} benar)
           </span>
         ) : null}
       </div>
       {reviewMsg ? (
-        <p className="mt-1 text-muted-foreground">{reviewMsg}</p>
+        <p className="mt-1 text-siswa-text-muted">{reviewMsg}</p>
       ) : null}
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: UjianHasilSummary['status'] }) {
-  const map: Record<UjianHasilSummary['status'], { label: string; cn: string }> = {
-    berlangsung: {
-      label: 'Berlangsung',
-      cn: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
-    },
-    selesai: {
-      label: 'Selesai',
-      cn: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-    },
-    dibatalkan: {
-      label: 'Dibatalkan',
-      cn: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200',
-    },
+  const map: Record<
+    UjianHasilSummary['status'],
+    { label: string; tone: React.ComponentProps<typeof SiswaBadge>['tone'] }
+  > = {
+    berlangsung: { label: 'Berlangsung', tone: 'warning' },
+    selesai: { label: 'Selesai', tone: 'success' },
+    dibatalkan: { label: 'Dibatalkan', tone: 'danger' },
   };
   const cfg = map[status];
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-        cfg.cn,
-      )}
-    >
-      {cfg.label}
-    </span>
-  );
+  return <SiswaBadge tone={cfg.tone}>{cfg.label}</SiswaBadge>;
 }
 
 interface PrimaryCTAProps {
@@ -497,43 +475,41 @@ function PrimaryCTA({
   targetMillis,
   attemptCount,
 }: PrimaryCTAProps) {
-  // Inflight selalu prioritas — siswa wajib lanjut attempt sebelum mulai baru.
   if (inflight) {
     return (
-      <Button asChild>
+      <SiswaButton asChild tone="primary">
         <Link href={ctaHref}>
-          <PlayCircle className="size-4" />
+          <PlayCircle className="size-4" strokeWidth={2.5} />
           Lanjutkan ujian
-          <ArrowRight className="size-4" />
+          <ArrowRight className="size-4" strokeWidth={2.5} />
         </Link>
-      </Button>
+      </SiswaButton>
     );
   }
   if (windowState === 'mendatang' && targetMillis) {
     return (
-      <Button disabled>
+      <SiswaButton tone="surface" disabled>
         <Clock className="size-4" />
         Mulai dalam {formatCountdown(Math.max(0, targetMillis - now))}
-      </Button>
+      </SiswaButton>
     );
   }
   if (windowState === 'berakhir') {
     return (
-      <Button disabled variant="outline">
+      <SiswaButton tone="surface" disabled>
         <XCircle className="size-4" />
         Window berakhir
-      </Button>
+      </SiswaButton>
     );
   }
-  // Aktif atau tanpa window.
   return (
-    <Button asChild>
+    <SiswaButton asChild tone="primary">
       <Link href={ctaHref}>
-        <PlayCircle className="size-4" />
+        <PlayCircle className="size-4" strokeWidth={2.5} />
         {attemptCount > 0 ? 'Mulai ujian baru' : 'Mulai ujian'}
-        <ArrowRight className="size-4" />
+        <ArrowRight className="size-4" strokeWidth={2.5} />
       </Link>
-    </Button>
+    </SiswaButton>
   );
 }
 
@@ -579,5 +555,4 @@ function reviewLockMessage(
   return null;
 }
 
-// AlertCircle imported for future use; suppress unused warnings.
 void AlertCircle;

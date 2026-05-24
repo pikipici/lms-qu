@@ -3,23 +3,9 @@
 /**
  * /siswa/ujian — siswa lobby page lintas-kelas (Task 6.G.1).
  *
- * Pola mirror /siswa/tugas (Fase 4.D.2) — top-level page hydrate enrollment
- * via listMyKelas, lalu per-kelas parallel fetch listSiswaUjianByKelas +
- * listSiswaUjianHasil. UjianLobbyCard render per ujian dengan attempt
- * aggregate (filter per ujian_id).
- *
- * Filter:
- *   - Kelas: dropdown (default semua kelas).
- *   - Status window: aktif / mendatang / lewat / semua (computed FE).
- *
- * BE service-level role-branch siswa di GET /kelas/:id/ujian auto-filter
- * status='published' — siswa tidak perlu opt-in di FE. Draft/archived
- * tidak akan muncul di response.
- *
- * Cross-kelas berarti N+1 queries: listKelas + N kelas * (list ujian +
- * list hasil). Dengan limit 50 kelas (cap listMyKelas page size), worst
- * case 1 + 50*2 = 101 queries. Acceptable buat MVP — kalau jadi bottleneck
- * kemudian bisa add backend `/siswa/ujian` flat aggregate endpoint.
+ * Visual: neo-brutalism + pastel pop. Stat tiles 4-up dengan section accent
+ * (aktif=ulangan, mendatang=cream, berakhir=surface, terbaik=latihan).
+ * Filter pill + dropdown kelas. UjianLobbyCard list.
  */
 
 import * as React from 'react';
@@ -42,18 +28,18 @@ import {
   type Ujian,
   type SiswaUjianHasilListResult,
 } from '@/lib/siswa-ujian-api';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { UjianLobbyCard } from '@/components/siswa-ujian/UjianLobbyCard';
-
-// ---------- Filter state ----------
+import {
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardDescription,
+  SiswaCardHeader,
+  SiswaCardTitle,
+  SiswaPageHeader,
+  SiswaStat,
+} from '@/components/siswa-ui';
 
 type WindowFilter = 'all' | 'aktif' | 'mendatang' | 'berakhir';
 
@@ -71,13 +57,15 @@ interface PerKelasData {
   hasil: SiswaUjianHasilListResult | null;
 }
 
-// ---------- Helpers (computed window state) ----------
-
 type WindowState = 'mendatang' | 'aktif' | 'berakhir' | 'tanpa-window';
 
 function computeWindowState(now: number, ujian: Ujian): WindowState {
-  const startMs = ujian.waktu_mulai ? new Date(ujian.waktu_mulai).getTime() : null;
-  const endMs = ujian.waktu_selesai ? new Date(ujian.waktu_selesai).getTime() : null;
+  const startMs = ujian.waktu_mulai
+    ? new Date(ujian.waktu_mulai).getTime()
+    : null;
+  const endMs = ujian.waktu_selesai
+    ? new Date(ujian.waktu_selesai).getTime()
+    : null;
   if (startMs && now < startMs) return 'mendatang';
   if (endMs && now > endMs) return 'berakhir';
   if (startMs || endMs) return 'aktif';
@@ -91,39 +79,38 @@ function matchesWindowFilter(filter: WindowFilter, state: WindowState): boolean 
 }
 
 function ujianSortKey(ujian: Ujian, now: number): number {
-  // Sort: aktif (closest deadline first) > mendatang (soonest start first) >
-  // tanpa-window > berakhir (most recent first).
-  const startMs = ujian.waktu_mulai ? new Date(ujian.waktu_mulai).getTime() : null;
-  const endMs = ujian.waktu_selesai ? new Date(ujian.waktu_selesai).getTime() : null;
+  const startMs = ujian.waktu_mulai
+    ? new Date(ujian.waktu_mulai).getTime()
+    : null;
+  const endMs = ujian.waktu_selesai
+    ? new Date(ujian.waktu_selesai).getTime()
+    : null;
   if (startMs && now < startMs) {
-    // mendatang — sort by start ascending (smaller positive offset)
     return 100_000_000 + (startMs - now);
   }
   if (endMs && now > endMs) {
-    // berakhir — sort by recency (smaller now-endMs)
     return 1_000_000_000 + (now - endMs);
   }
   if (endMs) {
-    return endMs - now; // aktif with deadline
+    return endMs - now;
   }
-  return 50_000_000; // tanpa-window aktif (between aktif and mendatang)
+  return 50_000_000;
 }
 
-// ---------- Component ----------
+function formatNilai(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
 
 export default function SiswaUjianPage() {
   const [windowFilter, setWindowFilter] = React.useState<WindowFilter>('all');
   const [kelasFilter, setKelasFilter] = React.useState<string>('all');
   const [now, setNow] = React.useState<number>(() => Date.now());
 
-  // Tick once a minute for window state filter (per-card sudah ada interval
-  // tiap detik untuk countdown; di sini cuma re-derive group state).
   React.useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(id);
   }, []);
 
-  // Step 1: enrollments.
   const enrollmentQuery = useQuery({
     queryKey: ['siswa', 'kelas', 'list'],
     queryFn: () => listMyKelas({ page: 1, pageSize: 50 }),
@@ -135,7 +122,6 @@ export default function SiswaUjianPage() {
     [enrollmentQuery.data?.items],
   );
 
-  // Step 2 (parallel): list ujian per kelas.
   const ujianQueries = useQueries({
     queries: kelasItems.map((it) => ({
       queryKey: ['siswa', 'ujian', 'list', it.kelas.id],
@@ -150,7 +136,6 @@ export default function SiswaUjianPage() {
     })),
   });
 
-  // Step 3 (parallel): list siswa hasil aggregate per kelas.
   const hasilQueries = useQueries({
     queries: kelasItems.map((it) => ({
       queryKey: ['siswa', 'ujian', 'hasil', it.kelas.id],
@@ -165,7 +150,6 @@ export default function SiswaUjianPage() {
     })),
   });
 
-  // Compose per-kelas data.
   const perKelas = React.useMemo<PerKelasData[]>(() => {
     return kelasItems.map((it, idx) => ({
       kelasID: it.kelas.id,
@@ -175,7 +159,6 @@ export default function SiswaUjianPage() {
     }));
   }, [kelasItems, ujianQueries, hasilQueries]);
 
-  // Flat list buat counts + filtered render.
   const flatRows = React.useMemo(() => {
     const rows: { kelas: PerKelasData; ujian: Ujian }[] = [];
     for (const k of perKelas) {
@@ -189,7 +172,8 @@ export default function SiswaUjianPage() {
   const filtered = React.useMemo(() => {
     return flatRows
       .filter((r) => {
-        if (kelasFilter !== 'all' && r.kelas.kelasID !== kelasFilter) return false;
+        if (kelasFilter !== 'all' && r.kelas.kelasID !== kelasFilter)
+          return false;
         const state = computeWindowState(now, r.ujian);
         if (!matchesWindowFilter(windowFilter, state)) return false;
         return true;
@@ -197,7 +181,6 @@ export default function SiswaUjianPage() {
       .sort((a, b) => ujianSortKey(a.ujian, now) - ujianSortKey(b.ujian, now));
   }, [flatRows, kelasFilter, windowFilter, now]);
 
-  // Aggregate counters (untuk header tile).
   const counts = React.useMemo(() => {
     let aktif = 0;
     let mendatang = 0;
@@ -233,46 +216,47 @@ export default function SiswaUjianPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Ujian saya</h1>
-        <p className="text-sm text-muted-foreground">
-          Daftar ulangan dari semua kelas lu. Klik kartu untuk mulai atau
-          melanjutkan attempt.
-        </p>
-      </header>
+      <SiswaPageHeader
+        eyebrow="Ujian saya"
+        title="Lobby ujian"
+        description="Daftar ulangan dari semua kelas. Klik kartu untuk mulai atau melanjutkan attempt."
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryTile
-          icon={GraduationCap}
+        <SiswaStat
           label="Sedang aktif"
-          value={String(counts.aktif)}
-          accent="emerald"
+          value={counts.aktif}
+          Icon={GraduationCap}
+          tone="ulangan"
         />
-        <SummaryTile
-          icon={ClipboardList}
+        <SiswaStat
           label="Mendatang"
-          value={String(counts.mendatang)}
+          value={counts.mendatang}
+          Icon={ClipboardList}
+          tone="materi"
         />
-        <SummaryTile
-          icon={ClipboardList}
+        <SiswaStat
           label="Sudah berakhir"
-          value={String(counts.berakhir)}
+          value={counts.berakhir}
+          Icon={ClipboardList}
+          tone="surface"
         />
-        <SummaryTile
-          icon={Trophy}
+        <SiswaStat
           label="Nilai terbaik"
           value={
             counts.nilaiTerbaik != null
               ? formatNilai(counts.nilaiTerbaik)
               : counts.attemptSelesai > 0
                 ? '—'
-                : 'Belum ada attempt'
+                : 'Belum ada'
           }
-          subtle={`${counts.attemptSelesai} attempt selesai`}
+          hint={`${counts.attemptSelesai} attempt selesai`}
+          Icon={Trophy}
+          tone="latihan"
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-b pb-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-siswa siswa-border bg-siswa-surface p-3 siswa-shadow-sm">
         <div className="flex flex-wrap items-center gap-1">
           {WINDOW_TABS.map((t) => {
             const active = windowFilter === t.key;
@@ -282,10 +266,10 @@ export default function SiswaUjianPage() {
                 type="button"
                 onClick={() => setWindowFilter(t.key)}
                 className={cn(
-                  'rounded-md px-3 py-1.5 text-sm transition-colors',
+                  'rounded-[calc(var(--siswa-radius)-4px)] px-3 py-1.5 text-sm font-semibold transition-colors',
                   active
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-accent/50',
+                    ? 'border-2 border-siswa-border bg-siswa-yellow siswa-shadow-sm'
+                    : 'border-2 border-transparent text-siswa-text/70 hover:bg-siswa-cream/60',
                 )}
               >
                 {t.label}
@@ -296,7 +280,7 @@ export default function SiswaUjianPage() {
         <div className="ml-auto flex items-center gap-2">
           <label
             htmlFor="kelas-filter"
-            className="text-xs uppercase tracking-wide text-muted-foreground"
+            className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted"
           >
             Kelas
           </label>
@@ -304,7 +288,7 @@ export default function SiswaUjianPage() {
             id="kelas-filter"
             value={kelasFilter}
             onChange={(e) => setKelasFilter(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-sm"
+            className="rounded-siswa border-2 border-siswa-border bg-siswa-surface px-3 py-1.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-yellow"
           >
             <option value="all">Semua kelas</option>
             {kelasItems.map((it) => (
@@ -338,7 +322,7 @@ export default function SiswaUjianPage() {
           totalRows={flatRows.length}
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filtered.map(({ kelas, ujian }) => (
             <UjianLobbyCard
               key={ujian.id}
@@ -351,50 +335,12 @@ export default function SiswaUjianPage() {
       )}
 
       {hasError && filtered.length > 0 ? (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <AlertCircle className="size-3.5 text-amber-500" />
+        <p className="flex items-center gap-2 text-xs text-siswa-text-muted">
+          <AlertCircle className="size-3.5 text-siswa-warning" />
           Sebagian kelas gagal di-fetch — list yang muncul mungkin tidak lengkap.
         </p>
       ) : null}
     </div>
-  );
-}
-
-// ---------- Sub-components ----------
-
-interface SummaryTileProps {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  subtle?: string;
-  accent?: 'default' | 'emerald';
-}
-
-function SummaryTile({
-  icon: Icon,
-  label,
-  value,
-  subtle,
-  accent = 'default',
-}: SummaryTileProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <div className="space-y-1">
-          <CardTitle className="text-sm">{label}</CardTitle>
-          {subtle ? <CardDescription>{subtle}</CardDescription> : null}
-        </div>
-        <Icon
-          className={cn(
-            'size-5',
-            accent === 'emerald' ? 'text-emerald-500' : 'text-muted-foreground',
-          )}
-        />
-      </CardHeader>
-      <CardContent>
-        <span className="text-2xl font-semibold tabular-nums">{value}</span>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -404,7 +350,7 @@ function LobbySkeleton() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
-          className="h-48 animate-pulse rounded-md border bg-muted/40"
+          className="h-48 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60"
         />
       ))}
     </div>
@@ -413,21 +359,21 @@ function LobbySkeleton() {
 
 function EmptyKelasCard() {
   return (
-    <Card>
-      <CardContent className="p-8 text-center">
-        <p className="text-sm text-muted-foreground">
+    <SiswaCard tone="surface" shadow="md">
+      <SiswaCardBody className="p-8 text-center">
+        <p className="text-sm text-siswa-text-muted">
           Lu belum gabung kelas mana pun. Gabung dulu pakai kode invite di
           /siswa/gabung supaya bisa lihat ujian.
         </p>
         <div className="mt-4">
-          <Button asChild size="sm">
+          <SiswaButton asChild tone="primary" size="sm">
             <Link href="/siswa/gabung">
-              Gabung kelas <ArrowRight className="size-4" />
+              Gabung kelas <ArrowRight className="size-4" strokeWidth={2.5} />
             </Link>
-          </Button>
+          </SiswaButton>
         </div>
-      </CardContent>
-    </Card>
+      </SiswaCardBody>
+    </SiswaCard>
   );
 }
 
@@ -450,36 +396,32 @@ function EmptyUjianCard({
     return 'Belum ada ujian.';
   })();
   return (
-    <Card>
-      <CardContent className="p-8 text-center">
-        <p className="text-sm text-muted-foreground">{message}</p>
-      </CardContent>
-    </Card>
+    <SiswaCard tone="surface" shadow="md">
+      <SiswaCardBody className="p-8 text-center">
+        <p className="text-sm text-siswa-text-muted">{message}</p>
+      </SiswaCardBody>
+    </SiswaCard>
   );
 }
 
 function ErrorCard({ title, message }: { title: string; message: string }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        <CardDescription>{message}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button
+    <SiswaCard tone="surface" shadow="md">
+      <SiswaCardHeader>
+        <SiswaCardTitle>{title}</SiswaCardTitle>
+        <SiswaCardDescription>{message}</SiswaCardDescription>
+      </SiswaCardHeader>
+      <SiswaCardBody>
+        <SiswaButton
           type="button"
-          variant="outline"
+          tone="surface"
           size="sm"
           onClick={() => window.location.reload()}
         >
           <Loader2 className="size-4" />
           Muat ulang halaman
-        </Button>
-      </CardContent>
-    </Card>
+        </SiswaButton>
+      </SiswaCardBody>
+    </SiswaCard>
   );
-}
-
-function formatNilai(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }

@@ -3,18 +3,9 @@
 /**
  * /siswa/tugas — riwayat semua submission siswa lintas kelas (Task 4.D.2).
  *
- * Sumber data: GET /siswa/submissions (handler ListMine, locked #74 BE +
- * Task 4.D.2 lock). JOIN-backed di backend, satu fetch sudah lengkap dengan
- * tugas snapshot — gak butuh per-row tugas fetch.
- *
- * UI:
- *   - Header dengan ringkasan total + filter status (all/submitted/graded)
- *   - Group by kelas — title kelas + list submission card di bawahnya
- *   - Card per submission: judul tugas, status, nilai (kalau graded),
- *     late badge, link ke /siswa/kelas/detail/tugas?id={kelas}&tid={tugas}
- *
- * Note: status filter "all/submitted/graded" — `returned` di-defer MVP
- * (locked #73 BE).
+ * Visual: neo-brutalism + pastel pop. Stat cards 3-up dengan section accent
+ * (total tugas/menunggu/graded), filter pill switcher, group by kelas,
+ * row card per submission dengan badge status + late marker.
  */
 
 import * as React from 'react';
@@ -37,14 +28,14 @@ import {
 } from '@/lib/submission-api';
 import { listMyKelas } from '@/lib/siswa-api';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaPageHeader,
+  SiswaStat,
+} from '@/components/siswa-ui';
 
 type StatusFilter = 'all' | 'submitted' | 'graded';
 
@@ -54,20 +45,14 @@ const TABS: { key: StatusFilter; label: string }[] = [
   { key: 'graded', label: 'Sudah dinilai' },
 ];
 
-function statusBadgeClass(status: SubmissionStatus, isLate: boolean): string {
-  const base =
-    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium';
-  if (status === 'graded') {
-    return cn(base, 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300');
-  }
-  if (status === 'returned') {
-    return cn(base, 'bg-amber-500/15 text-amber-700 dark:text-amber-300');
-  }
-  // submitted
-  if (isLate) {
-    return cn(base, 'bg-rose-500/15 text-rose-700 dark:text-rose-300');
-  }
-  return cn(base, 'bg-blue-500/15 text-blue-700 dark:text-blue-300');
+function statusBadgeTone(
+  status: SubmissionStatus,
+  isLate: boolean,
+): React.ComponentProps<typeof SiswaBadge>['tone'] {
+  if (status === 'graded') return 'success';
+  if (status === 'returned') return 'warning';
+  if (isLate) return 'danger';
+  return 'blue';
 }
 
 function formatNilai(n: number | null | undefined): string {
@@ -84,7 +69,6 @@ function groupByKelas(
     if (!map.has(r.kelas_id)) map.set(r.kelas_id, []);
     map.get(r.kelas_id)!.push(r);
   }
-  // Sort group by latest submitted_at desc.
   const groups = Array.from(map.entries()).map(([kelasID, list]) => {
     list.sort((a, b) => b.submitted_at.localeCompare(a.submitted_at));
     return {
@@ -108,8 +92,6 @@ export default function SiswaTugasPage() {
     staleTime: 15_000,
   });
 
-  // Hydrate kelas name (server endpoint flat, no kelas join — simpler kalau
-  // FE merge dari list-my-kelas yang udah cached).
   const kelasQ = useQuery({
     queryKey: ['siswa', 'kelas', 'list'],
     queryFn: () => listMyKelas({ page: 1, pageSize: 50 }),
@@ -124,7 +106,7 @@ export default function SiswaTugasPage() {
     return out;
   }, [kelasQ.data?.items]);
 
-  const all = subQ.data?.items ?? [];
+  const all = React.useMemo(() => subQ.data?.items ?? [], [subQ.data?.items]);
   const filtered = React.useMemo(() => {
     if (filter === 'all') return all;
     return all.filter((r) => r.status === filter);
@@ -147,56 +129,40 @@ export default function SiswaTugasPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Tugas saya</h1>
-          <p className="text-sm text-muted-foreground">
-            Riwayat submission lu dari semua kelas. Klik salah satu untuk buka
-            detail tugas + lampiran lu.
-          </p>
-        </div>
-      </header>
+      <SiswaPageHeader
+        eyebrow="Tugas saya"
+        title="Riwayat tugas"
+        description="Submission lu dari semua kelas. Klik salah satu untuk buka detail tugas + lampiran."
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-sm">Total submission</CardTitle>
-              <CardDescription>Lintas kelas</CardDescription>
-            </div>
-            <ClipboardList className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-semibold">{counts.total}</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-sm">Menunggu nilai</CardTitle>
-              <CardDescription>Belum di-grade</CardDescription>
-            </div>
-            <Hourglass className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-semibold">{counts.submitted}</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-sm">Sudah dinilai</CardTitle>
-              <CardDescription>Final dari guru</CardDescription>
-            </div>
-            <CheckCircle2 className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-semibold">{counts.graded}</span>
-          </CardContent>
-        </Card>
+        <SiswaStat
+          label="Total submission"
+          value={counts.total}
+          hint="Lintas kelas"
+          Icon={ClipboardList}
+          tone="tugas"
+          loading={subQ.isPending}
+        />
+        <SiswaStat
+          label="Menunggu nilai"
+          value={counts.submitted}
+          hint="Belum di-grade"
+          Icon={Hourglass}
+          tone="ulangan"
+          loading={subQ.isPending}
+        />
+        <SiswaStat
+          label="Sudah dinilai"
+          value={counts.graded}
+          hint="Final dari guru"
+          Icon={CheckCircle2}
+          tone="latihan"
+          loading={subQ.isPending}
+        />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b pb-2">
+      <div className="flex flex-wrap gap-2 rounded-siswa siswa-border bg-siswa-surface p-2 siswa-shadow-sm">
         {TABS.map((tab) => {
           const active = filter === tab.key;
           return (
@@ -205,10 +171,10 @@ export default function SiswaTugasPage() {
               type="button"
               onClick={() => setFilter(tab.key)}
               className={cn(
-                'rounded-md px-3 py-1.5 text-sm transition-colors',
+                'rounded-[calc(var(--siswa-radius)-4px)] px-4 py-1.5 text-sm font-semibold transition-colors',
                 active
-                  ? 'bg-accent text-accent-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-accent/50',
+                  ? 'border-2 border-siswa-border bg-siswa-pink siswa-shadow-sm'
+                  : 'border-2 border-transparent text-siswa-text/70 hover:bg-siswa-cream/60',
               )}
             >
               {tab.label}
@@ -222,79 +188,80 @@ export default function SiswaTugasPage() {
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="h-16 animate-pulse rounded-md border bg-muted/40"
+              className="h-20 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60"
             />
           ))}
         </div>
       ) : subQ.isError ? (
-        <Card>
-          <CardContent className="p-6 text-center">
-            <p className="text-sm text-destructive">
+        <SiswaCard tone="surface" shadow="md">
+          <SiswaCardBody className="p-6 text-center">
+            <p className="text-sm font-semibold text-siswa-danger">
               Gagal memuat riwayat tugas. Coba refresh halaman.
             </p>
-          </CardContent>
-        </Card>
+          </SiswaCardBody>
+        </SiswaCard>
       ) : groups.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="text-sm text-muted-foreground">
+        <SiswaCard tone="surface" shadow="md">
+          <SiswaCardBody className="p-8 text-center">
+            <p className="text-sm text-siswa-text-muted">
               {filter === 'all'
                 ? 'Lu belum pernah submit tugas. Buka kelas lu untuk lihat tugas yang tersedia.'
                 : 'Belum ada submission yang masuk filter ini.'}
             </p>
-          </CardContent>
-        </Card>
+          </SiswaCardBody>
+        </SiswaCard>
       ) : (
         <div className="space-y-6">
           {groups.map((g) => (
             <section key={g.kelasID} className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base font-semibold tracking-tight">
+                <h2 className="siswa-display text-lg font-bold tracking-tight">
                   {g.kelasName}
                 </h2>
-                <Button asChild variant="ghost" size="sm">
+                <SiswaButton asChild tone="ghost" size="sm">
                   <Link href={`/siswa/kelas/detail?id=${g.kelasID}`}>
                     Buka kelas
-                    <ArrowRight className="size-4" />
+                    <ArrowRight className="size-4" strokeWidth={2.5} />
                   </Link>
-                </Button>
+                </SiswaButton>
               </div>
-              <ul className="divide-y rounded-md border">
-                {g.rows.map((r) => (
+              <ul className="overflow-hidden rounded-siswa siswa-border bg-siswa-surface siswa-shadow-sm">
+                {g.rows.map((r, idx) => (
                   <li
                     key={r.submission_id}
-                    className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className={cn(
+                      'flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between',
+                      idx > 0 && 'border-t-2 border-siswa-border-soft',
+                    )}
                   >
-                    <div className="min-w-0 space-y-1">
+                    <div className="min-w-0 space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-medium">
+                        <span className="siswa-display truncate text-sm font-bold">
                           {r.judul}
                         </span>
-                        <span className={statusBadgeClass(r.status, r.is_late)}>
+                        <SiswaBadge tone={statusBadgeTone(r.status, r.is_late)}>
                           {statusLabel(r.status)}
-                        </span>
-                        {r.is_late && (
-                          <span className="inline-flex items-center gap-1 rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:text-rose-300">
-                            LATE
-                          </span>
-                        )}
+                        </SiswaBadge>
+                        {r.is_late ? (
+                          <SiswaBadge tone="danger">LATE</SiswaBadge>
+                        ) : null}
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-siswa-text-muted">
                         Dikirim {formatSubmissionTimestamp(r.submitted_at)}
-                        {r.status === 'graded' && r.graded_at && (
+                        {r.status === 'graded' && r.graded_at ? (
                           <>
                             {' · '}
                             Dinilai {formatSubmissionTimestamp(r.graded_at)}
                           </>
-                        )}
+                        ) : null}
                       </p>
-                      {r.status === 'graded' && (
-                        <p className="text-xs text-muted-foreground">
+                      {r.status === 'graded' ? (
+                        <p className="text-xs text-siswa-text-muted">
                           Nilai:{' '}
-                          <span className="font-semibold text-foreground">
+                          <span className="font-bold text-siswa-text">
                             {formatNilai(r.nilai_setelah_penalty)}
                           </span>
-                          {(r.penalty_persen_applied ?? 0) > 0 && (
+                          {(r.penalty_persen_applied ?? 0) > 0 ? (
                             <>
                               {' '}
                               <span className="text-rose-600">
@@ -302,29 +269,29 @@ export default function SiswaTugasPage() {
                                 {r.penalty_persen_applied}%)
                               </span>
                             </>
-                          )}
-                          {r.feedback && (
+                          ) : null}
+                          {r.feedback ? (
                             <span className="ml-1 italic">
                               · &quot;{r.feedback}&quot;
                             </span>
-                          )}
+                          ) : null}
                         </p>
-                      )}
-                      {r.deadline && (
-                        <p className="text-xs text-muted-foreground">
+                      ) : null}
+                      {r.deadline ? (
+                        <p className="text-xs text-siswa-text-muted">
                           <Clock className="mr-1 inline size-3" />
                           Deadline {formatSubmissionTimestamp(r.deadline)}
                         </p>
-                      )}
+                      ) : null}
                     </div>
-                    <Button asChild variant="ghost" size="sm">
+                    <SiswaButton asChild tone="surface" size="sm">
                       <Link
                         href={`/siswa/kelas/detail/tugas?id=${r.kelas_id}&tid=${r.tugas_id}`}
                       >
                         Buka tugas
-                        <ArrowRight className="size-4" />
+                        <ArrowRight className="size-4" strokeWidth={2.5} />
                       </Link>
-                    </Button>
+                    </SiswaButton>
                   </li>
                 ))}
               </ul>
