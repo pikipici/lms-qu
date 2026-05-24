@@ -152,8 +152,7 @@ function GuruRekapContent({ kelasID }: { kelasID: string }) {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Matrix nilai siswa × bab + ulangan harian. Bobot kelas: ulangan{' '}
-            {data.kelas.bobot_soal_ulangan}% / tugas {data.kelas.bobot_tugas}%.
+            Matrix nilai siswa x bab + ulangan harian. Bobot diatur per tugas dan per ujian.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

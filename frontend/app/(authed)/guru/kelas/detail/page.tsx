@@ -10,7 +10,7 @@
  *
  * Backend contracts (commits c14640d → 620594f):
  *   GET    /api/v1/kelas/:id          → { kelas }
- *   PATCH  /api/v1/kelas/:id          body { version, nama, deskripsi?, bobot_*? } → { kelas }
+ *   PATCH  /api/v1/kelas/:id          body { version, nama, deskripsi? } → { kelas }
  *   POST   /api/v1/kelas/:id/archive  → { kelas } (idempotent: 409 already_archived)
  *   POST   /api/v1/kelas/:id/duplicate body { new_nama? } → 201 { kelas }
  *
@@ -97,34 +97,14 @@ import { UjianList } from '@/components/ujian/UjianList';
 
 // ---------- Schema & helpers ----------
 
-const editSchema = z
-  .object({
-    nama: z
-      .string()
-      .trim()
-      .min(1, { message: 'Nama wajib diisi.' })
-      .max(120, { message: 'Maksimal 120 karakter.' }),
-    deskripsi: z.string().trim().max(500, { message: 'Maksimal 500 karakter.' }),
-    bobot_soal_ulangan: z
-      .coerce.number()
-      .int({ message: 'Harus angka bulat.' })
-      .min(0, { message: 'Tidak boleh negatif.' })
-      .max(100, { message: 'Maksimal 100.' }),
-    bobot_tugas: z
-      .coerce.number()
-      .int({ message: 'Harus angka bulat.' })
-      .min(0, { message: 'Tidak boleh negatif.' })
-      .max(100, { message: 'Maksimal 100.' }),
-  })
-  .superRefine((value, ctx) => {
-    if (value.bobot_soal_ulangan + value.bobot_tugas !== 100) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['bobot_tugas'],
-        message: 'Total bobot harus = 100.',
-      });
-    }
-  });
+const editSchema = z.object({
+  nama: z
+    .string()
+    .trim()
+    .min(1, { message: 'Nama wajib diisi.' })
+    .max(120, { message: 'Maksimal 120 karakter.' }),
+  deskripsi: z.string().trim().max(500, { message: 'Maksimal 500 karakter.' }),
+});
 
 type EditForm = z.infer<typeof editSchema>;
 
@@ -140,9 +120,7 @@ type DuplicateForm = z.infer<typeof duplicateSchema>;
 function friendlyUpdateError(err: ApiError): string {
   switch (err.code) {
     case 'invalid_input':
-      return 'Input tidak valid. Cek nama dan bobot.';
-    case 'invalid_bobot':
-      return 'Total bobot soal ulangan + tugas harus 100.';
+      return 'Input tidak valid. Cek nama kelas.';
     case 'version_conflict':
       return 'Kelas ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan lu.';
     case 'forbidden':
@@ -224,10 +202,8 @@ function EditKelasForm({ kelas }: { kelas: Kelas }) {
     () => ({
       nama: kelas.nama,
       deskripsi: kelas.deskripsi,
-      bobot_soal_ulangan: kelas.bobot_soal_ulangan,
-      bobot_tugas: kelas.bobot_tugas,
     }),
-    [kelas.nama, kelas.deskripsi, kelas.bobot_soal_ulangan, kelas.bobot_tugas],
+    [kelas.nama, kelas.deskripsi],
   );
 
   const form = useForm<EditForm>({
@@ -246,8 +222,6 @@ function EditKelasForm({ kelas }: { kelas: Kelas }) {
         version: kelas.version,
         nama: input.nama.trim(),
         deskripsi: input.deskripsi.trim(),
-        bobot_soal_ulangan: input.bobot_soal_ulangan,
-        bobot_tugas: input.bobot_tugas,
       }),
     onSuccess: ({ kelas: updated }) => {
       // Patch cache so the form re-syncs to the new version + values.
@@ -329,48 +303,8 @@ function EditKelasForm({ kelas }: { kelas: Kelas }) {
             </FormItem>
           )}
         />
-        <div className="grid grid-cols-2 gap-3">
-          <FormField
-            control={form.control}
-            name="bobot_soal_ulangan"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Bobot Soal</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    disabled={isArchived || mutation.isPending}
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="bobot_tugas"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Bobot Tugas</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    disabled={isArchived || mutation.isPending}
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
         <FormDescription className="text-xs">
-          Total bobot harus 100. Versi saat ini: {kelas.version}.
+          Versi saat ini: {kelas.version}.
         </FormDescription>
         <div className="flex items-center gap-2">
           <Button
@@ -527,8 +461,8 @@ function DuplicateDialog({
         <DialogHeader>
           <DialogTitle>Duplikasi kelas</DialogTitle>
           <DialogDescription>
-            Buat kelas baru dengan setting (nama/bobot/deskripsi) yang sama
-            seperti <span className="font-medium">{kelas.nama}</span>. Kode
+            Buat kelas baru dengan nama dan deskripsi yang sama seperti{' '}
+            <span className="font-medium">{kelas.nama}</span>. Kode
             invite akan di-generate ulang. Siswa, materi, dan tugas tidak
             ikut tersalin (Fase 3).
           </DialogDescription>
@@ -908,8 +842,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             <span className="font-mono font-semibold tracking-wider text-foreground">
               {kelas.kode_invite}
             </span>{' '}
-            · Bobot {kelas.bobot_soal_ulangan}/{kelas.bobot_tugas} · Dibuat{' '}
-            {formatDate(kelas.created_at)}
+            · Dibuat {formatDate(kelas.created_at)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -991,7 +924,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
           <CardHeader>
             <CardTitle className="text-base">Pengaturan kelas</CardTitle>
             <CardDescription>
-              Ubah nama, deskripsi, dan bobot. Perubahan dijaga lewat versi —
+              Ubah nama dan deskripsi kelas. Perubahan dijaga lewat versi —
               kalau ada yang ngedit barengan, lu dikasih warning untuk
               refresh dulu.
             </CardDescription>

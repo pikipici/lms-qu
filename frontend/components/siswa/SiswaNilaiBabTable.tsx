@@ -5,8 +5,8 @@
  *
  * Renders one row per bab with:
  *   - Nomor + judul
- *   - Ulangan bab pct (with bobot label) + jumlah soal
- *   - Tugas pct (with bobot label) + ratio dinilai/total
+ *   - Ulangan bab pct + jumlah soal
+ *   - Tugas pct + ratio dinilai/total
  *   - Total per bab (weighted avg, NULL-aware)
  *
  * Empty state when bab[] kosong (kelas belum punya bab published).
@@ -15,16 +15,10 @@
 import * as React from 'react';
 import { BookOpen } from 'lucide-react';
 
-import {
-  bobotLabel,
-  formatNilai,
-  type NilaiBabRow,
-  type NilaiKelasInfo,
-} from '@/lib/nilai-api';
+import { formatNilai, type NilaiBabRow } from '@/lib/nilai-api';
 import { cn } from '@/lib/utils';
 
 interface Props {
-  kelas: NilaiKelasInfo;
   bab: NilaiBabRow[];
 }
 
@@ -35,7 +29,7 @@ function nilaiClass(n: number | null): string {
   return 'text-rose-700 dark:text-rose-400 font-semibold';
 }
 
-export function SiswaNilaiBabTable({ kelas, bab }: Props) {
+export function SiswaNilaiBabTable({ bab }: Props) {
   if (bab.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-8 text-center">
@@ -54,18 +48,8 @@ export function SiswaNilaiBabTable({ kelas, bab }: Props) {
         <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left">Bab</th>
-            <th className="px-3 py-2 text-right">
-              Ulangan Bab
-              <span className="ml-1 font-normal normal-case text-muted-foreground/70">
-                ({bobotLabel(kelas.bobot_soal_ulangan)})
-              </span>
-            </th>
-            <th className="px-3 py-2 text-right">
-              Tugas
-              <span className="ml-1 font-normal normal-case text-muted-foreground/70">
-                ({bobotLabel(kelas.bobot_tugas)})
-              </span>
-            </th>
+            <th className="px-3 py-2 text-right">Ulangan Bab</th>
+            <th className="px-3 py-2 text-right">Tugas</th>
             <th className="px-3 py-2 text-right">Total</th>
           </tr>
         </thead>

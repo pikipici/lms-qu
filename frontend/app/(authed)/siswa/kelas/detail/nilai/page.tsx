@@ -149,8 +149,7 @@ function SiswaKelasNilaiContent({ kelasID }: { kelasID: string }) {
         </div>
         <p className="text-sm text-muted-foreground">
           Rekap nilai bab (ulangan + tugas) dan ulangan harian lu di kelas ini.
-          Bobot ditentukan guru: ulangan {data.kelas.bobot_soal_ulangan}% /
-          tugas {data.kelas.bobot_tugas}%.
+          Bobot diatur guru per tugas dan per ujian.
         </p>
       </header>
 
@@ -191,7 +190,7 @@ function SiswaKelasNilaiContent({ kelasID }: { kelasID: string }) {
           </Button>
         </CardHeader>
         <CardContent>
-          <SiswaNilaiBabTable kelas={data.kelas} bab={data.bab} />
+          <SiswaNilaiBabTable bab={data.bab} />
         </CardContent>
       </Card>
 
