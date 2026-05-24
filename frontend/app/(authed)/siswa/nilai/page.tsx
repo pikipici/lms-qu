@@ -15,13 +15,15 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { ArrowRight, RotateCcw, TrendingUp, User2 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import {
   formatNilai,
+  getSiswaKelasNilai,
   listSiswaNilai,
+  type SiswaKelasNilaiResponse,
   type SiswaKelasSummary,
 } from '@/lib/nilai-api';
 import { Button } from '@/components/ui/button';
@@ -40,7 +42,17 @@ function totalClass(n: number | null): string {
   return 'text-rose-700 dark:text-rose-400';
 }
 
-function KelasNilaiCard({ item }: { item: SiswaKelasSummary }) {
+function KelasNilaiCard({
+  item,
+  detail,
+  detailLoading,
+}: {
+  item: SiswaKelasSummary;
+  detail?: SiswaKelasNilaiResponse;
+  detailLoading?: boolean;
+}) {
+  const babRows = detail?.bab ?? [];
+
   return (
     <Card className="flex h-full flex-col">
       <CardHeader className="space-y-1.5 pb-3">
@@ -72,6 +84,39 @@ function KelasNilaiCard({ item }: { item: SiswaKelasSummary }) {
             {item.ulangan_count} ulangan harian
           </span>
         </div>
+        <div className="rounded-md border bg-muted/20">
+          <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+            Breakdown nilai per bab
+          </div>
+          {detailLoading ? (
+            <div className="space-y-2 p-3">
+              <div className="h-4 animate-pulse rounded bg-muted" />
+              <div className="h-4 animate-pulse rounded bg-muted" />
+            </div>
+          ) : babRows.length === 0 ? (
+            <p className="p-3 text-xs text-muted-foreground">
+              Belum ada bab yang punya data nilai.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {babRows.map((bab) => (
+                <div key={bab.bab_id} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-xs">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">
+                      Bab {bab.nomor}. {bab.judul}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Tugas {formatNilai(bab.nilai_tugas_bab)} · Ulangan {formatNilai(bab.nilai_ulangan_bab)}
+                    </p>
+                  </div>
+                  <div className={`self-center text-right font-semibold tabular-nums ${totalClass(bab.total)}`}>
+                    {formatNilai(bab.total)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="mt-auto pt-2">
           <Button asChild variant="outline" size="sm" className="w-full">
             <Link href={`/siswa/kelas/detail/nilai?id=${item.kelas_id}`}>
@@ -92,7 +137,25 @@ export default function SiswaNilaiPage() {
     staleTime: 15_000,
   });
 
-  const items = nilaiQ.data?.items ?? [];
+  const items = React.useMemo(() => nilaiQ.data?.items ?? [], [nilaiQ.data?.items]);
+
+  const detailQueries = useQueries({
+    queries: items.map((item) => ({
+      queryKey: ['siswa', 'kelas', 'nilai', item.kelas_id],
+      queryFn: () => getSiswaKelasNilai(item.kelas_id),
+      staleTime: 15_000,
+      enabled: items.length > 0,
+    })),
+  });
+
+  const detailByKelas = React.useMemo(() => {
+    const map = new Map<string, SiswaKelasNilaiResponse>();
+    detailQueries.forEach((query, index) => {
+      const kelasID = items[index]?.kelas_id;
+      if (kelasID && query.data) map.set(kelasID, query.data);
+    });
+    return map;
+  }, [detailQueries, items]);
 
   const counts = React.useMemo(() => {
     let withNilai = 0;
@@ -214,8 +277,13 @@ export default function SiswaNilaiPage() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((it) => (
-            <KelasNilaiCard key={it.kelas_id} item={it} />
+          {items.map((it, index) => (
+            <KelasNilaiCard
+              key={it.kelas_id}
+              item={it}
+              detail={detailByKelas.get(it.kelas_id)}
+              detailLoading={detailQueries[index]?.isPending}
+            />
           ))}
         </div>
       )}
