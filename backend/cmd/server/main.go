@@ -295,6 +295,13 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	adminSekolah.Patch("/:id", sekolahHandler.Update)
 	adminSekolah.Delete("/:id", sekolahHandler.Delete)
 
+	sekolahOptions := api.Group("/sekolah",
+		middleware.BearerAuth(authSvc),
+		middleware.ForceChangePassword(),
+		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
+	)
+	sekolahOptions.Get("/", sekolahHandler.List)
+
 	// Kelas (Phase 2): guru manages own kelas, admin sees all.
 	kelasRepo := kelas.NewRepo(gdb)
 	kelasSvc := kelas.NewService(kelasRepo, authRepo, authRepo)

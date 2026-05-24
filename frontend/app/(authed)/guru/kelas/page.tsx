@@ -44,7 +44,7 @@ import {
   createKelas,
   listKelas,
 } from '@/lib/kelas-api';
-import { listSekolah } from '@/lib/sekolah-api';
+import { listSekolahOptions } from '@/lib/sekolah-api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -262,7 +262,7 @@ function CreateKelasDialog({
 
   const sekolahQuery = useQuery({
     queryKey: ['sekolah-options'],
-    queryFn: () => listSekolah({ pageSize: 100 }),
+    queryFn: () => listSekolahOptions({ pageSize: 100 }),
     enabled: open,
     staleTime: 60_000,
   });

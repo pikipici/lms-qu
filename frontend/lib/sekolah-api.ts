@@ -36,6 +36,19 @@ export async function listSekolah(params: {
   return api<SekolahListResponse>(`/admin/sekolah${qs ? `?${qs}` : ''}`);
 }
 
+export async function listSekolahOptions(params: {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<SekolahListResponse> {
+  const q = new URLSearchParams();
+  if (params.q) q.set('q', params.q);
+  if (params.page) q.set('page', String(params.page));
+  if (params.pageSize) q.set('page_size', String(params.pageSize));
+  const qs = q.toString();
+  return api<SekolahListResponse>(`/sekolah${qs ? `?${qs}` : ''}`);
+}
+
 export async function createSekolah(input: SekolahInput): Promise<{ sekolah: Sekolah }> {
   return api<{ sekolah: Sekolah }>('/admin/sekolah', { method: 'POST', body: input });
 }
