@@ -1,26 +1,20 @@
 'use client';
 
 /**
- * Siswa shell — sidebar + header for /siswa/* pages.
+ * Siswa shell — neo-brutalism + pastel pop theme (siswa-only).
  *
- * Mirror of /guru/layout.tsx: parent (authed) layout enforces login + force-
- * change-password gate; this file adds:
- *   - Role guard (siswa only).
- *   - Persistent sidebar nav.
- *   - Header strip with user dropdown (Profil + Logout).
- *
- * Phase 2.C scope — only Dashboard + Gabung Kelas. Tugas/Materi/Pengumuman
- * come in later fases.
+ * Wraps everything in `.siswa-theme` so design tokens activate locally.
+ * Admin / guru shells stay on the original shadcn neutral theme.
  */
 
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  LayoutDashboard,
-  KeyRound,
   ClipboardList,
   GraduationCap,
+  KeyRound,
+  LayoutDashboard,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -43,32 +37,71 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
 interface NavItem {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
+  /** Pastel accent applied to the active state. */
+  accent: 'yellow' | 'pink' | 'blue' | 'green' | 'lavender';
 }
 
 const NAV: NavItem[] = [
-  { href: '/siswa', label: 'Dashboard', Icon: LayoutDashboard },
-  { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList },
-  { href: '/siswa/ujian', label: 'Ujian saya', Icon: GraduationCap },
-  { href: '/siswa/nilai', label: 'Nilai saya', Icon: TrendingUp },
-  { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound },
+  { href: '/siswa', label: 'Dashboard', Icon: LayoutDashboard, accent: 'yellow' },
+  { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList, accent: 'pink' },
+  { href: '/siswa/ujian', label: 'Ujian saya', Icon: GraduationCap, accent: 'yellow' },
+  { href: '/siswa/nilai', label: 'Nilai saya', Icon: TrendingUp, accent: 'lavender' },
+  { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound, accent: 'green' },
 ];
+
+const ACCENT_BG: Record<NavItem['accent'], string> = {
+  yellow: 'bg-siswa-yellow',
+  pink: 'bg-siswa-pink',
+  blue: 'bg-siswa-blue',
+  green: 'bg-siswa-green',
+  lavender: 'bg-siswa-lavender',
+};
 
 function isActive(pathname: string, href: string): boolean {
   if (href === '/siswa') return pathname === '/siswa';
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const SIDEBAR_MIN = 64;
+const SIDEBAR_MIN = 72;
 const SIDEBAR_MAX = 320;
-const SIDEBAR_DEFAULT = 240;
+const SIDEBAR_DEFAULT = 248;
 
 function clampSidebarWidth(width: number) {
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width));
+}
+
+function NavLink({
+  item,
+  active,
+  collapsed,
+  onClick,
+}: {
+  item: NavItem;
+  active: boolean;
+  collapsed?: boolean;
+  onClick?: () => void;
+}) {
+  const { Icon, accent, label, href } = item;
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn(
+        'group relative flex items-center gap-3 rounded-siswa px-3 py-2 text-sm font-semibold transition-colors',
+        'border-2 border-transparent',
+        active
+          ? cn('siswa-border siswa-shadow-sm', ACCENT_BG[accent])
+          : 'text-siswa-text/80 hover:bg-siswa-cream/70 hover:text-siswa-text',
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className={cn(collapsed && 'sr-only')}>{label}</span>
+    </Link>
+  );
 }
 
 function SiswaShell({ children }: { children: React.ReactNode }) {
@@ -76,11 +109,12 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
+  const refresh = useAuthStore((s) => s.refresh);
+  const clear = useAuthStore((s) => s.clear);
+
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarWidth, setSidebarWidth] = React.useState(SIDEBAR_DEFAULT);
   const [expandedWidth, setExpandedWidth] = React.useState(SIDEBAR_DEFAULT);
-  const refresh = useAuthStore((s) => s.refresh);
-  const clear = useAuthStore((s) => s.clear);
   const sidebarCollapsed = sidebarWidth <= SIDEBAR_MIN + 8;
 
   React.useEffect(() => {
@@ -98,26 +132,31 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem('lms:siswa-sidebar-width', String(sidebarWidth));
   }, [sidebarWidth]);
 
-  const startResize = React.useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = sidebarWidth;
+  const startResize = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = sidebarWidth;
 
-    const onMove = (moveEvent: PointerEvent) => {
-      const next = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
-      setSidebarWidth(next);
-      if (next > SIDEBAR_MIN + 8) setExpandedWidth(next);
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  }, [sidebarWidth]);
+      const onMove = (moveEvent: PointerEvent) => {
+        const next = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
+        setSidebarWidth(next);
+        if (next > SIDEBAR_MIN + 8) setExpandedWidth(next);
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [sidebarWidth],
+  );
 
   const toggleSidebar = () => {
-    setSidebarWidth((width) => (width <= SIDEBAR_MIN + 8 ? expandedWidth : SIDEBAR_MIN));
+    setSidebarWidth((width) =>
+      width <= SIDEBAR_MIN + 8 ? expandedWidth : SIDEBAR_MIN,
+    );
   };
 
   const onLogout = async () => {
@@ -145,65 +184,75 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
       .join('') || '??';
 
   return (
-    <div className="h-screen overflow-hidden bg-muted/30">
+    <div className="siswa-theme min-h-screen">
       <div className="mx-auto flex h-screen max-w-[1400px] overflow-hidden">
+        {/* Sidebar (md+) */}
         <aside
-          className="sticky top-0 hidden h-screen shrink-0 border-r bg-background transition-[width] md:flex md:flex-col relative"
+          className="sticky top-0 hidden h-screen shrink-0 border-r-2 border-siswa-border bg-siswa-surface transition-[width] md:flex md:flex-col relative"
           style={{ width: sidebarWidth }}
         >
-          <div className="flex h-14 items-center border-b px-4">
-            <Link href="/siswa" className={cn('text-sm font-semibold tracking-tight', sidebarCollapsed && 'sr-only')}>
-              LMS Siswa
+          <div className="flex h-16 items-center border-b-2 border-siswa-border px-4">
+            <Link
+              href="/siswa"
+              className={cn(
+                'flex items-center gap-2 font-semibold tracking-tight',
+                sidebarCollapsed && 'justify-center',
+              )}
+            >
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-yellow siswa-shadow-sm">
+                <GraduationCap className="size-5" strokeWidth={2.5} />
+              </span>
+              <span
+                className={cn(
+                  'siswa-display text-base font-bold',
+                  sidebarCollapsed && 'sr-only',
+                )}
+              >
+                LMS Siswa
+              </span>
             </Link>
           </div>
-          <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-            {NAV.map(({ href, label, Icon }) => {
-              const active = isActive(pathname, href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-                    active
-                      ? 'bg-accent text-accent-foreground font-medium'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                  )}
-                >
-                  <Icon className="size-4" />
-                  <span className={cn(sidebarCollapsed && 'sr-only')}>{label}</span>
-                </Link>
-              );
-            })}
+          <nav className="flex-1 space-y-1.5 overflow-y-auto p-3">
+            {NAV.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                active={isActive(pathname, item.href)}
+                collapsed={sidebarCollapsed}
+              />
+            ))}
           </nav>
-          <div className="border-t p-2">
+          <div className="border-t-2 border-siswa-border p-3">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="w-full justify-center"
+              className="w-full justify-center text-siswa-text hover:bg-siswa-cream"
               aria-label={sidebarCollapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
               onClick={toggleSidebar}
             >
-              <PanelLeftClose className={cn('size-4 transition-transform', sidebarCollapsed && 'rotate-180')} />
+              <PanelLeftClose
+                className={cn(
+                  'size-4 transition-transform',
+                  sidebarCollapsed && 'rotate-180',
+                )}
+              />
               <span className={cn('ml-2', sidebarCollapsed && 'sr-only')}>
                 {sidebarCollapsed ? 'Lebarkan' : 'Ciutkan'}
               </span>
             </Button>
           </div>
-          <div className={cn("border-t p-2 text-xs text-muted-foreground", sidebarCollapsed && "hidden")}>
-            <div className="px-2 py-1">v0.7.2 · Fase 2</div>
-          </div>
           <button
             type="button"
             aria-label="Resize sidebar"
-            className="absolute -right-2 top-20 hidden h-14 w-4 cursor-col-resize touch-none rounded-full border bg-background shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/10 md:block"
+            className="absolute -right-2 top-24 hidden h-14 w-4 cursor-col-resize touch-none rounded-full border-2 border-siswa-border bg-siswa-surface siswa-shadow-sm hover:bg-siswa-yellow md:block"
             onPointerDown={startResize}
           />
         </aside>
 
+        {/* Main area */}
         <div className="flex h-screen min-w-0 flex-1 flex-col overflow-y-auto">
-          <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
+          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b-2 border-siswa-border bg-siswa-bg/90 px-4 backdrop-blur md:px-6">
             <Button
               type="button"
               variant="ghost"
@@ -215,65 +264,66 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
             >
               <Menu className="size-5" />
             </Button>
-            {sidebarOpen && (
+
+            {sidebarOpen ? (
               <div className="fixed inset-0 z-50 md:hidden">
                 <button
                   type="button"
-                  className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                  className="absolute inset-0 bg-siswa-text/40 backdrop-blur-sm"
                   aria-label="Tutup menu navigasi"
                   onClick={() => setSidebarOpen(false)}
                 />
-                <aside className="absolute left-0 top-0 flex h-dvh w-72 max-w-[85vw] flex-col border-r bg-background shadow-xl">
-                  <div className="flex h-14 items-center justify-between border-b px-4">
-                    <span className="text-sm font-semibold tracking-tight">Menu</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setSidebarOpen(false)}>
+                <aside className="absolute left-0 top-0 flex h-dvh w-72 max-w-[85vw] flex-col border-r-2 border-siswa-border bg-siswa-surface">
+                  <div className="flex h-16 items-center justify-between border-b-2 border-siswa-border px-4">
+                    <span className="siswa-display text-base font-bold">
+                      Menu
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSidebarOpen(false)}
+                    >
                       Tutup
                     </Button>
                   </div>
-                  <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-                    {NAV.map(({ href, label, Icon }) => {
-                      const active = isActive(pathname, href);
-                      return (
-                        <Link
-                          key={href}
-                          href={href}
-                          onClick={() => setSidebarOpen(false)}
-                          className={cn(
-                            'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
-                            active
-                              ? 'bg-accent text-accent-foreground font-medium'
-                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                          )}
-                        >
-                          <Icon className="size-4" />
-                          <span>{label}</span>
-                        </Link>
-                      );
-                    })}
+                  <nav className="flex-1 space-y-1.5 overflow-y-auto p-3">
+                    {NAV.map((item) => (
+                      <NavLink
+                        key={item.href}
+                        item={item}
+                        active={isActive(pathname, item.href)}
+                        onClick={() => setSidebarOpen(false)}
+                      />
+                    ))}
                   </nav>
                 </aside>
               </div>
-            )}
-            <div className="hidden text-sm text-muted-foreground md:block">
+            ) : null}
+
+            <div className="hidden text-xs font-semibold uppercase tracking-[0.18em] text-siswa-text-muted md:block">
               Panel Siswa
             </div>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-full border-2 border-siswa-border bg-siswa-surface px-2 py-1 siswa-shadow-sm hover:bg-siswa-cream"
+                >
+                  <span className="grid size-8 place-items-center rounded-full bg-siswa-yellow text-xs font-bold text-siswa-text">
                     {initials}
                   </span>
-                  <span className="hidden text-sm sm:inline">
+                  <span className="hidden pr-1 text-sm font-semibold sm:inline">
                     {user?.name ?? 'Siswa'}
                   </span>
-                </Button>
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <span className="text-sm font-medium">{user?.name}</span>
-                    <span className="text-xs text-muted-foreground break-all">
+                    <span className="text-sm font-semibold">{user?.name}</span>
+                    <span className="break-all text-xs text-muted-foreground">
                       {user?.email}
                     </span>
                   </div>
@@ -292,7 +342,10 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onLogout} className="text-destructive">
+                <DropdownMenuItem
+                  onSelect={onLogout}
+                  className="text-destructive"
+                >
                   <LogOut className="mr-2 size-4" />
                   Logout
                 </DropdownMenuItem>

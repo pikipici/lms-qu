@@ -3,26 +3,40 @@
 /**
  * /siswa — landing dashboard untuk siswa.
  *
- * List kelas yang sudah di-join (active enrollment only — kelas archived /
- * removed enrollment hidden by backend ListMyKelas). Header CTA langsung
- * ke /siswa/gabung untuk gabung kelas baru via kode invite.
+ * Visual baseline: neo-brutalism + pastel pop (siswa-only theme). Stat cards
+ * pakai SiswaStat, kelas list pakai SiswaCard berwarna deterministik per
+ * kelas_id supaya wayfinding konsisten antar kunjungan.
  */
 
 import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, GraduationCap, KeyRound, TrendingUp, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  GraduationCap,
+  KeyRound,
+  Sparkles,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 
 import { listMyKelas } from '@/lib/siswa-api';
 import { useAuthStore } from '@/lib/auth';
-import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  SiswaBadge,
+  SiswaButton,
+  SiswaCard,
+  SiswaCardBody,
+  SiswaCardHeader,
+  SiswaCardTitle,
+  SiswaCardDescription,
+  SiswaEmptyState,
+  SiswaPageHeader,
+  SiswaHighlight,
+  SiswaStat,
+  kelasToneFromId,
+  SECTION_META,
+} from '@/components/siswa-ui';
 
 function formatDate(iso: string): string {
   try {
@@ -38,6 +52,7 @@ function formatDate(iso: string): string {
 
 export default function SiswaDashboardPage() {
   const userName = useAuthStore((s) => s.user?.name ?? 'Siswa');
+  const firstName = userName.split(/\s+/)[0] ?? userName;
 
   const myKelas = useQuery({
     queryKey: ['siswa', 'kelas', 'list'],
@@ -48,135 +63,159 @@ export default function SiswaDashboardPage() {
   const items = myKelas.data?.items ?? [];
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Halo, {userName}!
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Daftar kelas yang lu ikuti. Gabung kelas baru pakai kode invite
-            dari guru.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/siswa/nilai">
-              <TrendingUp className="size-4" />
-              Nilai saya
-            </Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/siswa/gabung">
-              <KeyRound className="size-4" />
-              Gabung Kelas
-            </Link>
-          </Button>
-        </div>
-      </header>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="flex flex-col">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-base">Kelas Diikuti</CardTitle>
-              <CardDescription>Total enrollment aktif lu.</CardDescription>
-            </div>
-            <GraduationCap className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="mt-auto flex items-end justify-between gap-2">
-            {myKelas.isPending ? (
-              <div className="h-7 w-12 animate-pulse rounded bg-muted" />
-            ) : (
-              <span className="text-2xl font-semibold">{items.length}</span>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="flex flex-col sm:col-span-2">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-base">Punya kode invite?</CardTitle>
-              <CardDescription>
-                Masukin kode 6 karakter yang dikasih guru untuk langsung gabung
-                kelas. Format huruf besar/kecil bebas — sistem auto-normalisasi.
-              </CardDescription>
-            </div>
-            <Users className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="mt-auto">
-            <Button asChild size="sm" variant="outline">
+    <div className="space-y-8">
+      <SiswaPageHeader
+        eyebrow="Dashboard"
+        title={
+          <>
+            Halo, <SiswaHighlight>{firstName}</SiswaHighlight>!
+          </>
+        }
+        description="Daftar kelas yang lu ikuti. Gabung kelas baru pakai kode invite dari guru."
+        actions={
+          <>
+            <SiswaButton asChild tone="surface" size="sm">
+              <Link href="/siswa/nilai">
+                <TrendingUp className="size-4" />
+                Nilai saya
+              </Link>
+            </SiswaButton>
+            <SiswaButton asChild tone="primary" size="sm">
               <Link href="/siswa/gabung">
                 <KeyRound className="size-4" />
-                Gabung pakai kode
+                Gabung Kelas
               </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+            </SiswaButton>
+          </>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Kelas Saya</CardTitle>
-          <CardDescription>
-            Klik salah satu kelas untuk lihat materi, tugas, dan ulangan
-            (segera tersedia di fase berikutnya).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <SiswaStat
+          label="Kelas Diikuti"
+          value={items.length}
+          hint="Enrollment aktif"
+          Icon={GraduationCap}
+          tone="materi"
+          loading={myKelas.isPending}
+        />
+        <SiswaStat
+          label="Total Tugas"
+          value={
+            <Link
+              href="/siswa/tugas"
+              className="underline-offset-4 hover:underline"
+            >
+              Lihat
+            </Link>
+          }
+          hint="Buka halaman riwayat tugas"
+          Icon={Sparkles}
+          tone="tugas"
+        />
+        <SiswaStat
+          label="Ujian Aktif"
+          value={
+            <Link
+              href="/siswa/ujian"
+              className="underline-offset-4 hover:underline"
+            >
+              Lihat
+            </Link>
+          }
+          hint="Cek lobby ulangan"
+          Icon={Users}
+          tone="ulangan"
+        />
+      </section>
+
+      <SiswaCard tone="surface" shadow="md">
+        <SiswaCardHeader>
+          <SiswaCardTitle>Kelas Saya</SiswaCardTitle>
+          <SiswaCardDescription>
+            Klik kelas untuk lihat materi, latihan, ulangan, dan tugas.
+          </SiswaCardDescription>
+        </SiswaCardHeader>
+        <SiswaCardBody>
           {myKelas.isPending ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-14 animate-pulse rounded-md border bg-muted/40"
+                  className="h-28 animate-pulse rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/40"
                 />
               ))}
             </div>
           ) : items.length === 0 ? (
-            <div className="rounded-md border border-dashed p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Lu belum gabung kelas apapun. Minta kode invite ke guru atau
-                tunggu admin meng-assign lu.
-              </p>
-              <Button asChild size="sm" className="mt-3">
-                <Link href="/siswa/gabung">
-                  <KeyRound className="size-4" />
-                  Gabung Kelas
-                </Link>
-              </Button>
-            </div>
+            <SiswaEmptyState
+              icon="📚"
+              title="Belum ada kelas"
+              description={
+                <>
+                  Lu belum gabung kelas apapun. Minta kode invite ke guru atau
+                  tunggu admin meng-assign lu ke kelas.
+                </>
+              }
+              action={
+                <SiswaButton asChild>
+                  <Link href="/siswa/gabung">
+                    <KeyRound className="size-4" />
+                    Gabung Kelas
+                  </Link>
+                </SiswaButton>
+              }
+            />
           ) : (
-            <ul className="divide-y">
-              {items.map((it) => (
-                <li
-                  key={it.kelas.id}
-                  className="flex items-center justify-between gap-3 py-3"
-                >
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="truncate text-sm font-medium">
-                      {it.kelas.nama}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      Gabung {formatDate(it.joined_at)} via{' '}
-                      <span className="font-medium">
-                        {it.joined_via === 'kode' ? 'kode invite' : 'admin'}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {items.map((it) => {
+                const tone = kelasToneFromId(it.kelas.id);
+                const sectionMeta = SECTION_META[tone];
+                const SectionIcon = sectionMeta.Icon;
+                return (
+                  <SiswaCard
+                    key={it.kelas.id}
+                    tone={tone}
+                    shadow="md"
+                    interactive
+                    asButton
+                    onClick={() => {
+                      window.location.href = `/siswa/kelas/detail?id=${it.kelas.id}`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        window.location.href = `/siswa/kelas/detail?id=${it.kelas.id}`;
+                      }
+                    }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-start justify-between gap-3 border-b-2 border-siswa-border bg-siswa-surface/70 px-5 py-3">
+                      <span className="grid size-10 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                        <SectionIcon className="size-5" strokeWidth={2.5} />
                       </span>
-
-                    </p>
-                  </div>
-                  <Button asChild variant="ghost" size="sm">
-                    <Link href={`/siswa/kelas/detail?id=${it.kelas.id}`}>
-                      Buka
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  </Button>
-                </li>
-              ))}
-            </ul>
+                      <SiswaBadge tone="cream">
+                        {it.joined_via === 'kode' ? 'kode invite' : 'admin'}
+                      </SiswaBadge>
+                    </div>
+                    <div className="space-y-2 p-5">
+                      <h3 className="siswa-display line-clamp-2 text-lg font-bold leading-tight">
+                        {it.kelas.nama}
+                      </h3>
+                      <p className="text-xs text-siswa-text-muted">
+                        Bergabung {formatDate(it.joined_at)}
+                      </p>
+                      <div className="flex items-center justify-between pt-1 text-sm font-semibold">
+                        <span>Buka kelas</span>
+                        <ArrowRight className="size-4" strokeWidth={2.5} />
+                      </div>
+                    </div>
+                  </SiswaCard>
+                );
+              })}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </SiswaCardBody>
+      </SiswaCard>
     </div>
   );
 }

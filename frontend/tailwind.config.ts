@@ -1,7 +1,8 @@
 import type { Config } from 'tailwindcss';
 
-// shadcn/ui new-york style baseline. Colours mapped to CSS variables defined
-// in `app/globals.css` so theme switching (light/dark) is a one-liner later.
+// shadcn/ui new-york baseline (admin/guru). Colours mapped to CSS variables
+// in `app/globals.css`. Siswa namespace adds an extra palette under the
+// `siswa-*` prefix that consumes its own CSS vars (also in globals.css).
 const config: Config = {
   darkMode: ['class'],
   content: [
@@ -51,14 +52,43 @@ const config: Config = {
           DEFAULT: 'hsl(var(--popover))',
           foreground: 'hsl(var(--popover-foreground))',
         },
+        // Siswa pastel pop palette — only consumed inside `.siswa-theme`
+        // wrappers. Safe to use anywhere via `bg-siswa-yellow`, etc.
+        siswa: {
+          bg: 'hsl(var(--siswa-bg))',
+          surface: 'hsl(var(--siswa-surface))',
+          text: 'hsl(var(--siswa-text))',
+          'text-muted': 'hsl(var(--siswa-text-muted))',
+          border: 'hsl(var(--siswa-border))',
+          'border-soft': 'hsl(var(--siswa-border-soft))',
+          yellow: 'hsl(var(--siswa-yellow))',
+          pink: 'hsl(var(--siswa-pink))',
+          blue: 'hsl(var(--siswa-blue))',
+          green: 'hsl(var(--siswa-green))',
+          lavender: 'hsl(var(--siswa-lavender))',
+          cream: 'hsl(var(--siswa-cream))',
+          success: 'hsl(var(--siswa-success))',
+          warning: 'hsl(var(--siswa-warning))',
+          danger: 'hsl(var(--siswa-danger))',
+          // Section aliases for semantic usage.
+          materi: 'hsl(var(--siswa-section-materi))',
+          latihan: 'hsl(var(--siswa-section-latihan))',
+          ulangan: 'hsl(var(--siswa-section-ulangan))',
+          tugas: 'hsl(var(--siswa-section-tugas))',
+          nilai: 'hsl(var(--siswa-section-nilai))',
+          umum: 'hsl(var(--siswa-section-umum))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        siswa: 'var(--siswa-radius)',
+        'siswa-lg': 'var(--siswa-radius-lg)',
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system'],
+        sans: ['var(--font-inter)', 'Inter', 'ui-sans-serif', 'system-ui', '-apple-system'],
+        display: ['var(--font-space-grotesk)', 'Space Grotesk', 'ui-sans-serif', 'system-ui'],
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular'],
       },
     },
