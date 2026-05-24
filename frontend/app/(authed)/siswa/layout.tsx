@@ -63,15 +63,62 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+const SIDEBAR_MIN = 64;
+const SIDEBAR_MAX = 320;
+const SIDEBAR_DEFAULT = 240;
+
+function clampSidebarWidth(width: number) {
+  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width));
+}
+
 function SiswaShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [sidebarWidth, setSidebarWidth] = React.useState(SIDEBAR_DEFAULT);
+  const [expandedWidth, setExpandedWidth] = React.useState(SIDEBAR_DEFAULT);
   const refresh = useAuthStore((s) => s.refresh);
   const clear = useAuthStore((s) => s.clear);
+  const sidebarCollapsed = sidebarWidth <= SIDEBAR_MIN + 8;
+
+  React.useEffect(() => {
+    const saved = window.localStorage.getItem('lms:siswa-sidebar-width');
+    if (!saved) return;
+    const parsed = Number(saved);
+    if (Number.isFinite(parsed)) {
+      const width = clampSidebarWidth(parsed);
+      setSidebarWidth(width);
+      if (width > SIDEBAR_MIN + 8) setExpandedWidth(width);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    window.localStorage.setItem('lms:siswa-sidebar-width', String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  const startResize = React.useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
+      setSidebarWidth(next);
+      if (next > SIDEBAR_MIN + 8) setExpandedWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [sidebarWidth]);
+
+  const toggleSidebar = () => {
+    setSidebarWidth((width) => (width <= SIDEBAR_MIN + 8 ? expandedWidth : SIDEBAR_MIN));
+  };
 
   const onLogout = async () => {
     try {
@@ -100,16 +147,16 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="mx-auto flex min-h-screen max-w-[1400px]">
-        <aside className={cn(
-            'hidden shrink-0 border-r bg-background transition-all md:flex md:flex-col',
-            sidebarCollapsed ? 'w-16' : 'w-60',
-          )}>
+        <aside
+          className="relative hidden shrink-0 border-r bg-background transition-[width] md:flex md:flex-col"
+          style={{ width: sidebarWidth }}
+        >
           <div className="flex h-14 items-center border-b px-4">
             <Link href="/siswa" className={cn('text-sm font-semibold tracking-tight', sidebarCollapsed && 'sr-only')}>
               LMS Siswa
             </Link>
           </div>
-          <nav className="flex-1 space-y-1 p-2">
+          <nav className="flex-1 space-y-1 overflow-y-auto p-2">
             {NAV.map(({ href, label, Icon }) => {
               const active = isActive(pathname, href);
               return (
@@ -136,7 +183,7 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
               size="sm"
               className="w-full justify-center"
               aria-label={sidebarCollapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
-              onClick={() => setSidebarCollapsed((v) => !v)}
+              onClick={toggleSidebar}
             >
               <PanelLeftClose className={cn('size-4 transition-transform', sidebarCollapsed && 'rotate-180')} />
               <span className={cn('ml-2', sidebarCollapsed && 'sr-only')}>
@@ -147,30 +194,66 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
           <div className={cn("border-t p-2 text-xs text-muted-foreground", sidebarCollapsed && "hidden")}>
             <div className="px-2 py-1">v0.7.2 · Fase 2</div>
           </div>
+          <button
+            type="button"
+            aria-label="Resize sidebar"
+            className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none bg-transparent hover:bg-primary/20 md:block"
+            onPointerDown={startResize}
+          />
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
-            <nav className="flex gap-1 overflow-x-auto md:hidden">
-              {NAV.map(({ href, label, Icon }) => {
-                const active = isActive(pathname, href);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      'flex items-center gap-1 rounded-md px-2 py-1 text-xs',
-                      active
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-muted-foreground',
-                    )}
-                  >
-                    <Icon className="size-3.5" />
-                    {label}
-                  </Link>
-                );
-              })}
-            </nav>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              aria-label="Buka menu navigasi"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu className="size-5" />
+            </Button>
+            {sidebarOpen && (
+              <div className="fixed inset-0 z-50 md:hidden">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                  aria-label="Tutup menu navigasi"
+                  onClick={() => setSidebarOpen(false)}
+                />
+                <aside className="absolute left-0 top-0 flex h-dvh w-72 max-w-[85vw] flex-col border-r bg-background shadow-xl">
+                  <div className="flex h-14 items-center justify-between border-b px-4">
+                    <span className="text-sm font-semibold tracking-tight">Menu</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setSidebarOpen(false)}>
+                      Tutup
+                    </Button>
+                  </div>
+                  <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+                    {NAV.map(({ href, label, Icon }) => {
+                      const active = isActive(pathname, href);
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          onClick={() => setSidebarOpen(false)}
+                          className={cn(
+                            'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                            active
+                              ? 'bg-accent text-accent-foreground font-medium'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                          )}
+                        >
+                          <Icon className="size-4" />
+                          <span>{label}</span>
+                        </Link>
+                      );
+                    })}
+                  </nav>
+                </aside>
+              </div>
+            )}
             <div className="hidden text-sm text-muted-foreground md:block">
               Panel Siswa
             </div>
