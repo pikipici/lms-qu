@@ -6,7 +6,7 @@
  * Backend contract (commits c14640d → 620594f):
  *   GET  /api/v1/kelas?page&page_size&include_archived
  *     -> { items, page, page_size, total, total_pages }
- *   POST /api/v1/kelas { nama, deskripsi?, bobot_soal_ulangan?, bobot_tugas? }
+ *   POST /api/v1/kelas { nama, deskripsi?, sekolah_id?, bobot_soal_ulangan?, bobot_tugas? }
  *     -> 201 { kelas }
  *
  * UX:
@@ -77,44 +77,24 @@ import { Label } from '@/components/ui/label';
 
 const PAGE_SIZE = 12;
 
-const createSchema = z
-  .object({
-    nama: z
-      .string()
-      .trim()
-      .min(1, { message: 'Nama wajib diisi.' })
-      .max(120, { message: 'Maksimal 120 karakter.' }),
-    deskripsi: z.string().trim().max(500, { message: 'Maksimal 500 karakter.' }),
-    sekolah_id: z.string().trim(),
-    bobot_soal_ulangan: z
-      .coerce.number()
-      .int({ message: 'Harus angka bulat.' })
-      .min(0, { message: 'Tidak boleh negatif.' })
-      .max(100, { message: 'Maksimal 100.' }),
-    bobot_tugas: z
-      .coerce.number()
-      .int({ message: 'Harus angka bulat.' })
-      .min(0, { message: 'Tidak boleh negatif.' })
-      .max(100, { message: 'Maksimal 100.' }),
-  })
-  .superRefine((value, ctx) => {
-    if (value.bobot_soal_ulangan + value.bobot_tugas !== 100) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['bobot_tugas'],
-        message: 'Total bobot harus = 100.',
-      });
-    }
-  });
+const createSchema = z.object({
+  nama: z
+    .string()
+    .trim()
+    .min(1, { message: 'Nama wajib diisi.' })
+    .max(120, { message: 'Maksimal 120 karakter.' }),
+  deskripsi: z.string().trim().max(500, { message: 'Maksimal 500 karakter.' }),
+  sekolah_id: z.string().trim(),
+});
 
 type CreateForm = z.infer<typeof createSchema>;
 
 function friendlyCreateError(err: ApiError): string {
   switch (err.code) {
     case 'invalid_input':
-      return 'Input tidak valid. Cek kembali nama dan bobot.';
+      return 'Input tidak valid. Cek kembali nama kelas.';
     case 'invalid_bobot':
-      return 'Total bobot soal ulangan + tugas harus 100.';
+      return 'Konfigurasi bobot kelas tidak valid.';
     case 'kode_invite_collision':
       return 'Server gagal generate kode invite (collision). Coba lagi.';
     case 'forbidden':
@@ -251,8 +231,6 @@ function CreateKelasDialog({
       nama: '',
       deskripsi: '',
       sekolah_id: '',
-      bobot_soal_ulangan: 50,
-      bobot_tugas: 50,
     },
   });
 
@@ -273,8 +251,6 @@ function CreateKelasDialog({
         nama: input.nama.trim(),
         deskripsi: input.deskripsi.trim() || undefined,
         sekolah_id: input.sekolah_id || undefined,
-        bobot_soal_ulangan: input.bobot_soal_ulangan,
-        bobot_tugas: input.bobot_tugas,
       }),
     onSuccess: ({ kelas }) => {
       toast({
@@ -368,37 +344,6 @@ function CreateKelasDialog({
                 </FormItem>
               )}
             />
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="bobot_soal_ulangan"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Bobot Soal</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} max={100} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="bobot_tugas"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Bobot Tugas</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} max={100} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <FormDescription className="text-xs">
-              Total bobot harus 100. Default 50 / 50.
-            </FormDescription>
             <DialogFooter>
               <Button
                 type="button"
