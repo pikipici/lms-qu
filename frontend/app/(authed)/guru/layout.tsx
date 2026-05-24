@@ -166,11 +166,11 @@ function GuruShell({ children }: { children: React.ReactNode }) {
       .join('') || '??';
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <div className="mx-auto flex min-h-screen max-w-[1400px]">
+    <div className="h-screen overflow-hidden bg-muted/30">
+      <div className="mx-auto flex h-screen max-w-[1400px] overflow-hidden">
         {/* Sidebar */}
         <aside
-          className="relative hidden shrink-0 border-r bg-background transition-[width] md:flex md:flex-col"
+          className="sticky top-0 hidden h-screen shrink-0 border-r bg-background transition-[width] md:flex md:flex-col relative"
           style={{ width: sidebarWidth }}
         >
           <div className="flex h-14 items-center border-b px-4">
@@ -225,13 +225,12 @@ function GuruShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             aria-label="Resize sidebar"
-            className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none bg-transparent hover:bg-primary/20 md:block"
+            className="absolute -right-2 top-20 hidden h-14 w-4 cursor-col-resize touch-none rounded-full border bg-background shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/10 md:block"
             onPointerDown={startResize}
           />
         </aside>
 
-        {/* Main column */}
-        <div className="flex min-h-screen flex-1 flex-col">
+        <div className="flex h-screen min-w-0 flex-1 flex-col overflow-y-auto">
           <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
             <Button
               type="button"
