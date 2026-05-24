@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 import { listKelas } from '@/lib/kelas-api';
-import { getPendingCounts } from '@/lib/guru-api';
+import { getPendingCounts, getPendingItems } from '@/lib/guru-api';
 import { useAuthStore } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,11 +49,32 @@ export default function GuruDashboardPage() {
     refetchIntervalInBackground: false,
   });
 
+  const pendingItemsQ = useQuery({
+    queryKey: ['guru', 'pending-items'],
+    queryFn: () => getPendingItems(3),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+
   const items = recentKelas.data?.items ?? [];
   const total = recentKelas.data?.total ?? 0;
   const ungraded = pendingQ.data?.ungraded_submissions ?? 0;
   const reviewUlangan = pendingQ.data?.pending_review_ulangan ?? 0;
   const reviewUjian = pendingQ.data?.pending_review_ujian ?? 0;
+  const firstKelasID = items[0]?.id;
+  const fallbackTugasHref = firstKelasID
+    ? `/guru/kelas/detail?id=${firstKelasID}&tab=tugas`
+    : '/guru/kelas';
+  const fallbackUlanganHref = firstKelasID
+    ? `/guru/kelas/detail?id=${firstKelasID}&tab=bab`
+    : '/guru/kelas';
+  const fallbackUjianHref = firstKelasID
+    ? `/guru/kelas/detail?id=${firstKelasID}&tab=ujian`
+    : '/guru/kelas';
+  const tugasHref = pendingItemsQ.data?.ungraded_submissions?.[0]?.target_url ?? fallbackTugasHref;
+  const ulanganHref = pendingItemsQ.data?.pending_review_ulangan?.[0]?.target_url ?? fallbackUlanganHref;
+  const ujianHref = pendingItemsQ.data?.pending_review_ujian?.[0]?.target_url ?? fallbackUjianHref;
 
   return (
     <div className="space-y-6">
@@ -116,7 +137,7 @@ export default function GuruDashboardPage() {
               </span>
             )}
             <Button asChild variant="ghost" size="sm">
-              <Link href="/guru/kelas">
+              <Link href={tugasHref}>
                 Cek
                 <ArrowRight className="size-4" />
               </Link>
@@ -149,7 +170,7 @@ export default function GuruDashboardPage() {
               </span>
             )}
             <Button asChild variant="ghost" size="sm">
-              <Link href="/guru/kelas">
+              <Link href={ulanganHref}>
                 Cek
                 <ArrowRight className="size-4" />
               </Link>
@@ -182,7 +203,7 @@ export default function GuruDashboardPage() {
               </span>
             )}
             <Button asChild variant="ghost" size="sm">
-              <Link href="/guru/kelas">
+              <Link href={ujianHref}>
                 Cek
                 <ArrowRight className="size-4" />
               </Link>
@@ -224,11 +245,11 @@ export default function GuruDashboardPage() {
                     <p className="truncate text-sm font-medium">{k.nama}</p>
                     <p className="truncate text-xs text-muted-foreground">
                       Kode: <span className="font-mono">{k.kode_invite}</span>
-                      {' · '}Bobot {k.bobot_soal_ulangan}/{k.bobot_tugas}
+                      {' · '}{k.jumlah_murid ?? 0} murid
                     </p>
                   </div>
                   <Button asChild variant="ghost" size="sm">
-                    <Link href="/guru/kelas">Detail</Link>
+                    <Link href={`/guru/kelas/detail?id=${k.id}`}>Detail</Link>
                   </Button>
                 </li>
               ))}

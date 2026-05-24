@@ -228,8 +228,8 @@ export function SoalBabEditDialog({
           <DialogTitle>{isEdit ? 'Edit soal' : 'Soal baru'}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? 'Edit konten soal + jawaban + mode. Gambar bisa diganti per slot di bawah.'
-              : 'Tulis pertanyaan + 5 opsi + tandai jawaban benar. Gambar bisa di-upload setelah simpan.'}
+              ? 'Edit konten soal + jawaban + mode. Kelola gambar pertanyaan/opsi di bagian Gambar.'
+              : 'Tulis pertanyaan + 5 opsi + tandai jawaban benar. Setelah klik Buat soal, buka lagi soalnya untuk upload gambar.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -333,11 +333,16 @@ export function SoalBabEditDialog({
           </div>
 
           {/* Image slots — hanya tampil di edit mode */}
+          {!isEdit && (
+            <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+              Mau pakai gambar di pertanyaan atau opsi? Buat soalnya dulu, lalu buka Edit untuk upload gambar per slot.
+            </div>
+          )}
           {isEdit && soal && (
-            <div className="space-y-2">
-              <Label>Gambar (opsional)</Label>
+            <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+              <Label>Gambar pertanyaan & opsi (opsional)</Label>
               <p className="text-xs text-muted-foreground">
-                Maksimal 5 MB per slot. JPG/PNG/WebP. Gambar otomatis di-resize ke 1920px.
+                Upload gambar untuk pertanyaan atau opsi A-E. Maksimal 5 MB per slot, format JPG/PNG/WebP. Gambar otomatis di-resize ke 1920px.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {SLOTS.map((s) => (

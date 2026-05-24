@@ -80,6 +80,7 @@ func NewService(repo kelasRepo, audit auditLogger, users userLookup) *Service {
 type CreateInput struct {
 	Nama             string
 	Deskripsi        string
+	SekolahID        *uuid.UUID
 	BobotSoalUlangan int
 	BobotTugas       int
 }
@@ -113,6 +114,7 @@ func (s *Service) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, 
 		Deskripsi:        strings.TrimSpace(in.Deskripsi),
 		KodeInvite:       kode,
 		GuruID:           guruID,
+		SekolahID:        in.SekolahID,
 		BobotSoalUlangan: bobotSoalUlangan,
 		BobotTugas:       bobotTugas,
 		Version:          1,

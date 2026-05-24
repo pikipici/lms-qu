@@ -812,8 +812,12 @@ const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?
   { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
 ];
 
-function GuruKelasDetailContent({ id }: { id: string }) {
-  const [tab, setTab] = React.useState<TabKey>('bab');
+function isTabKey(value: string | null): value is TabKey {
+  return TABS.some((tab) => tab.key === value);
+}
+
+function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: TabKey }) {
+  const [tab, setTab] = React.useState<TabKey>(initialTab ?? 'bab');
   const [archiveOpen, setArchiveOpen] = React.useState(false);
   const [duplicateOpen, setDuplicateOpen] = React.useState(false);
 
@@ -1039,6 +1043,8 @@ function GuruKelasDetailContent({ id }: { id: string }) {
 export default function GuruKelasDetailPage() {
   const searchParams = useSearchParams();
   const id = searchParams?.get('id') ?? '';
+  const tabParam = searchParams?.get('tab') ?? null;
+  const initialTab = isTabKey(tabParam) ? tabParam : undefined;
 
   if (!id) {
     return (
@@ -1062,5 +1068,5 @@ export default function GuruKelasDetailPage() {
     );
   }
 
-  return <GuruKelasDetailContent id={id} />;
+  return <GuruKelasDetailContent id={id} initialTab={initialTab} />;
 }

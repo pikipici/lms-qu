@@ -45,16 +45,23 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 // ListResponse is the shape returned by GET /kelas list endpoints.
 type ListResponse struct {
-	Items      []Kelas `json:"items"`
-	Page       int     `json:"page"`
-	PageSize   int     `json:"page_size"`
-	Total      int64   `json:"total"`
-	TotalPages int     `json:"total_pages"`
+	Items      []KelasListItem `json:"items"`
+	Page       int             `json:"page"`
+	PageSize   int             `json:"page_size"`
+	Total      int64           `json:"total"`
+	TotalPages int             `json:"total_pages"`
+}
+
+// KelasListItem extends the kelas row with list-only metadata for UI cards.
+type KelasListItem struct {
+	Kelas
+	JumlahMurid int64 `json:"jumlah_murid"`
 }
 
 type createRequest struct {
 	Nama             string `json:"nama"`
 	Deskripsi        string `json:"deskripsi"`
+	SekolahID        string `json:"sekolah_id"`
 	BobotSoalUlangan int    `json:"bobot_soal_ulangan"`
 	BobotTugas       int    `json:"bobot_tugas"`
 }
@@ -104,7 +111,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		return kelasError(c, fiber.StatusInternalServerError, "internal server error", "internal")
 	}
 	return c.Status(fiber.StatusOK).JSON(ListResponse{
-		Items:      res.Items,
+		Items:      toKelasListItems(res.Items),
 		Page:       page,
 		PageSize:   pageSize,
 		Total:      res.Total,
@@ -124,9 +131,19 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		return kelasError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
 	}
 
+	var sekolahID *uuid.UUID
+	if strings.TrimSpace(req.SekolahID) != "" {
+		parsed, err := uuid.Parse(req.SekolahID)
+		if err != nil {
+			return kelasError(c, fiber.StatusBadRequest, "invalid sekolah_id", "invalid_sekolah_id")
+		}
+		sekolahID = &parsed
+	}
+
 	in := CreateInput{
 		Nama:             req.Nama,
 		Deskripsi:        req.Deskripsi,
+		SekolahID:        sekolahID,
 		BobotSoalUlangan: req.BobotSoalUlangan,
 		BobotTugas:       req.BobotTugas,
 	}

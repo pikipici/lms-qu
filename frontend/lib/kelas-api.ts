@@ -21,8 +21,10 @@ export interface Kelas {
   deskripsi: string;
   kode_invite: string;
   guru_id: string;
+  sekolah_id?: string | null;
   bobot_soal_ulangan: number;
   bobot_tugas: number;
+  jumlah_murid?: number;
   version: number;
   archived_at?: string | null;
   created_at: string;
@@ -40,6 +42,7 @@ export interface KelasListResponse {
 export interface CreateKelasInput {
   nama: string;
   deskripsi?: string;
+  sekolah_id?: string;
   bobot_soal_ulangan?: number;
   bobot_tugas?: number;
 }

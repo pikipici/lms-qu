@@ -1,12 +1,13 @@
 // HTTP handlers for the submission domain.
 //
 // Endpoints (Task 4.C.2 - 4.C.4):
-//   POST   /api/v1/siswa/tugas/:id/submit          (siswa enrolled — multipart)
-//   GET    /api/v1/siswa/tugas/:id/submission      (siswa enrolled — own + tugas info)
-//   GET    /api/v1/tugas/:id/submissions           (guru/admin owner — rekap)
-//   GET    /api/v1/submission/:id                  (guru/admin owner OR siswa pemilik)
-//   GET    /api/v1/submission/:id/attachments/:attID/url  (presigned 15m)
-//   POST   /api/v1/submission/:id/grade            (guru/admin owner)
+//
+//	POST   /api/v1/siswa/tugas/:id/submit          (siswa enrolled — multipart)
+//	GET    /api/v1/siswa/tugas/:id/submission      (siswa enrolled — own + tugas info)
+//	GET    /api/v1/tugas/:id/submissions           (guru/admin owner — rekap)
+//	GET    /api/v1/submission/:id                  (guru/admin owner OR siswa pemilik)
+//	GET    /api/v1/submission/:id/attachments/:attID/url  (presigned 15m)
+//	POST   /api/v1/submission/:id/grade            (guru/admin owner)
 package submission
 
 import (
@@ -304,6 +305,28 @@ func (h *PendingHandler) Count(c *fiber.Ctx) error {
 	}
 	role, _ := c.Locals(middleware.LocalsUserRole).(string)
 	res, err := h.counter.Count(c.UserContext(), callerID, role)
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(res)
+}
+
+// Items handles GET /api/v1/guru/pending-items.
+func (h *PendingHandler) Items(c *fiber.Ctx) error {
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	limit := 3
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		n, perr := strconv.Atoi(raw)
+		if perr != nil || n <= 0 || n > 10 {
+			return errResp(c, fiber.StatusBadRequest, "limit must be between 1 and 10", "invalid_input")
+		}
+		limit = n
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+	res, err := h.counter.Items(c.UserContext(), callerID, role, limit)
 	if err != nil {
 		return mapServiceErr(c, err)
 	}

@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -39,6 +40,25 @@ type PendingCountsResult struct {
 	UngradedSubmissions  int64 `json:"ungraded_submissions"`
 	PendingReviewUlangan int64 `json:"pending_review_ulangan"`
 	PendingReviewUjian   int64 `json:"pending_review_ujian"`
+}
+
+// PendingItemsResult gives the dashboard concrete destinations instead of
+// only aggregate counts. Each category returns the latest actionable rows.
+type PendingItemsResult struct {
+	UngradedSubmissions  []PendingItem `json:"ungraded_submissions"`
+	PendingReviewUlangan []PendingItem `json:"pending_review_ulangan"`
+	PendingReviewUjian   []PendingItem `json:"pending_review_ujian"`
+}
+
+type PendingItem struct {
+	ID          uuid.UUID  `json:"id"`
+	KelasID     uuid.UUID  `json:"kelas_id"`
+	KelasNama   string     `json:"kelas_nama"`
+	Title       string     `json:"title"`
+	Subtitle    string     `json:"subtitle,omitempty"`
+	TargetURL   string     `json:"target_url"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 }
 
 // kelasOwnedLister provides the list of kelas IDs yang dimiliki guru.
@@ -104,9 +124,9 @@ func (p *PendingCounter) Count(ctx context.Context, callerID uuid.UUID, callerRo
 	db := p.repo.DB().WithContext(ctx)
 
 	var (
-		wg                                              sync.WaitGroup
-		ungraded, reviewUlangan, reviewUjian            int64
-		errUngraded, errReviewUlangan, errReviewUjian   error
+		wg                                            sync.WaitGroup
+		ungraded, reviewUlangan, reviewUjian          int64
+		errUngraded, errReviewUlangan, errReviewUjian error
 	)
 
 	wg.Add(3)
@@ -171,4 +191,87 @@ func (p *PendingCounter) Count(ctx context.Context, callerID uuid.UUID, callerRo
 // guard) as zero — empty aggregate is a valid 0 not an error.
 func isNoRowsErr(err error) bool {
 	return err == gorm.ErrRecordNotFound
+}
+
+func (p *PendingCounter) Items(ctx context.Context, callerID uuid.UUID, callerRole string, limit int) (*PendingItemsResult, error) {
+	if limit <= 0 || limit > 10 {
+		limit = 3
+	}
+	kelasIDs, adminScope, err := p.scopeKelasIDs(ctx, callerID, callerRole)
+	if err != nil {
+		return nil, err
+	}
+	if !adminScope && len(kelasIDs) == 0 {
+		return &PendingItemsResult{}, nil
+	}
+
+	db := p.repo.DB().WithContext(ctx)
+	var result PendingItemsResult
+
+	ungraded := db.Table("submission AS s").
+		Select("s.id, t.kelas_id, k.nama AS kelas_nama, t.judul AS title, u.name AS subtitle, '/guru/kelas/detail/tugas?id=' || t.kelas_id::text || '&tid=' || t.id::text AS target_url, s.submitted_at").
+		Joins("JOIN tugas t ON t.id = s.tugas_id").
+		Joins("JOIN kelas k ON k.id = t.kelas_id").
+		Joins("JOIN users u ON u.id = s.siswa_id").
+		Where("s.status = ?", StatusSubmitted).
+		Order("s.submitted_at DESC").
+		Limit(limit)
+	if len(kelasIDs) > 0 {
+		ungraded = ungraded.Where("t.kelas_id IN ?", kelasIDs)
+	}
+	if err := ungraded.Scan(&result.UngradedSubmissions).Error; err != nil {
+		return nil, fmt.Errorf("submission pending items ungraded: %w", err)
+	}
+
+	ulangan := db.Table("hasil_soal_bab AS h").
+		Select("h.id, b.kelas_id, k.nama AS kelas_nama, b.judul AS title, u.name AS subtitle, '/guru/kelas/detail/bab?id=' || b.kelas_id::text || '&bid=' || b.id::text AS target_url, h.selesai_at AS finished_at").
+		Joins("JOIN bab b ON b.id = h.bab_id").
+		Joins("JOIN kelas k ON k.id = b.kelas_id").
+		Joins("JOIN users u ON u.id = h.siswa_id").
+		Joins("JOIN ulangan_bab_setting us ON us.bab_id = h.bab_id").
+		Where("h.status = ?", "selesai").
+		Where("h.mode = ?", "ulangan").
+		Where("us.izinkan_review_setelah_submit = ?", true).
+		Order("h.selesai_at DESC NULLS LAST, h.updated_at DESC").
+		Limit(limit)
+	if len(kelasIDs) > 0 {
+		ulangan = ulangan.Where("b.kelas_id IN ?", kelasIDs)
+	}
+	if err := ulangan.Scan(&result.PendingReviewUlangan).Error; err != nil {
+		return nil, fmt.Errorf("submission pending items ulangan: %w", err)
+	}
+
+	ujian := db.Table("hasil_ujian AS h").
+		Select("h.id, uj.kelas_id, k.nama AS kelas_nama, uj.judul AS title, u.name AS subtitle, '/guru/kelas/detail?id=' || uj.kelas_id::text || '&tab=ujian' AS target_url, h.selesai_at AS finished_at").
+		Joins("JOIN ujian uj ON uj.id = h.ujian_id").
+		Joins("JOIN kelas k ON k.id = uj.kelas_id").
+		Joins("JOIN users u ON u.id = h.siswa_id").
+		Where("h.status = ?", "selesai").
+		Where("h.deleted_at IS NULL").
+		Where("uj.izinkan_review_setelah_submit = ?", true).
+		Order("h.selesai_at DESC NULLS LAST, h.updated_at DESC").
+		Limit(limit)
+	if len(kelasIDs) > 0 {
+		ujian = ujian.Where("uj.kelas_id IN ?", kelasIDs)
+	}
+	if err := ujian.Scan(&result.PendingReviewUjian).Error; err != nil {
+		return nil, fmt.Errorf("submission pending items ujian: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (p *PendingCounter) scopeKelasIDs(ctx context.Context, callerID uuid.UUID, callerRole string) ([]uuid.UUID, bool, error) {
+	switch callerRole {
+	case string(auth.Guru):
+		ids, err := p.kelas.ListIDsByGuru(ctx, callerID)
+		if err != nil {
+			return nil, false, fmt.Errorf("submission pending kelas list: %w", err)
+		}
+		return ids, false, nil
+	case string(auth.Admin):
+		return nil, true, nil
+	default:
+		return nil, false, ErrForbidden
+	}
 }

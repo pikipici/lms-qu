@@ -62,6 +62,9 @@ func (r *Repo) ListByGuru(ctx context.Context, guruID uuid.UUID, includeArchived
 	if err := q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := r.attachJumlahMurid(ctx, rows); err != nil {
+		return nil, 0, err
+	}
 	return rows, total, nil
 }
 
@@ -98,7 +101,43 @@ func (r *Repo) ListAll(ctx context.Context, includeArchived bool, limit, offset 
 	if err := q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := r.attachJumlahMurid(ctx, rows); err != nil {
+		return nil, 0, err
+	}
 	return rows, total, nil
+}
+
+func (r *Repo) attachJumlahMurid(ctx context.Context, rows []Kelas) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+
+	type countRow struct {
+		KelasID uuid.UUID
+		Total   int64
+	}
+	var counts []countRow
+	if err := r.db.WithContext(ctx).
+		Model(&Enrollment{}).
+		Select("kelas_id, COUNT(*) AS total").
+		Where("kelas_id IN ? AND status = ?", ids, EnrollmentActive).
+		Group("kelas_id").
+		Scan(&counts).Error; err != nil {
+		return err
+	}
+
+	byID := make(map[uuid.UUID]int64, len(counts))
+	for _, c := range counts {
+		byID[c.KelasID] = c.Total
+	}
+	for i := range rows {
+		rows[i].JumlahMurid = byID[rows[i].ID]
+	}
+	return nil
 }
 
 // UpdateBasic applies an optimistic-concurrency update. The WHERE clause

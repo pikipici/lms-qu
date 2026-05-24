@@ -147,9 +147,6 @@ export default function LoginPage() {
         <Card>
           <CardHeader className="space-y-2 text-center">
             <CardTitle className="text-2xl">Masuk</CardTitle>
-            <CardDescription>
-              Akun dibuat oleh admin sekolah. Tidak ada pendaftaran mandiri.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>

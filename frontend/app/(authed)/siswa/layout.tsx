@@ -22,6 +22,8 @@ import {
   ClipboardList,
   GraduationCap,
   LogOut,
+  Menu,
+  PanelLeftClose,
   ShieldAlert,
   TrendingUp,
   UserCog,
@@ -66,6 +68,8 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const refresh = useAuthStore((s) => s.refresh);
   const clear = useAuthStore((s) => s.clear);
 
@@ -96,9 +100,12 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="mx-auto flex min-h-screen max-w-[1400px]">
-        <aside className="hidden w-60 shrink-0 border-r bg-background md:flex md:flex-col">
+        <aside className={cn(
+            'hidden shrink-0 border-r bg-background transition-all md:flex md:flex-col',
+            sidebarCollapsed ? 'w-16' : 'w-60',
+          )}>
           <div className="flex h-14 items-center border-b px-4">
-            <Link href="/siswa" className="text-sm font-semibold tracking-tight">
+            <Link href="/siswa" className={cn('text-sm font-semibold tracking-tight', sidebarCollapsed && 'sr-only')}>
               LMS Siswa
             </Link>
           </div>
@@ -117,12 +124,27 @@ function SiswaShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   <Icon className="size-4" />
-                  <span>{label}</span>
+                  <span className={cn(sidebarCollapsed && 'sr-only')}>{label}</span>
                 </Link>
               );
             })}
           </nav>
-          <div className="border-t p-2 text-xs text-muted-foreground">
+          <div className="border-t p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center"
+              aria-label={sidebarCollapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
+              onClick={() => setSidebarCollapsed((v) => !v)}
+            >
+              <PanelLeftClose className={cn('size-4 transition-transform', sidebarCollapsed && 'rotate-180')} />
+              <span className={cn('ml-2', sidebarCollapsed && 'sr-only')}>
+                {sidebarCollapsed ? 'Lebarkan' : 'Ciutkan'}
+              </span>
+            </Button>
+          </div>
+          <div className={cn("border-t p-2 text-xs text-muted-foreground", sidebarCollapsed && "hidden")}>
             <div className="px-2 py-1">v0.7.2 · Fase 2</div>
           </div>
         </aside>

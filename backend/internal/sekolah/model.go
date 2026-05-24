@@ -1,0 +1,19 @@
+package sekolah
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Sekolah is a school master row managed by admin.
+type Sekolah struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Nama      string    `gorm:"not null" json:"nama"`
+	NPSN      *string   `gorm:"uniqueIndex" json:"npsn,omitempty"`
+	Alamat    string    `json:"alamat"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (Sekolah) TableName() string { return "sekolah" }

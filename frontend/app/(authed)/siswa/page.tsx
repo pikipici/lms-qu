@@ -117,7 +117,7 @@ export default function SiswaDashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Kelas saya</CardTitle>
+          <CardTitle className="text-base">Kelas Saya</CardTitle>
           <CardDescription>
             Klik salah satu kelas untuk lihat materi, tugas, dan ulangan
             (segera tersedia di fase berikutnya).
@@ -162,8 +162,7 @@ export default function SiswaDashboardPage() {
                       <span className="font-medium">
                         {it.joined_via === 'kode' ? 'kode invite' : 'admin'}
                       </span>
-                      {' · '}Bobot {it.kelas.bobot_soal_ulangan}/
-                      {it.kelas.bobot_tugas}
+
                     </p>
                   </div>
                   <Button asChild variant="ghost" size="sm">

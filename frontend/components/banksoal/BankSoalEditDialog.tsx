@@ -272,8 +272,8 @@ export function BankSoalEditDialog({
           <DialogTitle>{isEdit ? 'Edit soal bank' : 'Soal baru'}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? 'Edit konten + tag (mapel/tingkat/topik). Gambar bisa diganti per slot di bawah.'
-              : 'Bank Soal pribadi — soal yang dibuat di sini bisa dipakai untuk Ulangan Harian. Tag membantu pencarian.'}
+              ? 'Edit konten + tag (mapel/tingkat/topik). Kelola gambar pertanyaan/opsi di bagian Gambar.'
+              : 'Bank Soal pribadi untuk Ulangan Harian. Setelah klik Buat soal, buka lagi soalnya untuk upload gambar jika perlu.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -423,12 +423,16 @@ export function BankSoalEditDialog({
           </div>
 
           {/* Image slots — hanya tampil di edit mode */}
+          {!isEdit && (
+            <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+              Mau pakai gambar di pertanyaan atau opsi? Buat soalnya dulu, lalu buka Edit untuk upload gambar per slot.
+            </div>
+          )}
           {isEdit && soal && (
-            <div className="space-y-2">
-              <Label>Gambar (opsional)</Label>
+            <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+              <Label>Gambar pertanyaan & opsi (opsional)</Label>
               <p className="text-xs text-muted-foreground">
-                Maksimal 5 MB per slot. JPG/PNG/WebP. Gambar otomatis di-resize
-                ke 1920px.
+                Upload gambar untuk pertanyaan atau opsi A-E. Maksimal 5 MB per slot, format JPG/PNG/WebP. Gambar otomatis di-resize ke 1920px.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {SLOTS.map((s) => (

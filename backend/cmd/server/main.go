@@ -41,6 +41,7 @@ import (
 	"github.com/pikip/lms/backend/internal/middleware"
 	"github.com/pikip/lms/backend/internal/nilai"
 	"github.com/pikip/lms/backend/internal/pengumuman"
+	"github.com/pikip/lms/backend/internal/sekolah"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/soalbab"
 	"github.com/pikip/lms/backend/internal/storage"
@@ -285,6 +286,14 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 
 	adminGroup.Get("/audit-log", adminHandler.ListAuditLog)
 	adminGroup.Get("/login-attempts", adminHandler.ListLoginAttempts)
+
+	sekolahRepo := sekolah.NewRepo(gdb)
+	sekolahHandler := sekolah.NewHandler(sekolahRepo)
+	adminSekolah := adminGroup.Group("/sekolah")
+	adminSekolah.Get("/", sekolahHandler.List)
+	adminSekolah.Post("/", sekolahHandler.Create)
+	adminSekolah.Patch("/:id", sekolahHandler.Update)
+	adminSekolah.Delete("/:id", sekolahHandler.Delete)
 
 	// Kelas (Phase 2): guru manages own kelas, admin sees all.
 	kelasRepo := kelas.NewRepo(gdb)
@@ -626,6 +635,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru)),
 	)
 	guruGroup.Get("/pending-counts", pendingHandler.Count)
+	guruGroup.Get("/pending-items", pendingHandler.Items)
 
 	// Task 7.C — Activity feed guru (locked #39+#55). UNION ALL aggregator
 	// across submission_baru / ulangan_selesai / siswa_join with opaque

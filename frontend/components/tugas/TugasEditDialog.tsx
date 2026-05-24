@@ -302,7 +302,7 @@ export function TugasEditDialog({
     if (sizeBytes > MAX_TUGAS_DESKRIPSI_BYTES) {
       toast({
         title: 'Deskripsi terlalu panjang',
-        description: `Markdown melebihi batas ${MAX_TUGAS_DESKRIPSI_BYTES / 1024} KB.`,
+        description: `Isi melebihi batas ${MAX_TUGAS_DESKRIPSI_BYTES / 1024} KB.`,
         variant: 'destructive',
       });
       return;

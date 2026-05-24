@@ -160,7 +160,7 @@ export function MateriEditDialog({
       if (sizeBytes > MAX_MARKDOWN_BYTES) {
         toast({
           title: 'Konten terlalu panjang',
-          description: `Markdown melebihi batas ${MAX_MARKDOWN_BYTES / 1024} KB.`,
+          description: `Isi melebihi batas ${MAX_MARKDOWN_BYTES / 1024} KB.`,
           variant: 'destructive',
         });
         return;

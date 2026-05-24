@@ -38,12 +38,14 @@ type Kelas struct {
 	Deskripsi        string     `json:"deskripsi"`
 	KodeInvite       string     `gorm:"uniqueIndex;not null" json:"kode_invite"`
 	GuruID           uuid.UUID  `gorm:"type:uuid;not null;index" json:"guru_id"`
+	SekolahID        *uuid.UUID `gorm:"type:uuid;index" json:"sekolah_id,omitempty"`
 	BobotSoalUlangan int        `gorm:"not null;default:50" json:"bobot_soal_ulangan"`
 	BobotTugas       int        `gorm:"not null;default:50" json:"bobot_tugas"`
 	Version          int        `gorm:"not null;default:1" json:"version"`
 	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	JumlahMurid      int64      `gorm:"-" json:"-"`
 }
 
 // TableName binds the struct to the kelas table.

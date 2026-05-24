@@ -19,8 +19,11 @@ import {
   ShieldAlert,
   ScrollText,
   LogOut,
+  Menu,
+  PanelLeftClose,
   UserCog,
   FileSpreadsheet,
+  School,
 } from 'lucide-react';
 
 import { api } from '@/lib/api';
@@ -47,6 +50,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', Icon: LayoutDashboard },
   { href: '/admin/pengguna', label: 'Pengguna', Icon: Users },
+  { href: '/admin/sekolah', label: 'Sekolah', Icon: School },
   { href: '/admin/import-csv', label: 'Import CSV', Icon: FileSpreadsheet },
   { href: '/admin/audit-log', label: 'Audit Log', Icon: ScrollText },
   { href: '/admin/login-attempts', label: 'Login Attempts', Icon: ShieldAlert },
@@ -62,6 +66,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const refresh = useAuthStore((s) => s.refresh);
   const clear = useAuthStore((s) => s.clear);
 
@@ -92,9 +98,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-muted/30">
       <div className="mx-auto flex min-h-screen max-w-[1400px]">
         {/* Sidebar */}
-        <aside className="hidden w-60 shrink-0 border-r bg-background md:flex md:flex-col">
+        <aside className={cn(
+            'hidden shrink-0 border-r bg-background transition-all md:flex md:flex-col',
+            sidebarCollapsed ? 'w-16' : 'w-60',
+          )}>
           <div className="flex h-14 items-center border-b px-4">
-            <Link href="/admin" className="text-sm font-semibold tracking-tight">
+            <Link href="/admin" className={cn('text-sm font-semibold tracking-tight', sidebarCollapsed && 'sr-only')}>
               LMS Admin
             </Link>
           </div>
@@ -113,12 +122,27 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   <Icon className="size-4" />
-                  <span>{label}</span>
+                  <span className={cn(sidebarCollapsed && 'sr-only')}>{label}</span>
                 </Link>
               );
             })}
           </nav>
-          <div className="border-t p-2 text-xs text-muted-foreground">
+          <div className="border-t p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center"
+              aria-label={sidebarCollapsed ? 'Lebarkan sidebar' : 'Ciutkan sidebar'}
+              onClick={() => setSidebarCollapsed((v) => !v)}
+            >
+              <PanelLeftClose className={cn('size-4 transition-transform', sidebarCollapsed && 'rotate-180')} />
+              <span className={cn('ml-2', sidebarCollapsed && 'sr-only')}>
+                {sidebarCollapsed ? 'Lebarkan' : 'Ciutkan'}
+              </span>
+            </Button>
+          </div>
+          <div className={cn("border-t p-2 text-xs text-muted-foreground", sidebarCollapsed && "hidden")}>
             <div className="px-2 py-1">v0.7.2 · Fase 1</div>
           </div>
         </aside>
@@ -126,27 +150,56 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         {/* Main column */}
         <div className="flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
-            {/* Mobile nav (compact) */}
-            <nav className="flex gap-1 overflow-x-auto md:hidden">
-              {NAV.map(({ href, label, Icon }) => {
-                const active = isActive(pathname, href);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      'flex items-center gap-1 rounded-md px-2 py-1 text-xs',
-                      active
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-muted-foreground',
-                    )}
-                  >
-                    <Icon className="size-3.5" />
-                    {label}
-                  </Link>
-                );
-              })}
-            </nav>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              aria-label="Buka menu navigasi"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu className="size-5" />
+            </Button>
+            {sidebarOpen && (
+              <div className="fixed inset-0 z-40 md:hidden">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                  aria-label="Tutup menu navigasi"
+                  onClick={() => setSidebarOpen(false)}
+                />
+                <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[85vw] flex-col border-r bg-background/100 shadow-xl">
+                  <div className="flex h-14 items-center justify-between border-b px-4">
+                    <span className="text-sm font-semibold tracking-tight">Menu</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setSidebarOpen(false)}>
+                      Tutup
+                    </Button>
+                  </div>
+                  <nav className="flex-1 space-y-1 p-2">
+                    {NAV.map(({ href, label, Icon }) => {
+                      const active = isActive(pathname, href);
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          onClick={() => setSidebarOpen(false)}
+                          className={cn(
+                            'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                            active
+                              ? 'bg-accent text-accent-foreground font-medium'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                          )}
+                        >
+                          <Icon className="size-4" />
+                          <span>{label}</span>
+                        </Link>
+                      );
+                    })}
+                  </nav>
+                </aside>
+              </div>
+            )}
             <div className="hidden text-sm text-muted-foreground md:block">
               Admin Panel
             </div>

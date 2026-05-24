@@ -149,7 +149,7 @@ export function PengumumanEditDialog({
     if (sizeBytes > MAX_PENGUMUMAN_ISI_BYTES) {
       toast({
         title: 'Konten terlalu panjang',
-        description: `Markdown melebihi batas ${MAX_PENGUMUMAN_ISI_BYTES / 1024} KB.`,
+        description: `Isi melebihi batas ${MAX_PENGUMUMAN_ISI_BYTES / 1024} KB.`,
         variant: 'destructive',
       });
       return;
@@ -200,7 +200,7 @@ export function PengumumanEditDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="pengumuman-edit-isi">Isi (markdown)</Label>
+            <Label htmlFor="pengumuman-edit-isi">Isi pengumuman</Label>
             <MarkdownEditor
               id="pengumuman-edit-isi"
               value={isi}

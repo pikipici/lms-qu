@@ -44,6 +44,7 @@ import {
   createKelas,
   listKelas,
 } from '@/lib/kelas-api';
+import { listSekolah } from '@/lib/sekolah-api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,7 @@ const createSchema = z
       .min(1, { message: 'Nama wajib diisi.' })
       .max(120, { message: 'Maksimal 120 karakter.' }),
     deskripsi: z.string().trim().max(500, { message: 'Maksimal 500 karakter.' }),
+    sekolah_id: z.string().trim(),
     bobot_soal_ulangan: z
       .coerce.number()
       .int({ message: 'Harus angka bulat.' })
@@ -215,10 +217,10 @@ function KelasCard({ kelas }: { kelas: Kelas }) {
         </div>
 
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-          <dt className="text-muted-foreground">Bobot soal</dt>
-          <dd className="text-right font-medium">{kelas.bobot_soal_ulangan}</dd>
-          <dt className="text-muted-foreground">Bobot tugas</dt>
-          <dd className="text-right font-medium">{kelas.bobot_tugas}</dd>
+          <dt className="text-muted-foreground">Jumlah murid</dt>
+          <dd className="text-right font-medium">
+            {kelas.jumlah_murid ?? 0} murid
+          </dd>
           <dt className="text-muted-foreground">Dibuat</dt>
           <dd className="text-right text-muted-foreground">
             {formatDate(kelas.created_at)}
@@ -248,6 +250,7 @@ function CreateKelasDialog({
     defaultValues: {
       nama: '',
       deskripsi: '',
+      sekolah_id: '',
       bobot_soal_ulangan: 50,
       bobot_tugas: 50,
     },
@@ -257,11 +260,19 @@ function CreateKelasDialog({
     if (!open) form.reset();
   }, [open, form]);
 
+  const sekolahQuery = useQuery({
+    queryKey: ['sekolah-options'],
+    queryFn: () => listSekolah({ pageSize: 100 }),
+    enabled: open,
+    staleTime: 60_000,
+  });
+
   const mutation = useMutation({
     mutationFn: (input: CreateForm) =>
       createKelas({
         nama: input.nama.trim(),
         deskripsi: input.deskripsi.trim() || undefined,
+        sekolah_id: input.sekolah_id || undefined,
         bobot_soal_ulangan: input.bobot_soal_ulangan,
         bobot_tugas: input.bobot_tugas,
       }),
@@ -293,8 +304,8 @@ function CreateKelasDialog({
         <DialogHeader>
           <DialogTitle>Buat kelas baru</DialogTitle>
           <DialogDescription>
-            Isi nama dan bobot. Kode invite akan di-generate otomatis (6
-            karakter, hindari karakter ambigu seperti O/0/I/1).
+            Isi nama kelas. Kode invite akan di-generate otomatis (6 karakter,
+            hindari karakter ambigu seperti O/0/I/1).
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -329,6 +340,30 @@ function CreateKelasDialog({
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="sekolah_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sekolah (opsional)</FormLabel>
+                  <FormControl>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      {...field}
+                    >
+                      <option value="">Tanpa sekolah</option>
+                      {(sekolahQuery.data?.items ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>{s.nama}</option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Pilihan ini muncul dari master sekolah admin.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -128,7 +128,7 @@ export function PengumumanComposer({
     if (sizeBytes > MAX_PENGUMUMAN_ISI_BYTES) {
       toast({
         title: 'Konten terlalu panjang',
-        description: `Markdown melebihi batas ${MAX_PENGUMUMAN_ISI_BYTES / 1024} KB.`,
+        description: `Isi melebihi batas ${MAX_PENGUMUMAN_ISI_BYTES / 1024} KB.`,
         variant: 'destructive',
       });
       return;
@@ -176,7 +176,7 @@ export function PengumumanComposer({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="pengumuman-isi">Isi (markdown)</Label>
+            <Label htmlFor="pengumuman-isi">Isi pengumuman</Label>
             <MarkdownEditor
               id="pengumuman-isi"
               value={isi}
