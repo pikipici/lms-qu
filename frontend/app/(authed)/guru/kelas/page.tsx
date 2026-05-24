@@ -4,9 +4,9 @@
  * /guru/kelas — list + create kelas (Fase 2.B.3).
  *
  * Backend contract (commits c14640d → 620594f):
- *   GET  /api/v1/kelas?page&page_size&include_archived
+ *   GET  /api/v1/kelas?page&page_size&include_archived&sekolah_id
  *     -> { items, page, page_size, total, total_pages }
- *   POST /api/v1/kelas { nama, deskripsi?, sekolah_id?, bobot_soal_ulangan?, bobot_tugas? }
+ *   POST /api/v1/kelas { nama, deskripsi?, sekolah_id? }
  *     -> 201 { kelas }
  *
  * UX:
@@ -197,6 +197,10 @@ function KelasCard({ kelas }: { kelas: Kelas }) {
         </div>
 
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+          <dt className="text-muted-foreground">Sekolah</dt>
+          <dd className="text-right font-medium">
+            {kelas.sekolah_nama || 'Tanpa sekolah'}
+          </dd>
           <dt className="text-muted-foreground">Jumlah murid</dt>
           <dd className="text-right font-medium">
             {kelas.jumlah_murid ?? 0} murid
@@ -367,16 +371,29 @@ function CreateKelasDialog({
 export default function GuruKelasListPage() {
   const [page, setPage] = React.useState(1);
   const [includeArchived, setIncludeArchived] = React.useState(false);
+  const [selectedSekolahId, setSelectedSekolahId] = React.useState('');
   const [createOpen, setCreateOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
   React.useEffect(() => {
     setPage(1);
-  }, [includeArchived]);
+  }, [includeArchived, selectedSekolahId]);
+
+  const sekolahQuery = useQuery({
+    queryKey: ['sekolah-options'],
+    queryFn: () => listSekolahOptions({ pageSize: 100 }),
+    staleTime: 60_000,
+  });
 
   const kelasQuery = useQuery({
-    queryKey: ['guru', 'kelas', { page, includeArchived }],
-    queryFn: () => listKelas({ page, pageSize: PAGE_SIZE, includeArchived }),
+    queryKey: ['guru', 'kelas', { page, includeArchived, selectedSekolahId }],
+    queryFn: () =>
+      listKelas({
+        page,
+        pageSize: PAGE_SIZE,
+        includeArchived,
+        sekolahId: selectedSekolahId || undefined,
+      }),
     placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
@@ -418,7 +435,22 @@ export default function GuruKelasListPage() {
                   }`}
             </CardDescription>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Label htmlFor="sekolah-filter" className="sr-only">
+              Filter sekolah
+            </Label>
+            <select
+              id="sekolah-filter"
+              className="h-9 min-w-48 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={selectedSekolahId}
+              onChange={(e) => setSelectedSekolahId(e.target.value)}
+              disabled={sekolahQuery.isLoading}
+            >
+              <option value="">Semua sekolah</option>
+              {(sekolahQuery.data?.items ?? []).map((s) => (
+                <option key={s.id} value={s.id}>{s.nama}</option>
+              ))}
+            </select>
             <Label
               htmlFor="include-archived"
               className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"

@@ -47,10 +47,13 @@ func (r *Repo) FindByKodeInvite(ctx context.Context, kode string) (*Kelas, error
 
 // ListByGuru returns a page of kelas owned by a guru, plus the matching count.
 // includeArchived=false filters out rows with archived_at IS NOT NULL.
-func (r *Repo) ListByGuru(ctx context.Context, guruID uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
-	q := r.db.WithContext(ctx).Model(&Kelas{}).Where("guru_id = ?", guruID)
+func (r *Repo) ListByGuru(ctx context.Context, guruID uuid.UUID, sekolahID *uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
+	q := r.db.WithContext(ctx).Model(&Kelas{}).Where("kelas.guru_id = ?", guruID)
+	if sekolahID != nil {
+		q = q.Where("kelas.sekolah_id = ?", *sekolahID)
+	}
 	if !includeArchived {
-		q = q.Where("archived_at IS NULL")
+		q = q.Where("kelas.archived_at IS NULL")
 	}
 
 	var total int64
@@ -59,7 +62,13 @@ func (r *Repo) ListByGuru(ctx context.Context, guruID uuid.UUID, includeArchived
 	}
 
 	var rows []Kelas
-	if err := q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	if err := q.
+		Select("kelas.*, sekolah.nama AS sekolah_nama").
+		Joins("LEFT JOIN sekolah ON sekolah.id = kelas.sekolah_id").
+		Order("kelas.created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 	if err := r.attachJumlahMurid(ctx, rows); err != nil {
@@ -86,10 +95,13 @@ func (r *Repo) ListIDsByGuru(ctx context.Context, guruID uuid.UUID) ([]uuid.UUID
 
 // ListAll returns a page of every kelas regardless of guru, plus the matching
 // count. Used by admin scope.
-func (r *Repo) ListAll(ctx context.Context, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
+func (r *Repo) ListAll(ctx context.Context, sekolahID *uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
 	q := r.db.WithContext(ctx).Model(&Kelas{})
+	if sekolahID != nil {
+		q = q.Where("kelas.sekolah_id = ?", *sekolahID)
+	}
 	if !includeArchived {
-		q = q.Where("archived_at IS NULL")
+		q = q.Where("kelas.archived_at IS NULL")
 	}
 
 	var total int64
@@ -98,7 +110,13 @@ func (r *Repo) ListAll(ctx context.Context, includeArchived bool, limit, offset 
 	}
 
 	var rows []Kelas
-	if err := q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	if err := q.
+		Select("kelas.*, sekolah.nama AS sekolah_nama").
+		Joins("LEFT JOIN sekolah ON sekolah.id = kelas.sekolah_id").
+		Order("kelas.created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 	if err := r.attachJumlahMurid(ctx, rows); err != nil {

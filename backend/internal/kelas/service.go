@@ -36,8 +36,8 @@ type kelasRepo interface {
 	Create(ctx context.Context, k *Kelas) error
 	FindByID(ctx context.Context, id uuid.UUID) (*Kelas, error)
 	FindByKodeInvite(ctx context.Context, kode string) (*Kelas, error)
-	ListByGuru(ctx context.Context, guruID uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error)
-	ListAll(ctx context.Context, includeArchived bool, limit, offset int) ([]Kelas, int64, error)
+	ListByGuru(ctx context.Context, guruID uuid.UUID, sekolahID *uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error)
+	ListAll(ctx context.Context, sekolahID *uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error)
 	UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, nama, deskripsi string, bobotSoalUlangan, bobotTugas int) error
 	Archive(ctx context.Context, id uuid.UUID) error
 	Unarchive(ctx context.Context, id uuid.UUID) error
@@ -272,6 +272,7 @@ func (s *Service) ListEnrollmentsByKelas(ctx context.Context, kelasID, callerID 
 // ListInput holds list filters/pagination.
 type ListInput struct {
 	IncludeArchived bool
+	SekolahID       *uuid.UUID
 	Limit           int
 	Offset          int
 }
@@ -285,7 +286,7 @@ type ListResult struct {
 // ListForGuru returns the kelas owned by guruID.
 func (s *Service) ListForGuru(ctx context.Context, guruID uuid.UUID, in ListInput) (*ListResult, error) {
 	limit, offset := normalizePagination(in.Limit, in.Offset)
-	rows, total, err := s.repo.ListByGuru(ctx, guruID, in.IncludeArchived, limit, offset)
+	rows, total, err := s.repo.ListByGuru(ctx, guruID, in.SekolahID, in.IncludeArchived, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("kelas list: %w", err)
 	}
@@ -295,7 +296,7 @@ func (s *Service) ListForGuru(ctx context.Context, guruID uuid.UUID, in ListInpu
 // ListAllAdmin returns every kelas across the system. Caller must be admin.
 func (s *Service) ListAllAdmin(ctx context.Context, in ListInput) (*ListResult, error) {
 	limit, offset := normalizePagination(in.Limit, in.Offset)
-	rows, total, err := s.repo.ListAll(ctx, in.IncludeArchived, limit, offset)
+	rows, total, err := s.repo.ListAll(ctx, in.SekolahID, in.IncludeArchived, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("kelas list all: %w", err)
 	}

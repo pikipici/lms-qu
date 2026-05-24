@@ -85,10 +85,13 @@ func (m *mockRepo) FindByKodeInvite(ctx context.Context, kode string) (*Kelas, e
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (m *mockRepo) ListByGuru(ctx context.Context, guruID uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
+func (m *mockRepo) ListByGuru(ctx context.Context, guruID uuid.UUID, sekolahID *uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
 	var matched []Kelas
 	for _, row := range m.rows {
 		if row.GuruID != guruID {
+			continue
+		}
+		if sekolahID != nil && (row.SekolahID == nil || *row.SekolahID != *sekolahID) {
 			continue
 		}
 		if !includeArchived && row.ArchivedAt != nil {
@@ -99,9 +102,12 @@ func (m *mockRepo) ListByGuru(ctx context.Context, guruID uuid.UUID, includeArch
 	return paginate(matched, limit, offset)
 }
 
-func (m *mockRepo) ListAll(ctx context.Context, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
+func (m *mockRepo) ListAll(ctx context.Context, sekolahID *uuid.UUID, includeArchived bool, limit, offset int) ([]Kelas, int64, error) {
 	var matched []Kelas
 	for _, row := range m.rows {
+		if sekolahID != nil && (row.SekolahID == nil || *row.SekolahID != *sekolahID) {
+			continue
+		}
 		if !includeArchived && row.ArchivedAt != nil {
 			continue
 		}

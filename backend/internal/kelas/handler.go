@@ -83,17 +83,19 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	role, _ := c.Locals(middleware.LocalsUserRole).(string)
 	page, pageSize := pagination(c)
 	includeArchived := strings.EqualFold(strings.TrimSpace(c.Query("include_archived")), "true")
+	sekolahID, err := parseOptionalUUID(c.Query("sekolah_id"))
+	if err != nil {
+		return kelasError(c, fiber.StatusBadRequest, "invalid sekolah_id", "invalid_sekolah_id")
+	}
 
 	in := ListInput{
 		IncludeArchived: includeArchived,
+		SekolahID:       sekolahID,
 		Limit:           pageSize,
 		Offset:          (page - 1) * pageSize,
 	}
 
-	var (
-		res *ListResult
-		err error
-	)
+	var res *ListResult
 	switch role {
 	case string(auth.Admin):
 		res, err = h.svc.ListAllAdmin(c.UserContext(), in)
@@ -131,13 +133,9 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		return kelasError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
 	}
 
-	var sekolahID *uuid.UUID
-	if strings.TrimSpace(req.SekolahID) != "" {
-		parsed, err := uuid.Parse(req.SekolahID)
-		if err != nil {
-			return kelasError(c, fiber.StatusBadRequest, "invalid sekolah_id", "invalid_sekolah_id")
-		}
-		sekolahID = &parsed
+	sekolahID, err := parseOptionalUUID(req.SekolahID)
+	if err != nil {
+		return kelasError(c, fiber.StatusBadRequest, "invalid sekolah_id", "invalid_sekolah_id")
 	}
 
 	in := CreateInput{
@@ -314,6 +312,18 @@ func totalPages(total int64, pageSize int) int {
 		return 0
 	}
 	return int((total + int64(pageSize) - 1) / int64(pageSize))
+}
+
+func parseOptionalUUID(raw string) (*uuid.UUID, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	parsed, err := uuid.Parse(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func kelasError(c *fiber.Ctx, status int, message, code string) error {

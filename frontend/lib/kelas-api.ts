@@ -22,6 +22,7 @@ export interface Kelas {
   kode_invite: string;
   guru_id: string;
   sekolah_id?: string | null;
+  sekolah_nama?: string;
   bobot_soal_ulangan: number;
   bobot_tugas: number;
   jumlah_murid?: number;
@@ -60,11 +61,13 @@ export async function listKelas(params: {
   page?: number;
   pageSize?: number;
   includeArchived?: boolean;
+  sekolahId?: string;
 }): Promise<KelasListResponse> {
   const q = new URLSearchParams();
   if (params.page) q.set('page', String(params.page));
   if (params.pageSize) q.set('page_size', String(params.pageSize));
   if (params.includeArchived) q.set('include_archived', 'true');
+  if (params.sekolahId) q.set('sekolah_id', params.sekolahId);
   const qs = q.toString();
   return api<KelasListResponse>(`/kelas${qs ? `?${qs}` : ''}`);
 }
