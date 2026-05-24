@@ -55,6 +55,7 @@ interface FormState {
   judul: string;
   deskripsi: string;
   durasi_menit: number;
+  bobot: number;
   waktu_mulai: string; // datetime-local string OR ''
   waktu_selesai: string;
   izinkan_review_setelah_submit: boolean;
@@ -87,6 +88,7 @@ function initialFromUjian(u?: Ujian | null): FormState {
     judul: u?.judul ?? '',
     deskripsi: u?.deskripsi ?? '',
     durasi_menit: u?.durasi_menit ?? 60,
+    bobot: u?.bobot ?? 100,
     waktu_mulai: toLocalInputValue(u?.waktu_mulai ?? null),
     waktu_selesai: toLocalInputValue(u?.waktu_selesai ?? null),
     izinkan_review_setelah_submit:
@@ -142,6 +144,9 @@ export function UjianFormDialog({
     if (form.durasi_menit < 1 || form.durasi_menit > 300) {
       e.durasi_menit = 'Durasi 1-300 menit.';
     }
+    if (form.bobot < 0) {
+      e.bobot = 'Bobot minimal 0.';
+    }
     if (form.waktu_mulai && form.waktu_selesai) {
       if (
         new Date(form.waktu_mulai).getTime() >=
@@ -185,6 +190,7 @@ export function UjianFormDialog({
         judul: form.judul,
         deskripsi: form.deskripsi,
         durasi_menit: form.durasi_menit,
+        bobot: form.bobot,
         waktu_mulai: localInputToRFC3339(form.waktu_mulai),
         waktu_selesai: localInputToRFC3339(form.waktu_selesai),
         izinkan_review_setelah_submit:
@@ -298,8 +304,8 @@ export function UjianFormDialog({
             )}
           </div>
 
-          {/* Durasi + status */}
-          <div className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-3">
+          {/* Durasi + bobot + status */}
+          <div className="grid grid-cols-1 sm:grid-cols-[10rem_10rem_1fr] gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="durasi">Durasi (menit)</Label>
               <Input
@@ -320,6 +326,28 @@ export function UjianFormDialog({
                 <p className="text-xs text-destructive">
                   {errors.durasi_menit}
                 </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="bobot">Bobot</Label>
+              <Input
+                id="bobot"
+                type="number"
+                min={0}
+                value={form.bobot}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    bobot: Math.max(0, Number(e.target.value) || 0),
+                  }))
+                }
+                disabled={mutation.isPending}
+              />
+              <p className="text-xs text-muted-foreground">
+                Default 100; 0 = tidak ikut bobot.
+              </p>
+              {errors.bobot && (
+                <p className="text-xs text-destructive">{errors.bobot}</p>
               )}
             </div>
             <div className="space-y-1.5">

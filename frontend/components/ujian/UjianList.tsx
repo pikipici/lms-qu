@@ -280,7 +280,7 @@ function UjianRow({
               </span>
             )}
             <span className="text-xs text-muted-foreground">
-              · Durasi {ujian.durasi_menit}m · v{ujian.version}
+              · Durasi {ujian.durasi_menit}m · Bobot {ujian.bobot ?? 100} · v{ujian.version}
             </span>
           </div>
           {ujian.deskripsi && (

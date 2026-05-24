@@ -79,6 +79,7 @@ export function TugasComposer({
   const [izinkanLate, setIzinkanLate] = React.useState(false);
   const [penaltyPersen, setPenaltyPersen] = React.useState(0);
   const [wajibAttachment, setWajibAttachment] = React.useState(false);
+  const [bobot, setBobot] = React.useState(100);
   const [publishImmediately, setPublishImmediately] = React.useState(false);
   const [judulError, setJudulError] = React.useState<string | null>(null);
   const [penaltyError, setPenaltyError] = React.useState<string | null>(null);
@@ -92,6 +93,7 @@ export function TugasComposer({
       setIzinkanLate(false);
       setPenaltyPersen(0);
       setWajibAttachment(false);
+      setBobot(100);
       setPublishImmediately(false);
       setJudulError(null);
       setPenaltyError(null);
@@ -187,6 +189,7 @@ export function TugasComposer({
       izinkan_late: izinkanLate,
       penalty_persen: izinkanLate ? penaltyPersen : 0,
       wajib_attachment: wajibAttachment,
+      bobot,
       status: publishImmediately ? 'published' : 'draft',
     });
   }
@@ -306,6 +309,25 @@ export function TugasComposer({
               Siswa wajib upload minimal 1 lampiran saat submit
             </span>
           </label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tugas-bobot">Bobot tugas</Label>
+            <Input
+              id="tugas-bobot"
+              type="number"
+              min={0}
+              value={bobot}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setBobot(Number.isFinite(n) ? Math.max(0, n) : 0);
+              }}
+              disabled={isPending}
+              className="max-w-[140px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Dipakai untuk rata-rata nilai tugas di bab ini. Default 100; 0 = tidak ikut bobot.
+            </p>
+          </div>
 
           <label className="flex items-center gap-2">
             <input

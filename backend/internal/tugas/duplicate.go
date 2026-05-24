@@ -10,12 +10,13 @@
 //   - attachments di-copy via R2 CopyObject ke uuid baru per locked #58/#74
 //
 // Compensating flow (locked #62/#69):
-//   1. Copy R2 objects FIRST (server-side, no body transfer).
-//   2. INSERT tugas + tugas_attachment rows dalam single tx.
-//   3. Kalau tx fail mid-flight → DeleteObject untuk semua copied keys.
+//  1. Copy R2 objects FIRST (server-side, no body transfer).
+//  2. INSERT tugas + tugas_attachment rows dalam single tx.
+//  3. Kalau tx fail mid-flight → DeleteObject untuk semua copied keys.
 //
 // Audit: action='tugas_duplicated' meta {source_tugas_id, new_tugas_id,
-//   attachment_count}. Mirror bab_duplicated shape.
+//
+//	attachment_count}. Mirror bab_duplicated shape.
 package tugas
 
 import (
@@ -135,6 +136,7 @@ func (s *Service) Duplicate(ctx context.Context, srcID, callerID uuid.UUID, call
 		IzinkanLate:     src.IzinkanLate,
 		PenaltyPersen:   src.PenaltyPersen,
 		WajibAttachment: src.WajibAttachment,
+		Bobot:           src.Bobot,
 		Status:          StatusDraft,
 		Version:         1,
 		CreatedByID:     callerID,

@@ -62,6 +62,7 @@ type Tugas struct {
 	IzinkanLate     bool         `gorm:"not null;default:false;column:izinkan_late" json:"izinkan_late"`
 	PenaltyPersen   int16        `gorm:"not null;default:0;column:penalty_persen" json:"penalty_persen"`
 	WajibAttachment bool         `gorm:"not null;default:false;column:wajib_attachment" json:"wajib_attachment"`
+	Bobot           int          `gorm:"not null;default:100;column:bobot" json:"bobot"`
 	Status          Status       `gorm:"not null;default:draft" json:"status"`
 	Version         int          `gorm:"not null;default:1" json:"version"`
 	CreatedByID     uuid.UUID    `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`

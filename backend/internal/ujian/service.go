@@ -164,6 +164,7 @@ type CreateInput struct {
 	WaktuSelesai               *time.Time
 	IzinkanReviewSetelahSubmit bool
 	WaktuBukaReview            *time.Time
+	Bobot                      *int
 	Status                     *Status      // optional; default = draft
 	Source                     *SourceInput // optional; bisa di-set saat create atau lewat PATCH source
 }
@@ -189,6 +190,13 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 	}
 	if in.WaktuMulai != nil && in.WaktuSelesai != nil && in.WaktuSelesai.Before(*in.WaktuMulai) {
 		return nil, fmt.Errorf("%w: waktu_selesai before waktu_mulai", ErrInvalidInput)
+	}
+	bobot := 100
+	if in.Bobot != nil {
+		bobot = *in.Bobot
+	}
+	if bobot < 0 {
+		return nil, fmt.Errorf("%w: bobot must be greater than or equal to 0", ErrInvalidInput)
 	}
 
 	status := StatusDraft
@@ -232,6 +240,7 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 		SourceConfigJSON:           sourceBlob,
 		IzinkanReviewSetelahSubmit: in.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            in.WaktuBukaReview,
+		Bobot:                      bobot,
 		Status:                     status,
 		Version:                    1,
 	}
@@ -251,6 +260,7 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 		"judul":        u.Judul,
 		"status":       string(u.Status),
 		"durasi_menit": u.DurasiMenit,
+		"bobot":        u.Bobot,
 		"source_mode":  string(PeekSourceMode(u.SourceConfigJSON)),
 	})
 	return u, nil
@@ -340,6 +350,7 @@ type UpdateInput struct {
 	IzinkanReviewSetelahSubmit *bool
 	WaktuBukaReview            *time.Time
 	WaktuBukaReviewExplicit    bool
+	Bobot                      *int
 	Status                     *Status
 	Source                     *SourceInput // optional source change (Task 6.C.2)
 }
@@ -418,6 +429,15 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 		merged.WaktuBukaReview = in.WaktuBukaReview
 		fields["waktu_buka_review"] = in.WaktuBukaReview
 	}
+	if in.Bobot != nil {
+		if *in.Bobot < 0 {
+			return nil, fmt.Errorf("%w: bobot must be greater than or equal to 0", ErrInvalidInput)
+		}
+		if *in.Bobot != merged.Bobot {
+			merged.Bobot = *in.Bobot
+			fields["bobot"] = *in.Bobot
+		}
+	}
 	if in.Status != nil {
 		if !in.Status.Valid() {
 			return nil, fmt.Errorf("%w: status must be draft|published|archived", ErrInvalidInput)
@@ -480,11 +500,11 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 	}
 
 	s.logAudit(ctx, "ujian_updated", &callerID, callerRole, &id, &existing.KelasID, ip, userAgent, map[string]any{
-		"ujian_id":     id.String(),
-		"old_version":  existing.Version,
-		"new_version":  fresh.Version,
-		"changed":      fieldKeys(fields),
-		"source_mode":  string(PeekSourceMode(fresh.SourceConfigJSON)),
+		"ujian_id":    id.String(),
+		"old_version": existing.Version,
+		"new_version": fresh.Version,
+		"changed":     fieldKeys(fields),
+		"source_mode": string(PeekSourceMode(fresh.SourceConfigJSON)),
 	})
 	return fresh, nil
 }
@@ -593,6 +613,7 @@ func (s *Service) Duplicate(ctx context.Context, srcID, callerID uuid.UUID, call
 		SourceConfigJSON:           srcBlobCopy,
 		IzinkanReviewSetelahSubmit: src.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            src.WaktuBukaReview,
+		Bobot:                      src.Bobot,
 		Status:                     StatusDraft, // duplicate selalu reset ke draft
 		Version:                    1,
 	}

@@ -44,6 +44,7 @@ func (r *Repo) ListPublishedBabByKelas(ctx context.Context, kelasID uuid.UUID) (
 type ujianMeta struct {
 	ID    uuid.UUID `gorm:"column:id"`
 	Judul string    `gorm:"column:judul"`
+	Bobot int       `gorm:"column:bobot"`
 }
 
 // ListPublishedUjianByKelas returns Ujian (Ulangan Harian) metadata
@@ -52,7 +53,7 @@ func (r *Repo) ListPublishedUjianByKelas(ctx context.Context, kelasID uuid.UUID)
 	var rows []ujianMeta
 	err := r.db.WithContext(ctx).
 		Table("ujian").
-		Select("id, judul").
+		Select("id, judul, bobot").
 		Where("kelas_id = ? AND status = 'published'", kelasID).
 		Order("created_at DESC").
 		Scan(&rows).Error
@@ -67,9 +68,9 @@ func (r *Repo) soalUlanganBabPoinByBab(ctx context.Context, babIDs []uuid.UUID) 
 		return map[uuid.UUID]int{}, map[uuid.UUID]int{}, nil
 	}
 	type row struct {
-		BabID    uuid.UUID `gorm:"column:bab_id"`
-		SumPoin  int       `gorm:"column:sum_poin"`
-		Count    int       `gorm:"column:count"`
+		BabID   uuid.UUID `gorm:"column:bab_id"`
+		SumPoin int       `gorm:"column:sum_poin"`
+		Count   int       `gorm:"column:count"`
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).
@@ -132,6 +133,7 @@ type tugasAggRow struct {
 	AvgPct      *float64  `gorm:"column:avg_pct"`
 	GradedCount int       `gorm:"column:graded_count"`
 	TugasTotal  int       `gorm:"column:tugas_total"`
+	BobotTotal  int       `gorm:"column:bobot_total"`
 }
 
 func (r *Repo) nilaiTugasPerBab(ctx context.Context, kelasID, siswaID uuid.UUID) (map[uuid.UUID]tugasAggRow, error) {
@@ -144,11 +146,14 @@ func (r *Repo) nilaiTugasPerBab(ctx context.Context, kelasID, siswaID uuid.UUID)
 	// column; nilai mentah disimpan langsung dari guru saat grade).
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT t.bab_id,
-		       AVG(CASE WHEN s.status = 'graded' AND s.nilai_setelah_penalty IS NOT NULL
-		                THEN s.nilai_setelah_penalty::float
-		           END) AS avg_pct,
+		       SUM(CASE WHEN s.status = 'graded' AND s.nilai_setelah_penalty IS NOT NULL AND t.bobot > 0
+		                THEN s.nilai_setelah_penalty::float * t.bobot
+		           END) / NULLIF(SUM(CASE WHEN s.status = 'graded' AND s.nilai_setelah_penalty IS NOT NULL AND t.bobot > 0
+		                              THEN t.bobot
+		                         END), 0) AS avg_pct,
 		       COUNT(CASE WHEN s.status = 'graded' THEN 1 END) AS graded_count,
-		       COUNT(*) AS tugas_total
+		       COUNT(*) AS tugas_total,
+		       COALESCE(SUM(t.bobot), 0) AS bobot_total
 		FROM tugas t
 		LEFT JOIN submission s ON s.tugas_id = t.id AND s.siswa_id = ?
 		WHERE t.kelas_id = ?
@@ -167,11 +172,11 @@ func (r *Repo) nilaiTugasPerBab(ctx context.Context, kelasID, siswaID uuid.UUID)
 
 // ujianAggRow holds per-ujian best/last + attempt count for a siswa.
 type ujianAggRow struct {
-	UjianID        uuid.UUID  `gorm:"column:ujian_id"`
-	NilaiTerbaik   *float64   `gorm:"column:nilai_terbaik"`
-	NilaiTerakhir  *float64   `gorm:"column:nilai_terakhir"`
-	AttemptCount   int        `gorm:"column:attempt_count"`
-	HasilTerakhir  *uuid.UUID `gorm:"column:hasil_terakhir_id"`
+	UjianID       uuid.UUID  `gorm:"column:ujian_id"`
+	NilaiTerbaik  *float64   `gorm:"column:nilai_terbaik"`
+	NilaiTerakhir *float64   `gorm:"column:nilai_terakhir"`
+	AttemptCount  int        `gorm:"column:attempt_count"`
+	HasilTerakhir *uuid.UUID `gorm:"column:hasil_terakhir_id"`
 }
 
 // nilaiUjianByKelas aggregates Ujian (ulangan harian) results per

@@ -3,7 +3,7 @@
 //
 // Key adaptations vs SoalBab:
 //   - Review gating: Ujian punya field embedded (IzinkanReviewSetelahSubmit
-//     + WaktuBukaReview) bukan separate Setting model. Ujian
+//   - WaktuBukaReview) bukan separate Setting model. Ujian
 //     SELALU graded (no latihan/ulangan mode discrimination).
 //   - Scope: UjianID-based (per-instance) bukan BabID-based. Cross-kelas
 //     siswa list pakai kelas_id JOIN ujian.kelas_id.
@@ -437,7 +437,7 @@ type SiswaRekap struct {
 	SiswaID         uuid.UUID  `json:"siswa_id"`
 	SiswaName       string     `json:"siswa_name"`
 	SiswaEmail      string     `json:"siswa_email"`
-	AttemptCount    int        `json:"attempt_count"`     // excl. dibatalkan
+	AttemptCount    int        `json:"attempt_count"` // excl. dibatalkan
 	CancelledCount  int        `json:"cancelled_count"`
 	NilaiTerbaik    *float64   `json:"nilai_terbaik,omitempty"`
 	NilaiTerakhir   *float64   `json:"nilai_terakhir,omitempty"`

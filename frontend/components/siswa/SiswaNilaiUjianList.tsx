@@ -50,7 +50,12 @@ export function SiswaNilaiUjianList({ rows }: Props) {
         <tbody className="divide-y">
           {rows.map((row) => (
             <tr key={row.ujian_id} className="align-top">
-              <td className="px-3 py-3 font-medium">{row.judul}</td>
+              <td className="px-3 py-3">
+                <div className="font-medium">{row.judul}</div>
+                <div className="text-xs text-muted-foreground">
+                  Bobot {row.bobot ?? 100}
+                </div>
+              </td>
               <td className="px-3 py-3 text-right">
                 <span
                   className={cn('tabular-nums', nilaiClass(row.nilai_terbaik))}

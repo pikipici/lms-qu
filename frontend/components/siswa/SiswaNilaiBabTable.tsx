@@ -105,6 +105,11 @@ export function SiswaNilaiBabTable({ kelas, bab }: Props) {
                     ? `${row.jumlah_tugas_dinilai}/${row.jumlah_tugas} dinilai`
                     : 'tanpa tugas'}
                 </div>
+                {row.bobot_tugas_total > 0 && (
+                  <div className="text-xs text-muted-foreground/80">
+                    Bobot item total {row.bobot_tugas_total}
+                  </div>
+                )}
               </td>
               <td className="px-3 py-3 text-right">
                 <div

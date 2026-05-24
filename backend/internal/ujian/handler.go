@@ -64,10 +64,10 @@ const MaxListLimit = 200
 
 // sourceRequest is the discriminated source DTO used in create/update/preview.
 type sourceRequest struct {
-	Mode       string       `json:"mode"`
-	SoalIDs    []string     `json:"soal_ids,omitempty"`
-	Filter     *filterDTO   `json:"filter,omitempty"`
-	JumlahSoal int          `json:"jumlah_soal,omitempty"`
+	Mode       string     `json:"mode"`
+	SoalIDs    []string   `json:"soal_ids,omitempty"`
+	Filter     *filterDTO `json:"filter,omitempty"`
+	JumlahSoal int        `json:"jumlah_soal,omitempty"`
 }
 
 type filterDTO struct {
@@ -140,6 +140,7 @@ type createRequest struct {
 	WaktuSelesai               *string        `json:"waktu_selesai,omitempty"`
 	IzinkanReviewSetelahSubmit bool           `json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *string        `json:"waktu_buka_review,omitempty"`
+	Bobot                      *int           `json:"bobot,omitempty"`
 	Status                     *string        `json:"status,omitempty"`
 	Source                     *sourceRequest `json:"source,omitempty"`
 }
@@ -187,6 +188,7 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		WaktuSelesai:               selesaiAt,
 		IzinkanReviewSetelahSubmit: req.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            bukaReview,
+		Bobot:                      req.Bobot,
 		Source:                     source,
 	}
 	if req.Status != nil {
@@ -294,6 +296,7 @@ type updateRequest struct {
 	WaktuSelesai               *string        `json:"waktu_selesai,omitempty"`
 	IzinkanReviewSetelahSubmit *bool          `json:"izinkan_review_setelah_submit,omitempty"`
 	WaktuBukaReview            *string        `json:"waktu_buka_review,omitempty"`
+	Bobot                      *int           `json:"bobot,omitempty"`
 	Status                     *string        `json:"status,omitempty"`
 	Source                     *sourceRequest `json:"source,omitempty"`
 }
@@ -360,6 +363,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		IzinkanReviewSetelahSubmit: req.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            bukaReview,
 		WaktuBukaReviewExplicit:    hasBuka,
+		Bobot:                      req.Bobot,
 		Source:                     source,
 	}
 	if req.Status != nil {

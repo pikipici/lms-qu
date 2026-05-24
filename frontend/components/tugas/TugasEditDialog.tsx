@@ -107,6 +107,7 @@ export function TugasEditDialog({
   const [wajibAttachment, setWajibAttachment] = React.useState(
     tugas.wajib_attachment,
   );
+  const [bobot, setBobot] = React.useState(tugas.bobot ?? 100);
   const [status, setStatus] = React.useState<TugasStatus>(tugas.status);
   const [judulError, setJudulError] = React.useState<string | null>(null);
   const [penaltyError, setPenaltyError] = React.useState<string | null>(null);
@@ -120,6 +121,7 @@ export function TugasEditDialog({
       setIzinkanLate(tugas.izinkan_late);
       setPenaltyPersen(tugas.penalty_persen);
       setWajibAttachment(tugas.wajib_attachment);
+      setBobot(tugas.bobot ?? 100);
       setStatus(tugas.status);
       setJudulError(null);
       setPenaltyError(null);
@@ -133,6 +135,7 @@ export function TugasEditDialog({
     tugas.izinkan_late,
     tugas.penalty_persen,
     tugas.wajib_attachment,
+    tugas.bobot,
     tugas.status,
     tugas.version,
   ]);
@@ -172,6 +175,7 @@ export function TugasEditDialog({
           wajibAttachment !== tugas.wajib_attachment
             ? wajibAttachment
             : undefined,
+        bobot: bobot !== (tugas.bobot ?? 100) ? bobot : undefined,
         status: status !== tugas.status ? status : undefined,
       });
     },
@@ -373,6 +377,7 @@ export function TugasEditDialog({
     izinkanLate !== tugas.izinkan_late ||
     penaltyPersen !== tugas.penalty_persen ||
     wajibAttachment !== tugas.wajib_attachment ||
+    bobot !== (tugas.bobot ?? 100) ||
     status !== tugas.status;
 
   const submitDisabled = isPending || !judul.trim() || !dirty;
@@ -501,6 +506,25 @@ export function TugasEditDialog({
               Siswa wajib upload minimal 1 lampiran saat submit
             </span>
           </label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tugas-edit-bobot">Bobot tugas</Label>
+            <Input
+              id="tugas-edit-bobot"
+              type="number"
+              min={0}
+              value={bobot}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setBobot(Number.isFinite(n) ? Math.max(0, n) : 0);
+              }}
+              disabled={isPending}
+              className="max-w-[140px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Nilai tugas di bab ini dirata-rata sesuai bobot masing-masing.
+            </p>
+          </div>
 
           <div className="space-y-1.5">
             <Label>Status</Label>

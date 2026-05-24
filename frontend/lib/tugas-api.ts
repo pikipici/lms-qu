@@ -59,6 +59,7 @@ export interface Tugas {
   izinkan_late: boolean;
   penalty_persen: number;
   wajib_attachment: boolean;
+  bobot: number;
   status: TugasStatus;
   version: number;
   created_by_id: string;
@@ -91,6 +92,7 @@ export interface CreateTugasBody {
   /** 0-100, hanya bermakna kalau izinkan_late=true. */
   penalty_persen?: number;
   wajib_attachment?: boolean;
+  bobot?: number;
   status?: TugasStatus;
 }
 
@@ -108,6 +110,7 @@ export interface UpdateTugasBody {
   izinkan_late?: boolean;
   penalty_persen?: number;
   wajib_attachment?: boolean;
+  bobot?: number;
   status?: TugasStatus;
 }
 

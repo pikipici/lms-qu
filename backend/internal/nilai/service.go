@@ -131,6 +131,7 @@ func (s *Service) SiswaKelasNilai(ctx context.Context, kelasID, siswaID uuid.UUI
 		if t, ok := tugasAgg[b.ID]; ok {
 			row.JumlahTugas = t.TugasTotal
 			row.JumlahTugasGrade = t.GradedCount
+			row.BobotTugasTotal = t.BobotTotal
 			if t.AvgPct != nil {
 				v := *t.AvgPct
 				row.NilaiTugasBab = &v
@@ -150,6 +151,7 @@ func (s *Service) SiswaKelasNilai(ctx context.Context, kelasID, siswaID uuid.UUI
 		row := NilaiUjianRow{
 			UjianID: u.ID,
 			Judul:   u.Judul,
+			Bobot:   u.Bobot,
 		}
 		if a, ok := ujianAgg[u.ID]; ok {
 			row.NilaiTerbaik = a.NilaiTerbaik

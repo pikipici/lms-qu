@@ -116,6 +116,7 @@ type CreateInput struct {
 	IzinkanLate     bool
 	PenaltyPersen   int16
 	WajibAttachment bool
+	Bobot           *int
 	Status          *Status // optional; default = draft
 }
 
@@ -136,6 +137,13 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 	}
 	if in.PenaltyPersen < 0 || in.PenaltyPersen > 100 {
 		return nil, fmt.Errorf("%w: penalty_persen must be between 0 and 100", ErrInvalidInput)
+	}
+	bobot := 100
+	if in.Bobot != nil {
+		bobot = *in.Bobot
+	}
+	if bobot < 0 {
+		return nil, fmt.Errorf("%w: bobot must be greater than or equal to 0", ErrInvalidInput)
 	}
 	status := StatusDraft
 	if in.Status != nil {
@@ -168,6 +176,7 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 		IzinkanLate:     in.IzinkanLate,
 		PenaltyPersen:   in.PenaltyPersen,
 		WajibAttachment: in.WajibAttachment,
+		Bobot:           bobot,
 		Status:          status,
 		Version:         1,
 		CreatedByID:     callerID,
@@ -185,6 +194,7 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 		"izinkan_late":     t.IzinkanLate,
 		"penalty_persen":   t.PenaltyPersen,
 		"wajib_attachment": t.WajibAttachment,
+		"bobot":            t.Bobot,
 	})
 	return t, nil
 }
@@ -272,17 +282,18 @@ func (s *Service) Get(ctx context.Context, id, callerID uuid.UUID, callerRole st
 // UpdateInput is the PATCH payload. Pointer fields are optional. ExpectedVersion
 // required.
 type UpdateInput struct {
-	ExpectedVersion int
-	Judul           *string
-	Deskripsi       *string
-	BabID           *uuid.UUID // nil = leave unchanged; *uuid.Nil = clear (kelas-wide)
-	BabIDExplicit   bool       // distinguish "field absent" vs "explicit null"
-	Deadline        *time.Time
+	ExpectedVersion  int
+	Judul            *string
+	Deskripsi        *string
+	BabID            *uuid.UUID // nil = leave unchanged; *uuid.Nil = clear (kelas-wide)
+	BabIDExplicit    bool       // distinguish "field absent" vs "explicit null"
+	Deadline         *time.Time
 	DeadlineExplicit bool
-	IzinkanLate     *bool
-	PenaltyPersen   *int16
-	WajibAttachment *bool
-	Status          *Status
+	IzinkanLate      *bool
+	PenaltyPersen    *int16
+	WajibAttachment  *bool
+	Bobot            *int
+	Status           *Status
 }
 
 // Update applies a partial update with optimistic concurrency. Owner-only.
@@ -378,6 +389,14 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 	}
 	if in.WajibAttachment != nil && *in.WajibAttachment != existing.WajibAttachment {
 		fields["wajib_attachment"] = *in.WajibAttachment
+	}
+	if in.Bobot != nil {
+		if *in.Bobot < 0 {
+			return nil, fmt.Errorf("%w: bobot must be greater than or equal to 0", ErrInvalidInput)
+		}
+		if *in.Bobot != existing.Bobot {
+			fields["bobot"] = *in.Bobot
+		}
 	}
 	newStatus := existing.Status
 	if in.Status != nil {

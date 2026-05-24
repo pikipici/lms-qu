@@ -44,6 +44,7 @@ type NilaiBabRow struct {
 	Breakdown        BabBreakdown `json:"breakdown"`
 	JumlahTugas      int          `json:"jumlah_tugas"`
 	JumlahTugasGrade int          `json:"jumlah_tugas_dinilai"`
+	BobotTugasTotal  int          `json:"bobot_tugas_total"`
 	JumlahSoalUlBab  int          `json:"jumlah_soal_ulangan_bab"`
 	HasilUlanganID   *uuid.UUID   `json:"hasil_ulangan_id,omitempty"`
 }
@@ -54,6 +55,7 @@ type NilaiUjianRow struct {
 	Judul         string     `json:"judul"`
 	NilaiTerbaik  *float64   `json:"nilai_terbaik"`
 	NilaiTerakhir *float64   `json:"nilai_terakhir"`
+	Bobot         int        `json:"bobot"`
 	AttemptCount  int        `json:"attempt_count"`
 	HasilID       *uuid.UUID `json:"hasil_id,omitempty"`
 }
@@ -76,12 +78,12 @@ type SiswaKelasNilaiResponse struct {
 
 // SiswaKelasSummary is a single kelas card on cross-class siswa list.
 type SiswaKelasSummary struct {
-	KelasID       uuid.UUID `json:"kelas_id"`
-	KelasNama     string    `json:"kelas_nama"`
-	GuruNama      string    `json:"guru_nama"`
-	TotalKelas    *float64  `json:"total_kelas"`
-	BabCount      int       `json:"bab_count"`
-	UlanganCount  int       `json:"ulangan_count"`
+	KelasID      uuid.UUID `json:"kelas_id"`
+	KelasNama    string    `json:"kelas_nama"`
+	GuruNama     string    `json:"guru_nama"`
+	TotalKelas   *float64  `json:"total_kelas"`
+	BabCount     int       `json:"bab_count"`
+	UlanganCount int       `json:"ulangan_count"`
 }
 
 // SiswaListResponse is the shape of GET /siswa/nilai (cross-class).

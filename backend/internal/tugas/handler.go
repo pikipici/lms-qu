@@ -67,6 +67,7 @@ type createRequest struct {
 	IzinkanLate     bool       `json:"izinkan_late"`
 	PenaltyPersen   int16      `json:"penalty_persen"`
 	WajibAttachment bool       `json:"wajib_attachment"`
+	Bobot           *int       `json:"bobot"`
 	Status          *Status    `json:"status"`
 }
 
@@ -82,6 +83,7 @@ type updateRequest struct {
 	IzinkanLate     *bool           `json:"izinkan_late"`
 	PenaltyPersen   *int16          `json:"penalty_persen"`
 	WajibAttachment *bool           `json:"wajib_attachment"`
+	Bobot           *int            `json:"bobot"`
 	Status          *Status         `json:"status"`
 }
 
@@ -110,6 +112,7 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		IzinkanLate:     req.IzinkanLate,
 		PenaltyPersen:   req.PenaltyPersen,
 		WajibAttachment: req.WajibAttachment,
+		Bobot:           req.Bobot,
 		Status:          req.Status,
 	}
 	t, err := h.svc.Create(c.UserContext(), kelasID, callerID, role, in, c.IP(), string(c.Request().Header.UserAgent()))
@@ -226,6 +229,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		IzinkanLate:     req.IzinkanLate,
 		PenaltyPersen:   req.PenaltyPersen,
 		WajibAttachment: req.WajibAttachment,
+		Bobot:           req.Bobot,
 		Status:          req.Status,
 	}
 	if len(req.BabID) > 0 {

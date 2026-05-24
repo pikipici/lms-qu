@@ -140,6 +140,7 @@ function GuruTugasReviewContent({
                   <Calendar className="size-3.5" />
                   Deadline: {formatDeadline(tugas.deadline)}
                 </span>
+                <span>Bobot {tugas.bobot ?? 100}</span>
                 {tugas.izinkan_late && tugas.penalty_persen > 0 && (
                   <span className="inline-flex items-center gap-1 text-amber-600">
                     <Clock className="size-3.5" />

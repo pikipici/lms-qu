@@ -1,26 +1,28 @@
 // Attachment upload + presigned download for tugas (Task 4.A.3).
 //
 // Upload pipeline (locked decisions #46 + #62 + #74):
-//   1. Auth + ownership guard via service.findKelasOrForbidden.
-//   2. File header sniff via http.DetectContentType — must be in allowlist
-//      (pdf, docx, jpg/jpeg, png, zip per locked #46 tugas/submission).
-//      Reject 415 unsupported_mime if mismatch.
-//   3. Size cap MaxTugasAttachmentBytes = 20MB (locked #74). Reject 413.
-//   4. Count cap MaxAttachmentsPerTugas = 5 (locked #74). Reject 400.
-//   5. Generate uuid → object_key = "tugas/<uuid>.<ext>".
-//   6. R2 PutObject. On fail: 500 r2_put_failed (no DB row yet).
-//   7. Insert tugas_attachment row. On fail: compensating R2 DeleteObject
-//      + 500 (locked #62 trade-off — bandwidth dobel ok).
-//   8. Return {attachment, object_key, original_filename, size_bytes}.
+//  1. Auth + ownership guard via service.findKelasOrForbidden.
+//  2. File header sniff via http.DetectContentType — must be in allowlist
+//     (pdf, docx, jpg/jpeg, png, zip per locked #46 tugas/submission).
+//     Reject 415 unsupported_mime if mismatch.
+//  3. Size cap MaxTugasAttachmentBytes = 20MB (locked #74). Reject 413.
+//  4. Count cap MaxAttachmentsPerTugas = 5 (locked #74). Reject 400.
+//  5. Generate uuid → object_key = "tugas/<uuid>.<ext>".
+//  6. R2 PutObject. On fail: 500 r2_put_failed (no DB row yet).
+//  7. Insert tugas_attachment row. On fail: compensating R2 DeleteObject
+//     + 500 (locked #62 trade-off — bandwidth dobel ok).
+//  8. Return {attachment, object_key, original_filename, size_bytes}.
 //
 // Presigned download (locked #62):
-//   GET /tugas/:id/attachments/:attID/url → store.PresignGetDownload(key,
-//   ttl, original) with attachment disposition (force download).
-//   Audit log file_url_issued.
+//
+//	GET /tugas/:id/attachments/:attID/url → store.PresignGetDownload(key,
+//	ttl, original) with attachment disposition (force download).
+//	Audit log file_url_issued.
 //
 // Delete:
-//   DELETE /tugas/:id/attachments/:attID → DB delete + R2 DeleteObject
-//   compensating cleanup (locked #69 pattern).
+//
+//	DELETE /tugas/:id/attachments/:attID → DB delete + R2 DeleteObject
+//	compensating cleanup (locked #69 pattern).
 package tugas
 
 import (
@@ -59,10 +61,10 @@ const PresignTTL = 15 * time.Minute
 // filename extension is preserved separately for UX, and the actual
 // payload structure is validated upstream by the client UI.
 var allowedTugasMimes = map[string]string{
-	"application/pdf":  "pdf",
-	"image/jpeg":       "jpg",
-	"image/png":        "png",
-	"application/zip":  "zip", // covers .zip and .docx
+	"application/pdf":              "pdf",
+	"image/jpeg":                   "jpg",
+	"image/png":                    "png",
+	"application/zip":              "zip", // covers .zip and .docx
 	"application/x-zip-compressed": "zip",
 }
 

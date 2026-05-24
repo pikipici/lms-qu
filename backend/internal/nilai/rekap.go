@@ -52,6 +52,7 @@ type RekapUjianCell struct {
 	UjianID       uuid.UUID `json:"ujian_id"`
 	NilaiTerbaik  *float64  `json:"nilai_terbaik"`
 	NilaiTerakhir *float64  `json:"nilai_terakhir"`
+	Bobot         int       `json:"bobot"`
 	AttemptCount  int       `json:"attempt_count"`
 }
 
@@ -75,6 +76,7 @@ type RekapBabHead struct {
 type RekapUjianHead struct {
 	ID    uuid.UUID `json:"id"`
 	Judul string    `json:"judul"`
+	Bobot int       `json:"bobot"`
 }
 
 // RekapSummary collapses the matrix into class-wide stats.
@@ -150,7 +152,7 @@ func (s *Service) GuruKelasRekap(
 	}
 	ujianHead := make([]RekapUjianHead, len(ujians))
 	for i, u := range ujians {
-		ujianHead[i] = RekapUjianHead{ID: u.ID, Judul: u.Judul}
+		ujianHead[i] = RekapUjianHead{ID: u.ID, Judul: u.Judul, Bobot: u.Bobot}
 	}
 
 	// Active enrollments. limit=10_000 sebagai cap MVP — kelas dengan
@@ -198,7 +200,7 @@ func (s *Service) GuruKelasRekap(
 		ujianCells := make([]RekapUjianCell, len(ujians))
 		ujianIdx := map[uuid.UUID]int{}
 		for i, u := range ujians {
-			ujianCells[i] = RekapUjianCell{UjianID: u.ID}
+			ujianCells[i] = RekapUjianCell{UjianID: u.ID, Bobot: u.Bobot}
 			ujianIdx[u.ID] = i
 		}
 		for _, ur := range full.UlanganHarian {
@@ -313,6 +315,7 @@ func (s *Service) guruSiswaKelasNilai(ctx context.Context, kelasID, siswaID uuid
 		if t, ok := tugasAgg[b.ID]; ok {
 			row.JumlahTugas = t.TugasTotal
 			row.JumlahTugasGrade = t.GradedCount
+			row.BobotTugasTotal = t.BobotTotal
 			if t.AvgPct != nil {
 				v := *t.AvgPct
 				row.NilaiTugasBab = &v
@@ -331,6 +334,7 @@ func (s *Service) guruSiswaKelasNilai(ctx context.Context, kelasID, siswaID uuid
 		row := NilaiUjianRow{
 			UjianID: u.ID,
 			Judul:   u.Judul,
+			Bobot:   u.Bobot,
 		}
 		if a, ok := ujianAgg[u.ID]; ok {
 			row.NilaiTerbaik = a.NilaiTerbaik

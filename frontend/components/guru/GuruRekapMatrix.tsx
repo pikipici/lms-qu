@@ -95,6 +95,9 @@ export function GuruRekapMatrix({ data }: Props) {
                 <span className="ml-1 max-w-[140px] truncate font-medium text-foreground">
                   {u.judul}
                 </span>
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground/80">
+                  b{u.bobot ?? 100}
+                </span>
               </th>
             ))}
           </tr>

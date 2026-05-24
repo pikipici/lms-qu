@@ -43,6 +43,7 @@ export interface NilaiBabRow {
   breakdown: BabBreakdown;
   jumlah_tugas: number;
   jumlah_tugas_dinilai: number;
+  bobot_tugas_total: number;
   jumlah_soal_ulangan_bab: number;
   hasil_ulangan_id?: string;
 }
@@ -52,6 +53,7 @@ export interface NilaiUjianRow {
   judul: string;
   nilai_terbaik: number | null;
   nilai_terakhir: number | null;
+  bobot: number;
   attempt_count: number;
   hasil_id?: string;
 }
@@ -106,6 +108,7 @@ export interface RekapBabHead {
 export interface RekapUjianHead {
   id: string;
   judul: string;
+  bobot: number;
 }
 
 export interface RekapBabCell {
@@ -119,6 +122,7 @@ export interface RekapUjianCell {
   ujian_id: string;
   nilai_terbaik: number | null;
   nilai_terakhir: number | null;
+  bobot: number;
   attempt_count: number;
 }
 

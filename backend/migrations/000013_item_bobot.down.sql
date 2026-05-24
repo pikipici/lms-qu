@@ -1,0 +1,5 @@
+ALTER TABLE tugas DROP CONSTRAINT IF EXISTS tugas_bobot_non_negative;
+ALTER TABLE ujian DROP CONSTRAINT IF EXISTS ujian_bobot_non_negative;
+
+ALTER TABLE tugas DROP COLUMN IF EXISTS bobot;
+ALTER TABLE ujian DROP COLUMN IF EXISTS bobot;

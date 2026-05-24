@@ -2,18 +2,18 @@
 //
 // Mirror SoalBab UlanganService.Start (locked #79) with these deltas:
 //   - Pool source = Ujian.SourceConfigJSON discriminated (locked #85):
-//       manual: hydrate dari ujian_soal junction (cached at 6.C.2 PATCH).
-//       random: ListIDsByOwnerFilter di BankSoal owner=Ujian.GuruID,
-//               then deterministic shuffle + take JumlahSoal.
+//     manual: hydrate dari ujian_soal junction (cached at 6.C.2 PATCH).
+//     random: ListIDsByOwnerFilter di BankSoal owner=Ujian.GuruID,
+//     then deterministic shuffle + take JumlahSoal.
 //   - Seed (locked #86): sha256(mulai_at_unix_micro || siswa_id ||
-//                                ujian_id)[:8] LE → int64.
+//     ujian_id)[:8] LE → int64.
 //   - Single-flight: pg_advisory_xact_lock(sha256(ujian||siswa)[:8]).
 //   - Active attempt vs cancelled: deleted_at IS NULL guard.
 //   - Single-attempt-per (Ujian, Siswa) — locked decision:
-//       Ujian default tidak punya remedial (#84/#85 — guru bikin Ujian
-//       baru kalau mau remedial). HasilUjian partial-unique (ujian,
-//       siswa) WHERE deleted_at IS NULL menjamin satu attempt valid;
-//       guru cancel via 6.E.1 → soft-delete supaya siswa start lagi.
+//     Ujian default tidak punya remedial (#84/#85 — guru bikin Ujian
+//     baru kalau mau remedial). HasilUjian partial-unique (ujian,
+//     siswa) WHERE deleted_at IS NULL menjamin satu attempt valid;
+//     guru cancel via 6.E.1 → soft-delete supaya siswa start lagi.
 //
 // Endpoint Task 6.D.1:
 //   - POST /api/v1/siswa/ujian/:id/start  (sub-fase under siswaGroup)
