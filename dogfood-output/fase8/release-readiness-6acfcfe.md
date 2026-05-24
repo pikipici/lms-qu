@@ -1,7 +1,7 @@
 # Release Readiness - Fase 8 Operational Baseline
 
 > Date: 2026-05-23
-> Commit: `3c2d038` (`test: increase tugas coverage`)
+> Commit: `6acfcfe` (`test: cover submission handler routes`)
 > Deployment: `rdpkhorur:/home/ubuntu/lms`
 > Status: Ready for optional tag/release decision
 
@@ -28,7 +28,7 @@ E2E_BASE_URL=http://127.0.0.1:8200 bash scripts/fase8-smoke.sh
 
 Result on latest validated operational baseline:
 
-- Latest local baseline `3c2d038` includes follow-up coverage growth through tugas helpers/services. Remote smoke baseline remains `07429cd` until the next deploy validation.
+- Latest local/remote baseline `6acfcfe` includes follow-up coverage growth through tugas and submission handler route tests. Remote smoke baseline remains `07429cd` until the next deploy validation.
 - `/api/v1/healthz` PASS.
 - `/api/v1/readyz` PASS.
 - `/login` exported form check PASS.
@@ -43,7 +43,7 @@ Result on latest validated operational baseline:
 
 - Auth repository integration coverage: `76.5%` when `AUTH_REPO_TEST_DSN` is set.
 - Auth regular/default coverage remains about `59.6%` because integration tests skip without DSN.
-- Total backend regular coverage is now `29.7%` after low-risk coverage growth commits.
+- Total backend regular coverage is now `30.7%` after low-risk coverage growth commits.
 - Standard remote deploy path validated at `203d8b8`; subsequent docs/monitoring/gitignore/coverage commits do not change runtime behavior.
 - Evidence files:
   - `dogfood-output/fase8/auth-repo-integration-validation.md`
@@ -53,11 +53,11 @@ Result on latest validated operational baseline:
 
 ## Deferred Hardening
 
-- Strict total backend coverage target remains deferred to v0.14/v0.15, though auth clears the 70% target in integration mode and total regular coverage has grown to `29.7%`.
+- Strict total backend coverage target remains deferred to v0.14/v0.15, though auth clears the 70% target in integration mode and total regular coverage has grown to `30.7%`.
 - Expanded E2E flows remain drafts; hardening order is documented in `dogfood-output/fase8/expanded-e2e-hardening-backlog.md`.
 - External alerting is still missing; the current user timer logs failures but does not notify.
 - Optional privileged persistence remains open: `loginctl enable-linger ubuntu` or system-level timer install.
 
 ## Suggested Next Decision
 
-Either deploy/validate `3c2d038` and tag it as the production-readiness baseline, or continue without a tag and push backend regular coverage over the next milestone (`30%+`).
+Either deploy/validate `6acfcfe` and tag it as the production-readiness baseline, or continue without a tag and keep hardening low-coverage domains (`soalbab`, `ujian`, `banksoal`).
