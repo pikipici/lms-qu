@@ -21,10 +21,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import {
   type CreatePengumumanBody,
+  MAX_PENGUMUMAN_ATTACHMENT_BYTES,
   MAX_PENGUMUMAN_ISI_BYTES,
   MAX_PENGUMUMAN_JUDUL_LENGTH,
+  PENGUMUMAN_ATTACHMENT_ACCEPT,
   createPengumuman,
   friendlyPengumumanError,
+  uploadPengumumanAttachment,
 } from '@/lib/pengumuman-api';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -38,7 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MarkdownEditor } from '@/components/materi/MarkdownEditor';
+
 
 export interface PengumumanComposerProps {
   open: boolean;
@@ -65,6 +68,7 @@ export function PengumumanComposer({
 
   const [judul, setJudul] = React.useState('');
   const [isi, setIsi] = React.useState('');
+  const [attachment, setAttachment] = React.useState<File | null>(null);
   const [judulError, setJudulError] = React.useState<string | null>(null);
 
   // Reset state setiap dialog di-open. Hindari leftover dari sesi sebelumnya.
@@ -72,12 +76,16 @@ export function PengumumanComposer({
     if (open) {
       setJudul('');
       setIsi('');
+      setAttachment(null);
       setJudulError(null);
     }
   }, [open]);
 
   const mutation = useMutation({
-    mutationFn: (body: CreatePengumumanBody) => createPengumuman(kelasID, body),
+    mutationFn: async ({ body, file }: { body: CreatePengumumanBody; file: File | null }) => {
+      const created = await createPengumuman(kelasID, body);
+      return file ? uploadPengumumanAttachment(created.pengumuman.id, file) : created;
+    },
     onSuccess: ({ pengumuman }) => {
       for (const key of invalidateKeys) {
         queryClient.invalidateQueries({ queryKey: key });
@@ -124,6 +132,15 @@ export function PengumumanComposer({
     e.preventDefault();
     if (!validate()) return;
 
+    if (attachment && attachment.size > MAX_PENGUMUMAN_ATTACHMENT_BYTES) {
+      toast({
+        title: 'Lampiran terlalu besar',
+        description: `Batas lampiran ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const sizeBytes = new TextEncoder().encode(isi).length;
     if (sizeBytes > MAX_PENGUMUMAN_ISI_BYTES) {
       toast({
@@ -135,9 +152,12 @@ export function PengumumanComposer({
     }
 
     mutation.mutate({
-      bab_id: babID,
-      judul: judul.trim(),
-      isi,
+      body: {
+        bab_id: babID,
+        judul: judul.trim(),
+        isi,
+      },
+      file: attachment,
     });
   }
 
@@ -177,13 +197,31 @@ export function PengumumanComposer({
 
           <div className="space-y-1.5">
             <Label htmlFor="pengumuman-isi">Isi pengumuman</Label>
-            <MarkdownEditor
+            <textarea
               id="pengumuman-isi"
               value={isi}
-              onChange={setIsi}
+              onChange={(e) => setIsi(e.target.value)}
               disabled={isPending}
               rows={8}
+              className="min-h-36 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="Tulis pengumuman biasa. Link bisa ditempel langsung, tanpa preview markdown."
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="pengumuman-lampiran">Lampiran gambar/PDF (opsional)</Label>
+            <Input
+              id="pengumuman-lampiran"
+              type="file"
+              accept={PENGUMUMAN_ATTACHMENT_ACCEPT}
+              disabled={isPending}
+              onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {attachment
+                ? `${attachment.name} • ${(attachment.size / 1024 / 1024).toFixed(2)} MB`
+                : `Maks ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`}
+            </p>
           </div>
 
           <DialogFooter>

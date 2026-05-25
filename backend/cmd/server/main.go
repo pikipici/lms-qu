@@ -544,6 +544,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// untuk siswa enrolled + guru pemilik. Mirror pola materi.
 	pengumumanRepo := pengumuman.NewRepo(gdb)
 	pengumumanSvc := pengumuman.NewService(pengumumanRepo, kelasRepo, babRepo, kelasRepo, authRepo)
+	pengumumanSvc.SetStorage(objectStore)
 	pengumumanHandler := pengumuman.NewHandler(pengumumanSvc)
 	kelasGroup.Post("/:id/pengumuman", pengumumanHandler.Create)
 	kelasGroup.Get("/:id/pengumuman", pengumumanHandler.ListByKelas)
@@ -553,6 +554,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru), string(auth.Siswa)),
 	)
 	pengumumanGroup.Get("/:id", pengumumanHandler.Get)
+	pengumumanGroup.Get("/:id/attachment-url", pengumumanHandler.AttachmentURL)
+	pengumumanGroup.Put("/:id/attachment", pengumumanHandler.UploadAttachment)
+	pengumumanGroup.Delete("/:id/attachment", pengumumanHandler.DeleteAttachment)
 	pengumumanGroup.Patch("/:id", pengumumanHandler.Update)
 	pengumumanGroup.Delete("/:id", pengumumanHandler.Delete)
 

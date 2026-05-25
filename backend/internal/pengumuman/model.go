@@ -43,16 +43,20 @@ func (s Status) Valid() bool {
 // Version guards optimistic concurrency on PATCH (#56). BabID nullable
 // untuk distinguish kelas-wide (NULL) vs bab-scoped (UUID) announcement.
 type Pengumuman struct {
-	ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	KelasID     uuid.UUID  `gorm:"type:uuid;not null;index" json:"kelas_id"`
-	BabID       *uuid.UUID `gorm:"type:uuid;index" json:"bab_id,omitempty"`
-	Judul       string     `gorm:"not null" json:"judul"`
-	Isi         string     `gorm:"not null;default:''" json:"isi"`
-	CreatedByID uuid.UUID  `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
-	Status      Status     `gorm:"not null;default:published" json:"status"`
-	Version     int        `gorm:"not null;default:1" json:"version"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID                  uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	KelasID             uuid.UUID  `gorm:"type:uuid;not null;index" json:"kelas_id"`
+	BabID               *uuid.UUID `gorm:"type:uuid;index" json:"bab_id,omitempty"`
+	Judul               string     `gorm:"not null" json:"judul"`
+	Isi                 string     `gorm:"not null;default:''" json:"isi"`
+	CreatedByID         uuid.UUID  `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
+	Status              Status     `gorm:"not null;default:published" json:"status"`
+	AttachmentObjectKey *string    `gorm:"column:attachment_object_key" json:"attachment_object_key,omitempty"`
+	AttachmentFilename  *string    `gorm:"column:attachment_filename" json:"attachment_filename,omitempty"`
+	AttachmentMime      *string    `gorm:"column:attachment_mime" json:"attachment_mime,omitempty"`
+	AttachmentSize      *int64     `gorm:"column:attachment_size" json:"attachment_size,omitempty"`
+	Version             int        `gorm:"not null;default:1" json:"version"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 // TableName binds the struct to the pengumuman table.

@@ -41,6 +41,10 @@ export interface Pengumuman {
   version: number;
   created_at: string;
   updated_at: string;
+  attachment_object_key?: string | null;
+  attachment_filename?: string | null;
+  attachment_mime?: string | null;
+  attachment_size?: number | null;
 }
 
 export interface PengumumanListResponse {
@@ -54,6 +58,11 @@ export interface PengumumanDetailResponse {
 
 export interface PengumumanDeleteResponse {
   pengumuman_id: string;
+}
+
+export interface PengumumanAttachmentURLResponse {
+  url: string;
+  expires_at: string;
 }
 
 export interface CreatePengumumanBody {
@@ -87,6 +96,10 @@ export const MAX_PENGUMUMAN_ISI_BYTES = 50 * 1024;
 
 /** Cap judul (200 chars) — backend MaxJudulBytes. */
 export const MAX_PENGUMUMAN_JUDUL_LENGTH = 200;
+
+export const MAX_PENGUMUMAN_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+export const PENGUMUMAN_ATTACHMENT_ACCEPT = 'image/*,application/pdf';
 
 /**
  * "Baru" badge threshold: 7 hari sejak created_at (locked #66).
@@ -169,6 +182,32 @@ export async function updatePengumuman(
   });
 }
 
+export async function uploadPengumumanAttachment(
+  id: string,
+  file: File,
+): Promise<PengumumanDetailResponse> {
+  const form = new FormData();
+  form.set('file', file);
+  return api<PengumumanDetailResponse>(`/pengumuman/${id}/attachment`, {
+    method: 'PUT',
+    body: form,
+  });
+}
+
+export async function deletePengumumanAttachment(
+  id: string,
+): Promise<PengumumanDetailResponse> {
+  return api<PengumumanDetailResponse>(`/pengumuman/${id}/attachment`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getPengumumanAttachmentURL(
+  id: string,
+): Promise<PengumumanAttachmentURLResponse> {
+  return api<PengumumanAttachmentURLResponse>(`/pengumuman/${id}/attachment-url`);
+}
+
 export async function deletePengumuman(
   id: string,
 ): Promise<PengumumanDeleteResponse> {
@@ -182,6 +221,7 @@ export type PengumumanAction =
   | 'update'
   | 'archive'
   | 'delete'
+  | 'attachment'
   | 'list'
   | 'get';
 
@@ -220,7 +260,15 @@ export function friendlyPengumumanError(
     case 'bab_not_in_kelas':
       return 'Bab yang dipilih bukan milik kelas ini.';
     case 'payload_too_large':
-      return `Konten terlalu panjang. Batas ${MAX_PENGUMUMAN_ISI_BYTES / 1024} KB.`;
+      return action === 'attachment'
+        ? `Lampiran terlalu besar. Batas ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`
+        : `Konten terlalu panjang. Batas ${MAX_PENGUMUMAN_ISI_BYTES / 1024} KB.`;
+    case 'unsupported_attachment':
+      return 'Lampiran harus berupa gambar atau PDF.';
+    case 'attachment_not_found':
+      return 'Lampiran tidak ditemukan.';
+    case 'storage_unavailable':
+      return 'Penyimpanan lampiran belum tersedia. Coba lagi nanti.';
     default:
       return err.message;
   }

@@ -12,10 +12,13 @@
 package pengumuman
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,16 +29,22 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/kelas"
+	"github.com/pikip/lms/backend/internal/storage"
 )
 
 // Sentinel errors yang di-mapping ke HTTP status di handler.
 var (
-	ErrInvalidInput  = errors.New("pengumuman: invalid input")
-	ErrNotFound      = errors.New("pengumuman: not found")
-	ErrForbidden     = errors.New("pengumuman: forbidden")
-	ErrKelasArchived = errors.New("pengumuman: kelas archived")
-	ErrBabNotInKelas = errors.New("pengumuman: bab does not belong to this kelas")
-	ErrIsiTooLong    = errors.New("pengumuman: isi exceeds size limit")
+	ErrInvalidInput            = errors.New("pengumuman: invalid input")
+	ErrNotFound                = errors.New("pengumuman: not found")
+	ErrForbidden               = errors.New("pengumuman: forbidden")
+	ErrKelasArchived           = errors.New("pengumuman: kelas archived")
+	ErrBabNotInKelas           = errors.New("pengumuman: bab does not belong to this kelas")
+	ErrIsiTooLong              = errors.New("pengumuman: isi exceeds size limit")
+	ErrAttachmentUnsupported   = errors.New("pengumuman: attachment mime not allowed")
+	ErrAttachmentTooLarge      = errors.New("pengumuman: attachment too large")
+	ErrAttachmentMissing       = errors.New("pengumuman: attachment missing")
+	ErrAttachmentUploadFailed  = errors.New("pengumuman: attachment upload failed")
+	ErrAttachmentStorageNeeded = errors.New("pengumuman: storage unavailable")
 )
 
 // MaxJudulBytes caps the judul length (200 chars roughly).
@@ -45,6 +54,11 @@ const MaxJudulBytes = 200
 // markdown locked roadmap §3.C.2 untuk konsistensi.
 const MaxIsiBytes = 50 * 1024
 
+// MaxAttachmentBytes caps one pengumuman attachment at 20MB.
+const MaxAttachmentBytes = 20 * 1024 * 1024
+
+const AttachmentPresignTTL = 15 * time.Minute
+
 // repoAPI subset yang dipakai service. Interface dipisah supaya gampang
 // di-mock di test.
 type repoAPI interface {
@@ -52,6 +66,7 @@ type repoAPI interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*Pengumuman, error)
 	ListByKelas(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Pengumuman, error)
 	UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, judul, isi string, status Status) error
+	UpdateAttachment(ctx context.Context, id uuid.UUID, objectKey, filename, mime *string, size *int64) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -82,6 +97,7 @@ type Service struct {
 	bab    babLookup
 	enroll enrollmentLookup
 	audit  auditLogger
+	store  storage.Storage
 	now    func() time.Time
 }
 
@@ -91,6 +107,8 @@ type Service struct {
 func NewService(repo repoAPI, kelas kelasLookup, bab babLookup, enroll enrollmentLookup, audit auditLogger) *Service {
 	return &Service{repo: repo, kelas: kelas, bab: bab, enroll: enroll, audit: audit, now: time.Now}
 }
+
+func (s *Service) SetStorage(store storage.Storage) { s.store = store }
 
 // ---------- Create ----------
 
@@ -232,6 +250,122 @@ func (s *Service) Get(ctx context.Context, id, callerID uuid.UUID, callerRole st
 		return nil, err
 	}
 	return p, nil
+}
+
+// ---------- Attachment ----------
+
+type AttachmentUploadInput struct {
+	Filename string
+	Body     []byte
+}
+
+type AttachmentURLResult struct {
+	URL       string
+	ExpiresAt time.Time
+}
+
+var allowedAttachmentMimes = map[string]string{
+	"image/jpeg":      "jpg",
+	"image/png":       "png",
+	"image/webp":      "webp",
+	"application/pdf": "pdf",
+}
+
+func (s *Service) UploadAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, in AttachmentUploadInput, ip, userAgent string) (*Pengumuman, error) {
+	if s.store == nil {
+		return nil, ErrAttachmentStorageNeeded
+	}
+	if len(in.Body) == 0 {
+		return nil, fmt.Errorf("%w: empty body", ErrInvalidInput)
+	}
+	if int64(len(in.Body)) > MaxAttachmentBytes {
+		return nil, ErrAttachmentTooLarge
+	}
+	sniff := in.Body
+	if len(sniff) > 512 {
+		sniff = sniff[:512]
+	}
+	mime := strings.TrimSpace(strings.SplitN(http.DetectContentType(sniff), ";", 2)[0])
+	ext, ok := allowedAttachmentMimes[mime]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrAttachmentUnsupported, mime)
+	}
+	existing, err := s.repo.FindByID(ctx, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("pengumuman attachment find: %w", err)
+	}
+	if _, err := s.findKelasOrForbidden(ctx, existing.KelasID, callerID, callerRole); err != nil {
+		return nil, err
+	}
+	objectKey, err := storage.BuildKey(storage.CategoryPengumuman, uuid.NewString()+"."+ext)
+	if err != nil {
+		return nil, fmt.Errorf("pengumuman attachment key: %w", err)
+	}
+	if err := s.store.PutObject(ctx, storage.PutObjectInput{Key: objectKey, Body: bytes.NewReader(in.Body), Size: int64(len(in.Body)), ContentType: mime}); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAttachmentUploadFailed, err)
+	}
+	filename := strings.TrimSpace(filepath.Base(in.Filename))
+	if filename == "." || filename == string(filepath.Separator) || filename == "" {
+		filename = "lampiran." + ext
+	}
+	size := int64(len(in.Body))
+	if err := s.repo.UpdateAttachment(ctx, id, &objectKey, &filename, &mime, &size); err != nil {
+		_ = s.store.DeleteObject(context.Background(), objectKey)
+		return nil, fmt.Errorf("pengumuman attachment update: %w", err)
+	}
+	if existing.AttachmentObjectKey != nil && *existing.AttachmentObjectKey != "" {
+		_ = s.store.DeleteObject(context.Background(), *existing.AttachmentObjectKey)
+	}
+	return s.repo.FindByID(ctx, id)
+}
+
+func (s *Service) DeleteAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Pengumuman, error) {
+	if s.store == nil {
+		return nil, ErrAttachmentStorageNeeded
+	}
+	existing, err := s.repo.FindByID(ctx, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("pengumuman attachment find: %w", err)
+	}
+	if _, err := s.findKelasOrForbidden(ctx, existing.KelasID, callerID, callerRole); err != nil {
+		return nil, err
+	}
+	if existing.AttachmentObjectKey == nil || *existing.AttachmentObjectKey == "" {
+		return nil, ErrAttachmentMissing
+	}
+	oldKey := *existing.AttachmentObjectKey
+	if err := s.repo.UpdateAttachment(ctx, id, nil, nil, nil, nil); err != nil {
+		return nil, fmt.Errorf("pengumuman attachment clear: %w", err)
+	}
+	_ = s.store.DeleteObject(context.Background(), oldKey)
+	return s.repo.FindByID(ctx, id)
+}
+
+func (s *Service) PresignAttachmentURL(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*AttachmentURLResult, error) {
+	if s.store == nil {
+		return nil, ErrAttachmentStorageNeeded
+	}
+	p, err := s.Get(ctx, id, callerID, callerRole)
+	if err != nil {
+		return nil, err
+	}
+	if p.AttachmentObjectKey == nil || *p.AttachmentObjectKey == "" {
+		return nil, ErrAttachmentMissing
+	}
+	url, err := s.store.PresignGet(ctx, *p.AttachmentObjectKey, AttachmentPresignTTL)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			return nil, ErrAttachmentMissing
+		}
+		return nil, fmt.Errorf("pengumuman attachment presign: %w", err)
+	}
+	return &AttachmentURLResult{URL: url, ExpiresAt: s.now().Add(AttachmentPresignTTL)}, nil
 }
 
 // ---------- Update ----------

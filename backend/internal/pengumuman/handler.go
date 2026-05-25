@@ -11,6 +11,7 @@ package pengumuman
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -28,6 +29,9 @@ type pengumumanService interface {
 	ListByKelas(ctx context.Context, kelasID, callerID uuid.UUID, callerRole string, in ListInput) ([]Pengumuman, error)
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*Pengumuman, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Pengumuman, error)
+	UploadAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, in AttachmentUploadInput, ip, userAgent string) (*Pengumuman, error)
+	DeleteAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Pengumuman, error)
+	PresignAttachmentURL(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*AttachmentURLResult, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Pengumuman, error)
 }
 
@@ -208,6 +212,77 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"pengumuman": p})
 }
 
+// UploadAttachment handles PUT /api/v1/pengumuman/:id/attachment.
+func (h *Handler) UploadAttachment(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid pengumuman id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "file is required", "file_required")
+	}
+	if fh.Size > MaxAttachmentBytes {
+		return errResp(c, fiber.StatusRequestEntityTooLarge, "attachment too large", "payload_too_large")
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "cannot read file", "invalid_file")
+	}
+	defer f.Close()
+	body, err := io.ReadAll(io.LimitReader(f, MaxAttachmentBytes+1))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "cannot read file", "invalid_file")
+	}
+	p, err := h.svc.UploadAttachment(c.UserContext(), id, callerID, role, AttachmentUploadInput{Filename: fh.Filename, Body: body}, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"pengumuman": p})
+}
+
+// DeleteAttachment handles DELETE /api/v1/pengumuman/:id/attachment.
+func (h *Handler) DeleteAttachment(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid pengumuman id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+	p, err := h.svc.DeleteAttachment(c.UserContext(), id, callerID, role, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"pengumuman": p})
+}
+
+// AttachmentURL handles GET /api/v1/pengumuman/:id/attachment-url.
+func (h *Handler) AttachmentURL(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid pengumuman id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+	res, err := h.svc.PresignAttachmentURL(c.UserContext(), id, callerID, role)
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"url": res.URL, "expires_at": res.ExpiresAt})
+}
+
 // Delete handles DELETE /api/v1/pengumuman/:id.
 func (h *Handler) Delete(c *fiber.Ctx) error {
 	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
@@ -233,8 +308,14 @@ func mapServiceErr(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidInput):
 		return errResp(c, fiber.StatusBadRequest, friendlyMessage(err, "invalid input"), "invalid_body")
-	case errors.Is(err, ErrIsiTooLong):
-		return errResp(c, fiber.StatusRequestEntityTooLarge, friendlyMessage(err, "isi too long"), "payload_too_large")
+	case errors.Is(err, ErrIsiTooLong), errors.Is(err, ErrAttachmentTooLarge):
+		return errResp(c, fiber.StatusRequestEntityTooLarge, friendlyMessage(err, "payload too large"), "payload_too_large")
+	case errors.Is(err, ErrAttachmentUnsupported):
+		return errResp(c, fiber.StatusBadRequest, "attachment must be an image or PDF", "unsupported_attachment")
+	case errors.Is(err, ErrAttachmentMissing):
+		return errResp(c, fiber.StatusNotFound, "attachment not found", "attachment_not_found")
+	case errors.Is(err, ErrAttachmentStorageNeeded):
+		return errResp(c, fiber.StatusServiceUnavailable, "attachment storage unavailable", "storage_unavailable")
 	case errors.Is(err, ErrBabNotInKelas):
 		return errResp(c, fiber.StatusBadRequest, "bab does not belong to this kelas", "bab_not_in_kelas")
 	case errors.Is(err, ErrNotFound), errors.Is(err, gorm.ErrRecordNotFound):

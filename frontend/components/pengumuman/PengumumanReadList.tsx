@@ -10,12 +10,11 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   ChevronDown,
   ChevronRight,
   Megaphone,
+  Paperclip,
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
@@ -23,6 +22,7 @@ import {
 import { ApiError } from '@/lib/api';
 import {
   type Pengumuman,
+  getPengumumanAttachmentURL,
   isPengumumanNew,
   listSiswaPengumuman,
 } from '@/lib/pengumuman-api';
@@ -201,6 +201,16 @@ function PengumumanReadCard({
   isNew,
   createdAt,
 }: PengumumanReadCardProps) {
+  async function openAttachment() {
+    try {
+      const { url } = await getPengumumanAttachmentURL(pengumuman.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Lampiran tidak bisa dibuka.';
+      window.alert(message);
+    }
+  }
+
   return (
     <li className="overflow-hidden rounded-siswa siswa-border bg-siswa-surface siswa-shadow-sm">
       <button
@@ -244,14 +254,20 @@ function PengumumanReadCard({
       {expanded ? (
         <div className="border-t-2 border-siswa-border bg-siswa-bg px-4 py-3">
           {pengumuman.isi.trim() ? (
-            <div className="prose prose-sm max-w-none">
-              <Markdown remarkPlugins={[remarkGfm]}>{pengumuman.isi}</Markdown>
-            </div>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-siswa-text">
+              {pengumuman.isi}
+            </p>
           ) : (
             <p className="text-xs italic text-siswa-text-muted">
               Pengumuman ini tidak punya isi.
             </p>
           )}
+          {pengumuman.attachment_object_key ? (
+            <SiswaButton type="button" tone="surface" size="sm" className="mt-3" onClick={openAttachment}>
+              <Paperclip className="mr-2 size-4" />
+              {pengumuman.attachment_filename ?? 'Buka lampiran'}
+            </SiswaButton>
+          ) : null}
         </div>
       ) : null}
     </li>

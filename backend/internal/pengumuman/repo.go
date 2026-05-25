@@ -116,6 +116,27 @@ func (r *Repo) UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion in
 
 // Delete hard-deletes a pengumuman by id. Returns gorm.ErrRecordNotFound
 // when id missing.
+// UpdateAttachment swaps or clears the optional attachment metadata.
+func (r *Repo) UpdateAttachment(ctx context.Context, id uuid.UUID, objectKey, filename, mime *string, size *int64) error {
+	res := r.db.WithContext(ctx).
+		Model(&Pengumuman{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"attachment_object_key": objectKey,
+			"attachment_filename":   filename,
+			"attachment_mime":       mime,
+			"attachment_size":       size,
+			"version":               gorm.Expr("version + 1"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func (r *Repo) Delete(ctx context.Context, id uuid.UUID) error {
 	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&Pengumuman{})
 	if res.Error != nil {

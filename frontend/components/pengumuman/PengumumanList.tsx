@@ -24,8 +24,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   Archive,
   ArchiveRestore,
@@ -33,6 +31,7 @@ import {
   ChevronRight,
   Megaphone,
   MoreVertical,
+  Paperclip,
   Plus,
   RotateCcw,
   Sparkles,
@@ -45,6 +44,7 @@ import {
   type PengumumanStatus,
   deletePengumuman,
   friendlyPengumumanError,
+  getPengumumanAttachmentURL,
   isPengumumanNew,
   listPengumuman,
   updatePengumuman,
@@ -76,6 +76,32 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PengumumanComposer } from './PengumumanComposer';
 import { PengumumanEditDialog } from './PengumumanEditDialog';
+
+function PengumumanAttachmentLink({ pengumuman }: { pengumuman: Pengumuman }) {
+  const { toast } = useToast();
+  if (!pengumuman.attachment_object_key) return null;
+
+  async function openAttachment() {
+    try {
+      const { url } = await getPengumumanAttachmentURL(pengumuman.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      const apiErr = err instanceof ApiError ? err : null;
+      toast({
+        title: 'Gagal membuka lampiran',
+        description: apiErr ? friendlyPengumumanError(apiErr, 'attachment') : 'Lampiran tidak bisa dibuka.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" size="sm" onClick={openAttachment}>
+      <Paperclip className="mr-2 size-4" />
+      {pengumuman.attachment_filename ?? 'Buka lampiran'}
+    </Button>
+  );
+}
 
 export interface PengumumanListProps {
   kelasID: string;
@@ -456,16 +482,17 @@ export function PengumumanList({
                   {isOpen && (
                     <div className="border-t bg-muted/20 px-3 py-3">
                       {p.isi.trim() ? (
-                        <div className="prose prose-sm max-w-none dark:prose-invert">
-                          <Markdown remarkPlugins={[remarkGfm]}>
-                            {p.isi}
-                          </Markdown>
-                        </div>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                          {p.isi}
+                        </p>
                       ) : (
                         <p className="text-xs italic text-muted-foreground">
                           (Tidak ada isi.)
                         </p>
                       )}
+                      <div className="mt-3">
+                        <PengumumanAttachmentLink pengumuman={p} />
+                      </div>
                     </div>
                   )}
                 </li>

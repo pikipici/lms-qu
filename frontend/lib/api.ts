@@ -147,7 +147,8 @@ async function apiInner<T>(path: string, init: ApiInit, retried: boolean): Promi
   const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers as HeadersInit | undefined);
-  if (init.body !== undefined && !headers.has('Content-Type')) {
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (init.body !== undefined && !isFormData && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
   if (!init.anon) {
@@ -158,7 +159,7 @@ async function apiInner<T>(path: string, init: ApiInit, retried: boolean): Promi
   const res = await fetch(url, {
     ...init,
     headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    body: init.body !== undefined ? (isFormData ? (init.body as BodyInit) : JSON.stringify(init.body)) : undefined,
   });
 
   const requestId = res.headers.get('X-Request-ID') ?? undefined;

@@ -40,6 +40,8 @@ const (
 	// SoalBab bab-tied bank from Fase 5) supaya cleanup cron + audit
 	// per-fitur tidak nyampur. Locked decision #58 prefix per kategori.
 	CategoryBankSoal = "soal-bank"
+	// CategoryPengumuman holds one optional attachment per announcement.
+	CategoryPengumuman = "pengumuman"
 )
 
 var validCategories = map[string]struct{}{
@@ -50,6 +52,7 @@ var validCategories = map[string]struct{}{
 	CategoryImport:      {},
 	CategoryCredentials: {},
 	CategoryBankSoal:    {},
+	CategoryPengumuman:  {},
 }
 
 // IsValidCategory reports whether name is one of the known kategori prefixes.
