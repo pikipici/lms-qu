@@ -434,7 +434,7 @@
 
 | Tanggal | Tester | Area | Hasil | Catatan/Bug |
 |---|---|---|---|---|
-| - | - | - | - | - |
+| 2026-05-25 | Apis | Batch 1 smoke/setup QA | PASS | Admin login OK; Sekolah QA A ready; Guru/Siswa QA reset/ready; Kelas QA Aktif ready; siswa join idempotent; siswa class visible; guru school filter returns sekolah_nama. Found and fixed backend `sekolah_nama` mapping bug in commit `4ea7a40`. |
 
 ---
 
