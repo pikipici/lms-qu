@@ -49,17 +49,34 @@ type Pengumuman struct {
 	Judul               string     `gorm:"not null" json:"judul"`
 	Isi                 string     `gorm:"not null;default:''" json:"isi"`
 	CreatedByID         uuid.UUID  `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
-	Status              Status     `gorm:"not null;default:published" json:"status"`
-	AttachmentObjectKey *string    `gorm:"column:attachment_object_key" json:"attachment_object_key,omitempty"`
-	AttachmentFilename  *string    `gorm:"column:attachment_filename" json:"attachment_filename,omitempty"`
-	AttachmentMime      *string    `gorm:"column:attachment_mime" json:"attachment_mime,omitempty"`
-	AttachmentSize      *int64     `gorm:"column:attachment_size" json:"attachment_size,omitempty"`
-	Version             int        `gorm:"not null;default:1" json:"version"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	Status              Status       `gorm:"not null;default:published" json:"status"`
+	AttachmentObjectKey *string      `gorm:"column:attachment_object_key" json:"attachment_object_key,omitempty"`
+	AttachmentFilename  *string      `gorm:"column:attachment_filename" json:"attachment_filename,omitempty"`
+	AttachmentMime      *string      `gorm:"column:attachment_mime" json:"attachment_mime,omitempty"`
+	AttachmentSize      *int64       `gorm:"column:attachment_size" json:"attachment_size,omitempty"`
+	Version             int          `gorm:"not null;default:1" json:"version"`
+	CreatedAt           time.Time    `json:"created_at"`
+	UpdatedAt           time.Time    `json:"updated_at"`
+	Attachments         []Attachment `gorm:"foreignKey:PengumumanID;references:ID" json:"attachments,omitempty"`
 }
 
 // TableName binds the struct to the pengumuman table.
 func (Pengumuman) TableName() string {
 	return "pengumuman"
+}
+
+// Attachment represents one file attached to a pengumuman.
+type Attachment struct {
+	ID               uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	PengumumanID     uuid.UUID `gorm:"type:uuid;not null;index;column:pengumuman_id" json:"pengumuman_id"`
+	ObjectKey        string    `gorm:"not null;column:object_key" json:"object_key"`
+	OriginalFilename string    `gorm:"not null;column:original_filename" json:"original_filename"`
+	MimeType         string    `gorm:"not null;column:mime_type" json:"mime_type"`
+	SizeBytes        int64     `gorm:"not null;column:size_bytes" json:"size_bytes"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// TableName binds the struct to the pengumuman_attachment table.
+func (Attachment) TableName() string {
+	return "pengumuman_attachment"
 }

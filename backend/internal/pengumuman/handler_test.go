@@ -25,12 +25,11 @@ import (
 // ---------- Stubs untuk service deps ----------
 
 type stubRepo struct {
-	createFn           func(ctx context.Context, p *Pengumuman) error
-	findFn             func(ctx context.Context, id uuid.UUID) (*Pengumuman, error)
-	listFn             func(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Pengumuman, error)
-	updateFn           func(ctx context.Context, id uuid.UUID, expectedVersion int, judul, isi string, status Status) error
-	updateAttachmentFn func(ctx context.Context, id uuid.UUID, objectKey, filename, mime *string, size *int64) error
-	deleteFn           func(ctx context.Context, id uuid.UUID) error
+	createFn func(ctx context.Context, p *Pengumuman) error
+	findFn   func(ctx context.Context, id uuid.UUID) (*Pengumuman, error)
+	listFn   func(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Pengumuman, error)
+	updateFn func(ctx context.Context, id uuid.UUID, expectedVersion int, judul, isi string, status Status) error
+	deleteFn func(ctx context.Context, id uuid.UUID) error
 }
 
 func (r *stubRepo) Create(ctx context.Context, p *Pengumuman) error {
@@ -45,11 +44,15 @@ func (r *stubRepo) ListByKelas(ctx context.Context, kelasID uuid.UUID, f ListFil
 func (r *stubRepo) UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, judul, isi string, status Status) error {
 	return r.updateFn(ctx, id, expectedVersion, judul, isi, status)
 }
-func (r *stubRepo) UpdateAttachment(ctx context.Context, id uuid.UUID, objectKey, filename, mime *string, size *int64) error {
-	if r.updateAttachmentFn != nil {
-		return r.updateAttachmentFn(ctx, id, objectKey, filename, mime, size)
-	}
-	return nil
+func (r *stubRepo) AddAttachment(ctx context.Context, a *Attachment) error { return nil }
+func (r *stubRepo) CountAttachmentsByPengumuman(ctx context.Context, pengumumanID uuid.UUID) (int64, error) {
+	return 0, nil
+}
+func (r *stubRepo) FindAttachmentByID(ctx context.Context, pengumumanID, attachmentID uuid.UUID) (*Attachment, error) {
+	return &Attachment{ID: attachmentID, PengumumanID: pengumumanID, ObjectKey: "pengumuman/test.pdf", OriginalFilename: "test.pdf", MimeType: "application/pdf", SizeBytes: 1}, nil
+}
+func (r *stubRepo) DeleteAttachment(ctx context.Context, pengumumanID, attachmentID uuid.UUID) (string, error) {
+	return "pengumuman/test.pdf", nil
 }
 func (r *stubRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.deleteFn(ctx, id)
@@ -421,10 +424,10 @@ func (s *stubSvc) Update(ctx context.Context, id, callerID uuid.UUID, role strin
 func (s *stubSvc) UploadAttachment(ctx context.Context, id, callerID uuid.UUID, role string, in AttachmentUploadInput, ip, ua string) (*Pengumuman, error) {
 	return s.getFn(ctx, id, callerID, role)
 }
-func (s *stubSvc) DeleteAttachment(ctx context.Context, id, callerID uuid.UUID, role string, ip, ua string) (*Pengumuman, error) {
+func (s *stubSvc) DeleteAttachment(ctx context.Context, id, attachmentID, callerID uuid.UUID, role string, ip, ua string) (*Pengumuman, error) {
 	return s.getFn(ctx, id, callerID, role)
 }
-func (s *stubSvc) PresignAttachmentURL(ctx context.Context, id, callerID uuid.UUID, role string) (*AttachmentURLResult, error) {
+func (s *stubSvc) PresignAttachmentURL(ctx context.Context, id, attachmentID, callerID uuid.UUID, role string) (*AttachmentURLResult, error) {
 	return &AttachmentURLResult{URL: "http://example.test/file", ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 func (s *stubSvc) Delete(ctx context.Context, id, callerID uuid.UUID, role, ip, ua string) (*Pengumuman, error) {

@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MarkdownEditor } from '@/components/materi/MarkdownEditor';
 
 
 export interface PengumumanComposerProps {
@@ -68,7 +69,7 @@ export function PengumumanComposer({
 
   const [judul, setJudul] = React.useState('');
   const [isi, setIsi] = React.useState('');
-  const [attachment, setAttachment] = React.useState<File | null>(null);
+  const [attachments, setAttachments] = React.useState<File[]>([]);
   const [judulError, setJudulError] = React.useState<string | null>(null);
 
   // Reset state setiap dialog di-open. Hindari leftover dari sesi sebelumnya.
@@ -76,15 +77,18 @@ export function PengumumanComposer({
     if (open) {
       setJudul('');
       setIsi('');
-      setAttachment(null);
+      setAttachments([]);
       setJudulError(null);
     }
   }, [open]);
 
   const mutation = useMutation({
-    mutationFn: async ({ body, file }: { body: CreatePengumumanBody; file: File | null }) => {
-      const created = await createPengumuman(kelasID, body);
-      return file ? uploadPengumumanAttachment(created.pengumuman.id, file) : created;
+    mutationFn: async ({ body, files }: { body: CreatePengumumanBody; files: File[] }) => {
+      let current = await createPengumuman(kelasID, body);
+      for (const file of files) {
+        current = await uploadPengumumanAttachment(current.pengumuman.id, file);
+      }
+      return current;
     },
     onSuccess: ({ pengumuman }) => {
       for (const key of invalidateKeys) {
@@ -132,7 +136,8 @@ export function PengumumanComposer({
     e.preventDefault();
     if (!validate()) return;
 
-    if (attachment && attachment.size > MAX_PENGUMUMAN_ATTACHMENT_BYTES) {
+    const tooLarge = attachments.find((file) => file.size > MAX_PENGUMUMAN_ATTACHMENT_BYTES);
+    if (tooLarge) {
       toast({
         title: 'Lampiran terlalu besar',
         description: `Batas lampiran ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`,
@@ -157,7 +162,7 @@ export function PengumumanComposer({
         judul: judul.trim(),
         isi,
       },
-      file: attachment,
+      files: attachments,
     });
   }
 
@@ -197,14 +202,12 @@ export function PengumumanComposer({
 
           <div className="space-y-1.5">
             <Label htmlFor="pengumuman-isi">Isi pengumuman</Label>
-            <textarea
+            <MarkdownEditor
               id="pengumuman-isi"
               value={isi}
-              onChange={(e) => setIsi(e.target.value)}
+              onChange={setIsi}
               disabled={isPending}
               rows={8}
-              className="min-h-36 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="Tulis pengumuman biasa. Link bisa ditempel langsung, tanpa preview markdown."
             />
           </div>
 
@@ -214,14 +217,25 @@ export function PengumumanComposer({
               id="pengumuman-lampiran"
               type="file"
               accept={PENGUMUMAN_ATTACHMENT_ACCEPT}
+              multiple
               disabled={isPending}
-              onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const selected = Array.from(e.target.files ?? []);
+                setAttachments((prev) => [...prev, ...selected]);
+                e.currentTarget.value = '';
+              }}
             />
-            <p className="text-xs text-muted-foreground">
-              {attachment
-                ? `${attachment.name} • ${(attachment.size / 1024 / 1024).toFixed(2)} MB`
-                : `Maks ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`}
-            </p>
+            {attachments.length > 0 ? (
+              <ul className="space-y-1 rounded-md border bg-muted/20 p-2 text-xs">
+                {attachments.map((file, index) => (
+                  <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{file.name} • {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))} disabled={isPending}>Hapus</Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="text-xs text-muted-foreground">Bisa pilih beberapa file. Maks {MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB per file.</p>
           </div>
 
           <DialogFooter>

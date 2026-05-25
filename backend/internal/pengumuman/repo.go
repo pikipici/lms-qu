@@ -58,7 +58,10 @@ func (r *Repo) Create(ctx context.Context, p *Pengumuman) error {
 // FindByID returns a pengumuman by id.
 func (r *Repo) FindByID(ctx context.Context, id uuid.UUID) (*Pengumuman, error) {
 	var p Pengumuman
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&p).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Preload("Attachments", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC") }).
+		Where("id = ?", id).
+		First(&p).Error; err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -82,7 +85,7 @@ func (r *Repo) ListByKelas(ctx context.Context, kelasID uuid.UUID, f ListFilter)
 	}
 
 	var rows []Pengumuman
-	if err := q.Find(&rows).Error; err != nil {
+	if err := q.Preload("Attachments", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC") }).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -114,29 +117,50 @@ func (r *Repo) UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion in
 	return nil
 }
 
-// Delete hard-deletes a pengumuman by id. Returns gorm.ErrRecordNotFound
-// when id missing.
-// UpdateAttachment swaps or clears the optional attachment metadata.
-func (r *Repo) UpdateAttachment(ctx context.Context, id uuid.UUID, objectKey, filename, mime *string, size *int64) error {
-	res := r.db.WithContext(ctx).
-		Model(&Pengumuman{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"attachment_object_key": objectKey,
-			"attachment_filename":   filename,
-			"attachment_mime":       mime,
-			"attachment_size":       size,
-			"version":               gorm.Expr("version + 1"),
-		})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+// AddAttachment inserts a single pengumuman_attachment row.
+func (r *Repo) AddAttachment(ctx context.Context, a *Attachment) error {
+	return r.db.WithContext(ctx).Create(a).Error
 }
 
+// CountAttachmentsByPengumuman returns the number of attachments for a pengumuman.
+func (r *Repo) CountAttachmentsByPengumuman(ctx context.Context, pengumumanID uuid.UUID) (int64, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).
+		Model(&Attachment{}).
+		Where("pengumuman_id = ?", pengumumanID).
+		Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// FindAttachmentByID returns a single attachment scoped to its pengumuman.
+func (r *Repo) FindAttachmentByID(ctx context.Context, pengumumanID, attachmentID uuid.UUID) (*Attachment, error) {
+	var a Attachment
+	if err := r.db.WithContext(ctx).
+		Where("id = ? AND pengumuman_id = ?", attachmentID, pengumumanID).
+		First(&a).Error; err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+// DeleteAttachment hard-deletes a single pengumuman_attachment row and returns its object key.
+func (r *Repo) DeleteAttachment(ctx context.Context, pengumumanID, attachmentID uuid.UUID) (string, error) {
+	var a Attachment
+	if err := r.db.WithContext(ctx).
+		Where("id = ? AND pengumuman_id = ?", attachmentID, pengumumanID).
+		First(&a).Error; err != nil {
+		return "", err
+	}
+	if err := r.db.WithContext(ctx).Delete(&a).Error; err != nil {
+		return "", err
+	}
+	return a.ObjectKey, nil
+}
+
+// Delete hard-deletes a pengumuman by id. Returns gorm.ErrRecordNotFound
+// when id missing.
 func (r *Repo) Delete(ctx context.Context, id uuid.UUID) error {
 	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&Pengumuman{})
 	if res.Error != nil {

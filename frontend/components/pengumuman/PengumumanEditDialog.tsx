@@ -25,6 +25,7 @@ import {
   PENGUMUMAN_ATTACHMENT_ACCEPT,
   deletePengumumanAttachment,
   friendlyPengumumanError,
+  pengumumanAttachments,
   updatePengumuman,
   uploadPengumumanAttachment,
 } from '@/lib/pengumuman-api';
@@ -40,6 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MarkdownEditor } from '@/components/materi/MarkdownEditor';
 import { cn } from '@/lib/utils';
 
 export interface PengumumanEditDialogProps {
@@ -61,8 +63,8 @@ export function PengumumanEditDialog({
   const [judul, setJudul] = React.useState(pengumuman.judul);
   const [isi, setIsi] = React.useState(pengumuman.isi);
   const [status, setStatus] = React.useState<PengumumanStatus>(pengumuman.status);
-  const [attachment, setAttachment] = React.useState<File | null>(null);
-  const [removeAttachment, setRemoveAttachment] = React.useState(false);
+  const [attachments, setAttachments] = React.useState<File[]>([]);
+  const [removedAttachmentIDs, setRemovedAttachmentIDs] = React.useState<Set<string>>(() => new Set());
   const [judulError, setJudulError] = React.useState<string | null>(null);
 
   // Re-sync setiap dialog di-open atau pengumuman berubah (mis. abis 409 refetch).
@@ -71,8 +73,8 @@ export function PengumumanEditDialog({
       setJudul(pengumuman.judul);
       setIsi(pengumuman.isi);
       setStatus(pengumuman.status);
-      setAttachment(null);
-      setRemoveAttachment(false);
+      setAttachments([]);
+      setRemovedAttachmentIDs(new Set());
       setJudulError(null);
     }
   }, [
@@ -93,9 +95,14 @@ export function PengumumanEditDialog({
         isi: isi !== pengumuman.isi ? isi : undefined,
         status: status !== pengumuman.status ? status : undefined,
       });
-      if (attachment) return uploadPengumumanAttachment(pengumuman.id, attachment);
-      if (removeAttachment && pengumuman.attachment_object_key) return deletePengumumanAttachment(pengumuman.id);
-      return updated;
+      let current = updated;
+      for (const attachmentID of removedAttachmentIDs) {
+        current = await deletePengumumanAttachment(pengumuman.id, attachmentID);
+      }
+      for (const file of attachments) {
+        current = await uploadPengumumanAttachment(pengumuman.id, file);
+      }
+      return current;
     },
     onSuccess: ({ pengumuman: updated }) => {
       for (const key of invalidateKeys) {
@@ -153,7 +160,8 @@ export function PengumumanEditDialog({
     e.preventDefault();
     if (!validate()) return;
 
-    if (attachment && attachment.size > MAX_PENGUMUMAN_ATTACHMENT_BYTES) {
+    const tooLarge = attachments.find((file) => file.size > MAX_PENGUMUMAN_ATTACHMENT_BYTES);
+    if (tooLarge) {
       toast({
         title: 'Lampiran terlalu besar',
         description: `Batas lampiran ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`,
@@ -179,8 +187,8 @@ export function PengumumanEditDialog({
     judul.trim() !== pengumuman.judul ||
     isi !== pengumuman.isi ||
     status !== pengumuman.status ||
-    !!attachment ||
-    (removeAttachment && !!pengumuman.attachment_object_key);
+    attachments.length > 0 ||
+    removedAttachmentIDs.size > 0;
 
   const submitDisabled = isPending || !judul.trim() || !dirty;
 
@@ -220,54 +228,49 @@ export function PengumumanEditDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="pengumuman-edit-isi">Isi pengumuman</Label>
-            <textarea
+            <MarkdownEditor
               id="pengumuman-edit-isi"
               value={isi}
-              onChange={(e) => setIsi(e.target.value)}
+              onChange={setIsi}
               disabled={isPending}
               rows={8}
-              className="min-h-36 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="Tulis pengumuman biasa, tanpa preview markdown."
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="pengumuman-edit-lampiran">Lampiran gambar/PDF</Label>
-            {pengumuman.attachment_object_key && !removeAttachment && !attachment ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-sm">
+            {pengumumanAttachments(pengumuman).filter((a) => !removedAttachmentIDs.has(a.id)).map((a) => (
+              <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-sm">
                 <Paperclip className="size-4 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate">
-                  {pengumuman.attachment_filename ?? 'Lampiran aktif'}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRemoveAttachment(true)}
-                  disabled={isPending}
-                >
+                <span className="min-w-0 flex-1 truncate">{a.original_filename}</span>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setRemovedAttachmentIDs((prev) => new Set(prev).add(a.id))} disabled={isPending}>
                   <Trash2 className="mr-2 size-4" />
                   Hapus
                 </Button>
               </div>
-            ) : null}
+            ))}
             <Input
               id="pengumuman-edit-lampiran"
               type="file"
               accept={PENGUMUMAN_ATTACHMENT_ACCEPT}
+              multiple
               disabled={isPending}
               onChange={(e) => {
-                setAttachment(e.target.files?.[0] ?? null);
-                setRemoveAttachment(false);
+                setAttachments((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+                e.currentTarget.value = '';
               }}
             />
-            <p className="text-xs text-muted-foreground">
-              {attachment
-                ? `${attachment.name} • ${(attachment.size / 1024 / 1024).toFixed(2)} MB`
-                : removeAttachment
-                  ? 'Lampiran akan dihapus saat disimpan.'
-                  : `Kosongkan kalau tidak mau ganti. Maks ${MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB.`}
-            </p>
+            {attachments.length > 0 ? (
+              <ul className="space-y-1 rounded-md border bg-muted/20 p-2 text-xs">
+                {attachments.map((file, index) => (
+                  <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{file.name} • {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))} disabled={isPending}>Hapus</Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="text-xs text-muted-foreground">Attachment lama dipertahankan kecuali dihapus. Bisa tambah beberapa file baru; maks {MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB per file.</p>
           </div>
 
           <div className="space-y-1.5">

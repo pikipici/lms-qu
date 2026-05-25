@@ -59,6 +59,8 @@ const MaxAttachmentBytes = 20 * 1024 * 1024
 
 const AttachmentPresignTTL = 15 * time.Minute
 
+const MaxAttachmentsPerPengumuman = 10
+
 // repoAPI subset yang dipakai service. Interface dipisah supaya gampang
 // di-mock di test.
 type repoAPI interface {
@@ -66,7 +68,10 @@ type repoAPI interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*Pengumuman, error)
 	ListByKelas(ctx context.Context, kelasID uuid.UUID, f ListFilter) ([]Pengumuman, error)
 	UpdateBasic(ctx context.Context, id uuid.UUID, expectedVersion int, judul, isi string, status Status) error
-	UpdateAttachment(ctx context.Context, id uuid.UUID, objectKey, filename, mime *string, size *int64) error
+	AddAttachment(ctx context.Context, a *Attachment) error
+	CountAttachmentsByPengumuman(ctx context.Context, pengumumanID uuid.UUID) (int64, error)
+	FindAttachmentByID(ctx context.Context, pengumumanID, attachmentID uuid.UUID) (*Attachment, error)
+	DeleteAttachment(ctx context.Context, pengumumanID, attachmentID uuid.UUID) (string, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -312,17 +317,29 @@ func (s *Service) UploadAttachment(ctx context.Context, id, callerID uuid.UUID, 
 		filename = "lampiran." + ext
 	}
 	size := int64(len(in.Body))
-	if err := s.repo.UpdateAttachment(ctx, id, &objectKey, &filename, &mime, &size); err != nil {
+	count, err := s.repo.CountAttachmentsByPengumuman(ctx, id)
+	if err != nil {
 		_ = s.store.DeleteObject(context.Background(), objectKey)
-		return nil, fmt.Errorf("pengumuman attachment update: %w", err)
+		return nil, fmt.Errorf("pengumuman attachment count: %w", err)
 	}
-	if existing.AttachmentObjectKey != nil && *existing.AttachmentObjectKey != "" {
-		_ = s.store.DeleteObject(context.Background(), *existing.AttachmentObjectKey)
+	if count >= MaxAttachmentsPerPengumuman {
+		_ = s.store.DeleteObject(context.Background(), objectKey)
+		return nil, fmt.Errorf("%w: max %d attachments", ErrInvalidInput, MaxAttachmentsPerPengumuman)
+	}
+	if err := s.repo.AddAttachment(ctx, &Attachment{
+		PengumumanID:     id,
+		ObjectKey:        objectKey,
+		OriginalFilename: filename,
+		MimeType:         mime,
+		SizeBytes:        size,
+	}); err != nil {
+		_ = s.store.DeleteObject(context.Background(), objectKey)
+		return nil, fmt.Errorf("pengumuman attachment insert: %w", err)
 	}
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *Service) DeleteAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Pengumuman, error) {
+func (s *Service) DeleteAttachment(ctx context.Context, id, attachmentID, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Pengumuman, error) {
 	if s.store == nil {
 		return nil, ErrAttachmentStorageNeeded
 	}
@@ -336,18 +353,20 @@ func (s *Service) DeleteAttachment(ctx context.Context, id, callerID uuid.UUID, 
 	if _, err := s.findKelasOrForbidden(ctx, existing.KelasID, callerID, callerRole); err != nil {
 		return nil, err
 	}
-	if existing.AttachmentObjectKey == nil || *existing.AttachmentObjectKey == "" {
+	if _, err := s.repo.FindAttachmentByID(ctx, id, attachmentID); errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrAttachmentMissing
+	} else if err != nil {
+		return nil, fmt.Errorf("pengumuman attachment find row: %w", err)
 	}
-	oldKey := *existing.AttachmentObjectKey
-	if err := s.repo.UpdateAttachment(ctx, id, nil, nil, nil, nil); err != nil {
-		return nil, fmt.Errorf("pengumuman attachment clear: %w", err)
+	oldKey, err := s.repo.DeleteAttachment(ctx, id, attachmentID)
+	if err != nil {
+		return nil, mapRepoErr(err)
 	}
 	_ = s.store.DeleteObject(context.Background(), oldKey)
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *Service) PresignAttachmentURL(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*AttachmentURLResult, error) {
+func (s *Service) PresignAttachmentURL(ctx context.Context, id, attachmentID, callerID uuid.UUID, callerRole string) (*AttachmentURLResult, error) {
 	if s.store == nil {
 		return nil, ErrAttachmentStorageNeeded
 	}
@@ -355,10 +374,14 @@ func (s *Service) PresignAttachmentURL(ctx context.Context, id, callerID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	if p.AttachmentObjectKey == nil || *p.AttachmentObjectKey == "" {
+	a, err := s.repo.FindAttachmentByID(ctx, p.ID, attachmentID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrAttachmentMissing
 	}
-	url, err := s.store.PresignGet(ctx, *p.AttachmentObjectKey, AttachmentPresignTTL)
+	if err != nil {
+		return nil, fmt.Errorf("pengumuman attachment find row: %w", err)
+	}
+	url, err := s.store.PresignGet(ctx, a.ObjectKey, AttachmentPresignTTL)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, ErrAttachmentMissing

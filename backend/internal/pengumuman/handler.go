@@ -30,8 +30,8 @@ type pengumumanService interface {
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*Pengumuman, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Pengumuman, error)
 	UploadAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, in AttachmentUploadInput, ip, userAgent string) (*Pengumuman, error)
-	DeleteAttachment(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Pengumuman, error)
-	PresignAttachmentURL(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*AttachmentURLResult, error)
+	DeleteAttachment(ctx context.Context, id, attachmentID, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Pengumuman, error)
+	PresignAttachmentURL(ctx context.Context, id, attachmentID, callerID uuid.UUID, callerRole string) (*AttachmentURLResult, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole, ip, userAgent string) (*Pengumuman, error)
 }
 
@@ -247,36 +247,44 @@ func (h *Handler) UploadAttachment(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"pengumuman": p})
 }
 
-// DeleteAttachment handles DELETE /api/v1/pengumuman/:id/attachment.
+// DeleteAttachment handles DELETE /api/v1/pengumuman/:id/attachments/:attachmentID.
 func (h *Handler) DeleteAttachment(c *fiber.Ctx) error {
 	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
 	if err != nil {
 		return errResp(c, fiber.StatusBadRequest, "invalid pengumuman id", "invalid_id")
+	}
+	attachmentID, err := uuid.Parse(strings.TrimSpace(c.Params("attachmentID")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid attachment id", "invalid_id")
 	}
 	callerID, err := middleware.UserIDFromCtx(c)
 	if err != nil {
 		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
 	}
 	role, _ := c.Locals(middleware.LocalsUserRole).(string)
-	p, err := h.svc.DeleteAttachment(c.UserContext(), id, callerID, role, c.IP(), string(c.Request().Header.UserAgent()))
+	p, err := h.svc.DeleteAttachment(c.UserContext(), id, attachmentID, callerID, role, c.IP(), string(c.Request().Header.UserAgent()))
 	if err != nil {
 		return mapServiceErr(c, err)
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"pengumuman": p})
 }
 
-// AttachmentURL handles GET /api/v1/pengumuman/:id/attachment-url.
+// AttachmentURL handles GET /api/v1/pengumuman/:id/attachments/:attachmentID/url.
 func (h *Handler) AttachmentURL(c *fiber.Ctx) error {
 	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
 	if err != nil {
 		return errResp(c, fiber.StatusBadRequest, "invalid pengumuman id", "invalid_id")
+	}
+	attachmentID, err := uuid.Parse(strings.TrimSpace(c.Params("attachmentID")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid attachment id", "invalid_id")
 	}
 	callerID, err := middleware.UserIDFromCtx(c)
 	if err != nil {
 		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
 	}
 	role, _ := c.Locals(middleware.LocalsUserRole).(string)
-	res, err := h.svc.PresignAttachmentURL(c.UserContext(), id, callerID, role)
+	res, err := h.svc.PresignAttachmentURL(c.UserContext(), id, attachmentID, callerID, role)
 	if err != nil {
 		return mapServiceErr(c, err)
 	}

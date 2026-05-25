@@ -45,6 +45,17 @@ export interface Pengumuman {
   attachment_filename?: string | null;
   attachment_mime?: string | null;
   attachment_size?: number | null;
+  attachments?: PengumumanAttachment[] | null;
+}
+
+export interface PengumumanAttachment {
+  id: string;
+  pengumuman_id: string;
+  object_key: string;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
 }
 
 export interface PengumumanListResponse {
@@ -188,24 +199,42 @@ export async function uploadPengumumanAttachment(
 ): Promise<PengumumanDetailResponse> {
   const form = new FormData();
   form.set('file', file);
-  return api<PengumumanDetailResponse>(`/pengumuman/${id}/attachment`, {
-    method: 'PUT',
+  return api<PengumumanDetailResponse>(`/pengumuman/${id}/attachments`, {
+    method: 'POST',
     body: form,
   });
 }
 
 export async function deletePengumumanAttachment(
   id: string,
+  attachmentID: string,
 ): Promise<PengumumanDetailResponse> {
-  return api<PengumumanDetailResponse>(`/pengumuman/${id}/attachment`, {
+  return api<PengumumanDetailResponse>(`/pengumuman/${id}/attachments/${attachmentID}`, {
     method: 'DELETE',
   });
 }
 
 export async function getPengumumanAttachmentURL(
   id: string,
+  attachmentID: string,
 ): Promise<PengumumanAttachmentURLResponse> {
-  return api<PengumumanAttachmentURLResponse>(`/pengumuman/${id}/attachment-url`);
+  return api<PengumumanAttachmentURLResponse>(`/pengumuman/${id}/attachments/${attachmentID}/url`);
+}
+
+export function pengumumanAttachments(p: Pengumuman): PengumumanAttachment[] {
+  if (p.attachments?.length) return p.attachments;
+  if (!p.attachment_object_key) return [];
+  return [
+    {
+      id: 'legacy',
+      pengumuman_id: p.id,
+      object_key: p.attachment_object_key,
+      original_filename: p.attachment_filename ?? 'Lampiran',
+      mime_type: p.attachment_mime ?? 'application/octet-stream',
+      size_bytes: p.attachment_size ?? 0,
+      created_at: p.created_at,
+    },
+  ];
 }
 
 export async function deletePengumuman(

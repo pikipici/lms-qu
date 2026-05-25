@@ -19,6 +19,8 @@
  */
 
 import * as React from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   useMutation,
   useQuery,
@@ -47,6 +49,7 @@ import {
   getPengumumanAttachmentURL,
   isPengumumanNew,
   listPengumuman,
+  pengumumanAttachments,
   updatePengumuman,
 } from '@/lib/pengumuman-api';
 import { useToast } from '@/hooks/use-toast';
@@ -79,11 +82,12 @@ import { PengumumanEditDialog } from './PengumumanEditDialog';
 
 function PengumumanAttachmentLink({ pengumuman }: { pengumuman: Pengumuman }) {
   const { toast } = useToast();
-  if (!pengumuman.attachment_object_key) return null;
+  const attachments = pengumumanAttachments(pengumuman);
+  if (attachments.length === 0) return null;
 
-  async function openAttachment() {
+  async function openAttachment(attachmentID: string) {
     try {
-      const { url } = await getPengumumanAttachmentURL(pengumuman.id);
+      const { url } = await getPengumumanAttachmentURL(pengumuman.id, attachmentID);
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : null;
@@ -96,10 +100,14 @@ function PengumumanAttachmentLink({ pengumuman }: { pengumuman: Pengumuman }) {
   }
 
   return (
-    <Button type="button" variant="outline" size="sm" onClick={openAttachment}>
-      <Paperclip className="mr-2 size-4" />
-      {pengumuman.attachment_filename ?? 'Buka lampiran'}
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      {attachments.map((attachment) => (
+        <Button key={attachment.id} type="button" variant="outline" size="sm" onClick={() => openAttachment(attachment.id)}>
+          <Paperclip className="mr-2 size-4" />
+          {attachment.original_filename}
+        </Button>
+      ))}
+    </div>
   );
 }
 
@@ -482,9 +490,9 @@ export function PengumumanList({
                   {isOpen && (
                     <div className="border-t bg-muted/20 px-3 py-3">
                       {p.isi.trim() ? (
-                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                          {p.isi}
-                        </p>
+                        <div className="prose prose-sm max-w-none dark:prose-invert">
+                          <Markdown remarkPlugins={[remarkGfm]}>{p.isi}</Markdown>
+                        </div>
                       ) : (
                         <p className="text-xs italic text-muted-foreground">
                           (Tidak ada isi.)

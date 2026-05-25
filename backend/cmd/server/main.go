@@ -554,9 +554,10 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		middleware.RoleGuard(string(auth.Admin), string(auth.Guru), string(auth.Siswa)),
 	)
 	pengumumanGroup.Get("/:id", pengumumanHandler.Get)
-	pengumumanGroup.Get("/:id/attachment-url", pengumumanHandler.AttachmentURL)
+	pengumumanGroup.Get("/:id/attachments/:attachmentID/url", pengumumanHandler.AttachmentURL)
 	pengumumanGroup.Put("/:id/attachment", pengumumanHandler.UploadAttachment)
-	pengumumanGroup.Delete("/:id/attachment", pengumumanHandler.DeleteAttachment)
+	pengumumanGroup.Post("/:id/attachments", pengumumanHandler.UploadAttachment)
+	pengumumanGroup.Delete("/:id/attachments/:attachmentID", pengumumanHandler.DeleteAttachment)
 	pengumumanGroup.Patch("/:id", pengumumanHandler.Update)
 	pengumumanGroup.Delete("/:id", pengumumanHandler.Delete)
 
