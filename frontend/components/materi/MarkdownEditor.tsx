@@ -32,6 +32,10 @@ interface MarkdownEditorProps {
   rows?: number;
   /** ID untuk wiring label/aria. */
   id?: string;
+  /** Hide preview pane for plain compose flows that need full-width input. */
+  showPreview?: boolean;
+  /** Hide markdown toolbar when caller wants a plain text compose surface. */
+  showToolbar?: boolean;
 }
 
 type ViewMode = 'write' | 'preview';
@@ -44,6 +48,8 @@ export function MarkdownEditor({
   errorMessage,
   rows = 12,
   id,
+  showPreview = true,
+  showToolbar = true,
 }: MarkdownEditorProps) {
   const [view, setView] = React.useState<ViewMode>('write');
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -72,32 +78,36 @@ export function MarkdownEditor({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
-          <button
-            type="button"
-            onClick={() => setView('write')}
-            className={cn(
-              'rounded px-2 py-1 text-xs transition-colors',
-              view === 'write'
-                ? 'bg-background shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Tulis
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('preview')}
-            className={cn(
-              'rounded px-2 py-1 text-xs transition-colors',
-              view === 'preview'
-                ? 'bg-background shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Pratinjau
-          </button>
-        </div>
+        {showPreview ? (
+          <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => setView('write')}
+              className={cn(
+                'rounded px-2 py-1 text-xs transition-colors',
+                view === 'write'
+                  ? 'bg-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Tulis
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('preview')}
+              className={cn(
+                'rounded px-2 py-1 text-xs transition-colors',
+                view === 'preview'
+                  ? 'bg-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Pratinjau
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">Tulis isi pengumuman.</span>
+        )}
         <span
           className={cn(
             'text-xs tabular-nums text-muted-foreground',
@@ -108,30 +118,32 @@ export function MarkdownEditor({
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/25 p-1">
-        <ToolbarButton label="Tebal" disabled={disabled} onClick={() => insertFormat('bold')}>
-          <Bold className="size-3.5" />
-        </ToolbarButton>
-        <ToolbarButton label="Miring" disabled={disabled} onClick={() => insertFormat('italic')}>
-          <Italic className="size-3.5" />
-        </ToolbarButton>
-        <ToolbarButton label="Daftar bullet" disabled={disabled} onClick={() => insertFormat('bullet')}>
-          <List className="size-3.5" />
-        </ToolbarButton>
-        <ToolbarButton label="Daftar angka" disabled={disabled} onClick={() => insertFormat('ordered')}>
-          <ListOrdered className="size-3.5" />
-        </ToolbarButton>
-        <ToolbarButton label="Link" disabled={disabled} onClick={() => insertFormat('link')}>
-          <Link className="size-3.5" />
-        </ToolbarButton>
-        <span className="ml-1 text-xs text-muted-foreground">
-          Pilih teks lalu klik tombol format.
-        </span>
-      </div>
+      {showToolbar && (
+        <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/25 p-1">
+          <ToolbarButton label="Tebal" disabled={disabled} onClick={() => insertFormat('bold')}>
+            <Bold className="size-3.5" />
+          </ToolbarButton>
+          <ToolbarButton label="Miring" disabled={disabled} onClick={() => insertFormat('italic')}>
+            <Italic className="size-3.5" />
+          </ToolbarButton>
+          <ToolbarButton label="Daftar bullet" disabled={disabled} onClick={() => insertFormat('bullet')}>
+            <List className="size-3.5" />
+          </ToolbarButton>
+          <ToolbarButton label="Daftar angka" disabled={disabled} onClick={() => insertFormat('ordered')}>
+            <ListOrdered className="size-3.5" />
+          </ToolbarButton>
+          <ToolbarButton label="Link" disabled={disabled} onClick={() => insertFormat('link')}>
+            <Link className="size-3.5" />
+          </ToolbarButton>
+          <span className="ml-1 text-xs text-muted-foreground">
+            Pilih teks lalu klik tombol format.
+          </span>
+        </div>
+      )}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className={cn('grid gap-3', showPreview && 'md:grid-cols-2')}>
         {/* Editor */}
-        <div className={cn(view === 'preview' && 'hidden md:block')}>
+        <div className={cn(showPreview && view === 'preview' && 'hidden md:block')}>
           <textarea
             ref={textareaRef}
             id={id}
@@ -149,18 +161,19 @@ export function MarkdownEditor({
           />
         </div>
 
-        {/* Preview */}
-        <div className={cn(view === 'write' && 'hidden md:block')}>
-          <div className="prose prose-sm max-w-none rounded-md border border-dashed bg-muted/20 p-3 dark:prose-invert">
-            {value.trim() ? (
-              <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
-            ) : (
-              <p className="text-xs italic text-muted-foreground">
-                Tulis konten di kolom sebelah kiri, lalu hasil bacanya muncul di sini.
-              </p>
-            )}
+        {showPreview && (
+          <div className={cn(view === 'write' && 'hidden md:block')}>
+            <div className="prose prose-sm max-w-none rounded-md border border-dashed bg-muted/20 p-3 dark:prose-invert">
+              {value.trim() ? (
+                <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
+              ) : (
+                <p className="text-xs italic text-muted-foreground">
+                  Tulis konten di kolom sebelah kiri, lalu hasil bacanya muncul di sini.
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {errorMessage && (
@@ -173,17 +186,18 @@ export function MarkdownEditor({
         </p>
       )}
 
-      {/* Mobile: tombol switch untuk preview di bawah */}
-      <div className="flex justify-end md:hidden">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setView(view === 'write' ? 'preview' : 'write')}
-        >
-          {view === 'write' ? 'Lihat pratinjau' : 'Kembali tulis'}
-        </Button>
-      </div>
+      {showPreview && (
+        <div className="flex justify-end md:hidden">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setView(view === 'write' ? 'preview' : 'write')}
+          >
+            {view === 'write' ? 'Lihat pratinjau' : 'Kembali tulis'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

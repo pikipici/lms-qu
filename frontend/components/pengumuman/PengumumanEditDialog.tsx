@@ -234,6 +234,8 @@ export function PengumumanEditDialog({
               onChange={setIsi}
               disabled={isPending}
               rows={8}
+              showPreview={false}
+              showToolbar={false}
             />
           </div>
 
