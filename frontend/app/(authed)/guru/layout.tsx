@@ -167,7 +167,7 @@ function GuruShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen overflow-hidden bg-muted/30">
-      <div className="mx-auto flex h-screen max-w-[1400px] overflow-hidden">
+      <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar */}
         <aside
           className="sticky top-0 hidden h-screen shrink-0 border-r bg-background transition-[width] md:flex md:flex-col relative"
@@ -328,7 +328,9 @@ function GuruShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </header>
 
-          <main className="flex-1 p-4 md:p-8">{children}</main>
+          <main className="flex-1 p-4 md:p-8">
+            <div className="mx-auto w-full max-w-screen-2xl">{children}</div>
+          </main>
         </div>
       </div>
     </div>
