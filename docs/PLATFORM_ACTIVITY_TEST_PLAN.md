@@ -435,6 +435,7 @@
 | Tanggal | Tester | Area | Hasil | Catatan/Bug |
 |---|---|---|---|---|
 | 2026-05-25 | Apis | Batch 1 smoke/setup QA | PASS | Admin login OK; Sekolah QA A ready; Guru/Siswa QA reset/ready; Kelas QA Aktif ready; siswa join idempotent; siswa class visible; guru school filter returns sekolah_nama. Found and fixed backend `sekolah_nama` mapping bug in commit `4ea7a40`. |
+| 2026-05-25 | Apis | Batch 2 konten dasar | PASS | Bab QA Materi dan Latihan created/published; markdown + YouTube materi created; pengumuman kelas + bab created; siswa sees published bab; materi count=2; mark-read idempotent flow works; progress went 0 -> 100; siswa pengumuman endpoint `/siswa/kelas/:id/pengumuman` shows kelas/bab announcements. Note: `/kelas/:id/pengumuman` correctly 403 for siswa; use siswa alias. |
 
 ---
 
