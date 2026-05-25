@@ -314,6 +314,30 @@ func newSvcWithUsers(t *testing.T) (*Service, *mockRepo, *recordingAudit, *stubU
 	return svc, repo, audit, users
 }
 
+func TestService_ListMyKelas_HidesArchivedKelas(t *testing.T) {
+	svc, repo, _ := newSvc(t)
+	siswaID := uuid.New()
+	activeID := uuid.New()
+	archivedID := uuid.New()
+	archivedAt := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
+
+	repo.rows[activeID] = &Kelas{ID: activeID, Nama: "Active", GuruID: uuid.New(), Version: 1}
+	repo.rows[archivedID] = &Kelas{ID: archivedID, Nama: "Archived", GuruID: uuid.New(), Version: 1, ArchivedAt: &archivedAt}
+	repo.enrollments[enrollKey(activeID, siswaID)] = &Enrollment{KelasID: activeID, SiswaID: siswaID, Status: EnrollmentActive, JoinedVia: JoinedViaKode}
+	repo.enrollments[enrollKey(archivedID, siswaID)] = &Enrollment{KelasID: archivedID, SiswaID: siswaID, Status: EnrollmentActive, JoinedVia: JoinedViaKode}
+
+	res, err := svc.ListMyKelas(context.Background(), siswaID, ListInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListMyKelas error: %v", err)
+	}
+	if res.Total != 1 || len(res.Items) != 1 {
+		t.Fatalf("visible kelas mismatch: total=%d items=%+v", res.Total, res.Items)
+	}
+	if res.Items[0].Kelas.ID != activeID {
+		t.Fatalf("expected active kelas only, got %+v", res.Items[0].Kelas)
+	}
+}
+
 func TestService_Create_HappyPath(t *testing.T) {
 	svc, repo, audit := newSvc(t)
 	guruID := uuid.New()

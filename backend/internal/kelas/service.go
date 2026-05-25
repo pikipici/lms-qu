@@ -133,7 +133,7 @@ func (s *Service) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, 
 // hidden — siswa can't see kelas they were kicked out of.
 func (s *Service) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInput) (*MyKelasResult, error) {
 	limit, offset := normalizePagination(in.Limit, in.Offset)
-	rows, total, err := s.repo.ListEnrollmentsBySiswa(ctx, siswaID, limit, offset)
+	rows, _, err := s.repo.ListEnrollmentsBySiswa(ctx, siswaID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("kelas list my: %w", err)
 	}
@@ -155,6 +155,9 @@ func (s *Service) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInp
 		if ferr != nil {
 			return nil, fmt.Errorf("kelas list my hydrate: %w", ferr)
 		}
+		if k.ArchivedAt != nil {
+			continue
+		}
 		items = append(items, MyKelasItem{
 			Kelas:     *k,
 			JoinedAt:  e.JoinedAt,
@@ -162,11 +165,9 @@ func (s *Service) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInp
 		})
 		activeCount++
 	}
-	// Total dari repo ngitung semua enrollment (incl. removed). FE biasanya
-	// pengen jumlah aktif aja; tapi expose `total` apa adanya supaya pagination
-	// konsisten kalau sewaktu-waktu kita expose status filter.
-	_ = activeCount
-	return &MyKelasResult{Items: items, Total: total}, nil
+	// Hide removed enrollments and archived kelas from the siswa dashboard total.
+	// The repo total still counts raw enrollments, so expose the visible count.
+	return &MyKelasResult{Items: items, Total: activeCount}, nil
 }
 
 // MyKelasItem is one row in the siswa dashboard list.
