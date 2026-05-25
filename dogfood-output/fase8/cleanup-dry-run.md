@@ -40,6 +40,20 @@ Use this before enabling any destructive cleanup. Do not paste credentials or fu
 - Decision: `keep dry-run`
 - Notes: `cleanup-dry-run --format=json` executed after successful disposable DB restore drill. No destructive cleanup enabled.
 
+### 2026-05-25 13:02 WIB
+
+- Commit SHA: `a1975a2`
+- Backup file checked: `lms_manual_2026-05-25_061327.sql.gz`
+- Restore drill status: `PASS`
+- `login_attempts_old`: `0`
+- `refresh_tokens_expired_revoked`: `0`
+- `hasil_soal_bab_deleted_old`: `unavailable: required column missing: deleted_at`
+- `hasil_ujian_deleted_old`: `0`
+- R2 orphan candidate sample reviewed: `N/A`
+- Smoke after dry-run: `PASS` (`/api/v1/readyz` + admin login)
+- Decision: `keep dry-run`
+- Notes: `cleanup-dry-run --format=json` executed on rdpkhorur after successful operational backup/restore drill. No destructive cleanup enabled.
+
 ### YYYY-MM-DD HH:MM WIB
 
 - Commit SHA: `<sha>`
