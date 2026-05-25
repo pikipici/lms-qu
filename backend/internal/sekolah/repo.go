@@ -44,6 +44,31 @@ func (r *Repo) List(ctx context.Context, q string, limit, offset int) ([]Sekolah
 	if err := db.Order("nama ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	if len(rows) > 0 {
+		ids := make([]uuid.UUID, 0, len(rows))
+		byID := make(map[uuid.UUID]*Sekolah, len(rows))
+		for i := range rows {
+			ids = append(ids, rows[i].ID)
+			byID[rows[i].ID] = &rows[i]
+		}
+		var counts []struct {
+			SekolahID uuid.UUID
+			Total     int64
+		}
+		if err := r.db.WithContext(ctx).
+			Table("kelas").
+			Select("sekolah_id, COUNT(*) AS total").
+			Where("sekolah_id IN ? AND archived_at IS NULL", ids).
+			Group("sekolah_id").
+			Scan(&counts).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, c := range counts {
+			if row := byID[c.SekolahID]; row != nil {
+				row.JumlahKelas = c.Total
+			}
+		}
+	}
 	return rows, total, nil
 }
 

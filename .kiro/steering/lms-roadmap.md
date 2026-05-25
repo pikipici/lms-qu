@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.13.0 + Fase 8 operational baseline ready at `07429cd`. Fase 0-7 ✅ CLOSED; deploy hardening, auth integration coverage, monitoring timer, and smoke/E2E gates validated.
+> Status: v0.13.0 + Fase 8 operational baseline ready; latest deployed head `ab7278c`. Fase 0-7 ✅ CLOSED; grade weighting item-level migration + school-aware class list shipped.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-23 (Fase 8 operational baseline ready — deployed + monitoring PASS).
+> Last updated: 2026-05-24 (item-level grade weighting + school-aware class list deployed).
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v0120)
@@ -47,7 +47,7 @@
 | 14 | Bulk import siswa | YA di MVP (Fase 2), via CSV |
 | 15 | Struktur kelas | **Berbasis Bab** — kelas terdiri dari banyak Bab, materi/soal/tugas nempel ke bab |
 | 16 | Soal Bab — mode | Dual: Latihan (retry unlimited, no nilai) + Ulangan Bab (sekali, masuk nilai bab) |
-| 17 | Nilai Bab — formula | Rata-rata tertimbang: `(SoalUlanganBab × bobot1 + Tugas × bobot2) / total bobot` — bobot diset guru per kelas |
+| 17 | Nilai Bab — formula | `NilaiBab = average(NilaiUlanganBab, NilaiTugasBab)` dengan NULL-skip. Bobot kelas deprecated; bobot aktif ada di item Tugas/Ujian individual. |
 | 18 | Latihan mandiri | TIDAK masuk hitungan nilai bab (formative only) |
 | 19 | Ulangan harian (lintas bab) | Berdiri sendiri di "rapor kelas", tidak masuk nilai bab tertentu |
 | 20 | Materi & Tugas | Boleh punya `BabID` (nullable) — bisa nempel ke bab atau berdiri bebas |
@@ -125,6 +125,8 @@
 | 92 | Fase 7 activity feed source | **6 event types** dari tabel existing (no new event table — query union AuditLog yang relevan + 5 domain tables): `submission_submitted` (Submission insert), `submission_graded` (Submission GradedAt set), `siswa_joined` (Enrollment insert via=kode), `ulangan_bab_finished` (HasilSoalBab status submitted/expired, mode=ulangan), `ujian_finished` (HasilUjian status submitted/expired), `hasil_reset` (AuditLog action='hasil_reset' OR 'ujian_attempt_reset'). Source query = UNION ALL 6 SELECT dengan unified shape `{at, type, kelas_id, kelas_nama, target_id, target_label, siswa_id, siswa_nama}` + sort `at DESC`. Cursor `(at_unix_micro, type, target_id)` base64 untuk break tie deterministik (locked #55 expanded). Filter scope: hanya kelas owner=guru (enrollment-guard pattern). Polling 30s pakai `cursor=null` (latest 20). |
 | 93 | Fase 7 pending counters consolidated | **Single endpoint `GET /guru/pending-counts`** (replace standalone Fase 4 `/guru/kelas/:id/pending-grade` — keep both untuk backward compat tapi dashboard pakai consolidated). Response: `{ ungraded_submissions: int, pending_review_ulangan: int, pending_review_ujian: int }`. Per counter scope = semua kelas owner=guru (lintas-kelas total, bukan per-kelas). Per-kelas detail tetap dari endpoint existing. Polling 30s di sidebar dashboard `/guru`. Counter definitions: ungraded_submissions = COUNT Submission status=submitted AND tugas.kelas.guru_id=actor; pending_review_ulangan = COUNT HasilSoalBab status IN (submitted,expired) AND mode=ulangan AND deleted_at IS NULL AND ada UlanganBabSetting.IzinkanReviewSetelahSubmit=true (= guru "perlu approve review buka" — proxy untuk attention); pending_review_ujian = COUNT HasilUjian status IN (submitted,expired) AND deleted_at IS NULL AND Ujian.IzinkanReviewSetelahSubmit=true. Definisi attention semantic boleh tweak saat 7.D implementasi kalau test feel-test bilang noisy. |
 | 94 | Fase 7 export CSV | **Server-side CSV generation, sync inline** — `GET /guru/kelas/:id/rekap-nilai/export.csv` returns `text/csv` dengan `Content-Disposition: attachment; filename="rekap-<kelas-slug>-<YYYYMMDD>.csv"`. Kolom: `nis,nama,<bab1_total>,<bab2_total>,...,<ujian1_total>,...,total_kelas`. Encoding UTF-8 BOM (`\ufeff`) untuk Excel-compat. Empty cell = "" (bukan "NULL"). Limit: max 200 siswa × 30 bab × 30 ujian = ~200 rows × 60 cols cukup buat MVP, render < 500ms expected. Future v0.13: kalau perlu > 200 siswa, switch ke async ImportJob-style (preview→generate→download). |
+| 95 | Grade weighting v0.13.x | **Item-level only** — `tugas.bobot` dan `ujian.bobot` default `100`; `0` boleh untuk exclude dari weighted average. Class-level `Kelas.BobotSoalUlangan/BobotTugas` tetap ada sebagai legacy DB/API response, tapi create/update kelas ignore payload bobot dan UI tidak expose. |
+| 96 | School-aware class list | Kelas punya `sekolah_id`; list kelas support filter `sekolah_id`, response include `sekolah_nama`, dan guru card/list menampilkan sekolah. Master Sekolah mulai jadi source filter kelas. |
 
 **Open (perlu sesi terpisah):**
 - Notifikasi flow & desain — bedah di v0.8 setelah Fase 0-3 jalan.
@@ -227,7 +229,7 @@ Materi & Tugas punya field `BabID` nullable — kalau diisi, dia bagian dari bab
 ### 4.2 Guru
 - Login (akun dibuat admin) + force change password kalau pertama kali
 - Dashboard: ringkasan, **activity feed** (polling 30s — submission masuk, ulangan selesai, siswa join), **pending counters** (badge tugas belum dinilai, ulangan belum di-review)
-- Kelas: CRUD + archive + **duplicate (copy ke tahun ajaran baru)**, kode invite, list/kick siswa, set bobot nilai bab (Soal vs Tugas)
+- Kelas: CRUD + archive + **duplicate (copy ke tahun ajaran baru)**, kode invite, list/kick siswa, sekolah_id. Bobot nilai kelas deprecated; bobot diatur per Tugas/Ujian.
 - Bab: CRUD + drag-and-drop urutan + **status (draft/published/archived)** + duplicate, per-bab tab (Materi / Soal / Tugas / Pengumuman / Pengaturan Ulangan Bab)
 - Materi: upload PDF (max 20MB), link YouTube (parsed video_id), teks markdown — per bab atau kelas. **3 tipe lock di Fase 3 (locked #63)** — drop direct video upload, YouTube embed cukup.
 - Soal Bab: editor (form + bulk paste), set mode (latihan / ulangan), poin, gambar soal & gambar opsi (opsional)
@@ -250,7 +252,7 @@ Materi & Tugas punya field `BabID` nullable — kalau diisi, dia bagian dari bab
   - Materi: list materi (badge "sudah dibaca"), klik buat baca/embed -> auto mark-read
   - Latihan: kerjain soal mode latihan, retry unlimited, lihat jawaban benar
   - Tugas: submit tugas yang nempel di bab itu, boleh resubmit selama belum graded & belum lewat deadline
-  - Hasil: breakdown transparan nilai bab — Ulangan Bab xx, Tugas xx, Bobot xx, Total xx. **Review jawaban ulangan** muncul kalau guru izinin (langsung atau setelah `WaktuBukaReview`)
+  - Hasil: breakdown transparan nilai bab — Ulangan Bab xx, Tugas xx, bobot item tugas/ujian, Total xx. **Review jawaban ulangan** muncul kalau guru izinin (langsung atau setelah `WaktuBukaReview`)
 - Submit tugas (file/teks). Kalau lewat deadline & guru izinin late: submission masuk dengan flag `LATE` + nilai max akan di-penalty
 - Kerjain Ulangan Bab atau Ulangan Harian
   - Recovery / resume: kalau browser crash atau internet putus, siswa login lagi -> dashboard tampilin "Ulangan sedang berlangsung" -> klik resume -> lanjut dengan jawaban yang udah ke-save (timer server-side terus jalan, gak di-pause)
@@ -460,7 +462,7 @@ Dua cara, tergantung apa yang admin lakukan saat create akun:
 
 ```go
 User       { ID, Name, Email(unique), PasswordHash, Role(admin|guru|siswa), Status(active|suspended|locked), MustChangePassword(bool, default true), FailedLoginCount(int, default 0), LastFailedLoginAt(*), CreatedByID(*), LastLoginAt(*), CreatedAt, UpdatedAt }
-Kelas      { ID, Nama, Deskripsi, KodeInvite(unique,6), GuruID, BobotSoalUlangan(default 50), BobotTugas(default 50), Version(int default 1), CreatedAt, ArchivedAt(*) }
+Kelas      { ID, Nama, Deskripsi, KodeInvite(unique,6), GuruID, SekolahID(*), BobotSoalUlangan(default 50 legacy), BobotTugas(default 50 legacy), Version(int default 1), CreatedAt, ArchivedAt(*) }
 Enrollment { KelasID, SiswaID, Status, JoinedAt, JoinedVia(admin|kode) }  // PK composite
 Bab        { ID, KelasID, Nomor, Judul, Deskripsi, Urutan, Status(draft|published|archived, default draft), Version(int default 1), CreatedAt, ArchivedAt(*) }
 Materi     { ID, KelasID, BabID(*), Judul, Tipe, Konten, ObjectKey(*), OriginalFilename(*), MimeType(*), SizeBytes(*), Urutan, CreatedAt }
@@ -531,22 +533,23 @@ NilaiUlanganBab = TotalNilai dari HasilSoalBab(mode=ulangan, deleted_at IS NULL)
                   -> normalize ke skala 0-100 = (TotalNilai / SUM(SoalBab.Poin where Mode=ulangan)) × 100
                   -> kalau gak ada soal ulangan / belum dikerjain: NULL
 
-NilaiTugasBab   = AVG(Submission.NilaiSetelahPenalty) untuk semua Tugas dengan BabID = bab tsb dan SiswaID
-                  (di-skala ke 0-100 per tugas: NilaiSetelahPenalty / MaxNilai × 100)
-                  -> kalau gak ada tugas / belum dinilai: NULL
+NilaiTugasBab   = weighted average Submission.NilaiSetelahPenalty untuk semua Tugas graded
+                  dengan BabID = bab tsb dan SiswaID:
+                  sum(NilaiSetelahPenalty × Tugas.Bobot) / sum(Tugas.Bobot)
+                  -> Tugas.Bobot default 100; bobot 0 di-skip dari average
+                  -> kalau gak ada tugas / belum dinilai / total bobot=0: NULL
 
-NilaiBab = weighted_avg(NilaiUlanganBab, NilaiTugasBab,
-                        weights = (Kelas.BobotSoalUlangan, Kelas.BobotTugas),
-                        skip NULL components)
+NilaiBab = average(NilaiUlanganBab, NilaiTugasBab, skip NULL components)
+           Class-level bobot deprecated; jangan pakai Kelas.BobotSoalUlangan/BobotTugas.
 ```
 
 Catatan: kalau `IsLate=true` dan `PenaltyPersen=20`, `NilaiSetelahPenalty = Nilai × 0.80`. Kalau `IsLate=false`, `NilaiSetelahPenalty = Nilai`.
 
 Contoh:
-- Bobot kelas: SoalUlangan=60, Tugas=40
-- NilaiUlanganBab=80, NilaiTugasBab=90 -> (80×60 + 90×40)/100 = 84
-- NilaiUlanganBab=80, NilaiTugasBab=NULL -> 80 (bobot tugas di-skip)
+- NilaiUlanganBab=80, NilaiTugasBab=90 -> (80 + 90) / 2 = 85
+- NilaiUlanganBab=80, NilaiTugasBab=NULL -> 80 (komponen tugas di-skip)
 - NilaiUlanganBab=NULL, NilaiTugasBab=NULL -> NULL ("-")
+- Dua tugas graded: 80 bobot 100, 100 bobot 50 -> NilaiTugasBab=(80×100 + 100×50)/150 = 86.67
 
 ### 6.3 Indexes penting
 - `enrollment(kelas_id, siswa_id)` PK
@@ -644,7 +647,7 @@ API: `GET /siswa/kelas/:id/bab` returns `progress: { persen, breakdown: { materi
 - `POST   /kelas`
 - `GET    /kelas`
 - `GET    /kelas/:id`
-- `PATCH  /kelas/:id` { nama?, deskripsi?, bobot_soal_ulangan?, bobot_tugas? }
+- `PATCH  /kelas/:id` { version, nama, deskripsi? } — bobot kelas deprecated/ignored
 - `DELETE /kelas/:id` (soft archive)
 - `GET    /kelas/:id/siswa`
 - `DELETE /kelas/:id/siswa/:siswaId`
@@ -805,7 +808,7 @@ API: `GET /siswa/kelas/:id/bab` returns `progress: { persen, breakdown: { materi
 - `/guru/kelas/[id]/ulangan/[uid]/hasil` Rekap + tombol Reset Attempt (modal reason) + Duplicate
 - `/guru/kelas/[id]/pengumuman` List + bikin baru
 - `/guru/kelas/[id]/rekap-nilai` Matrix siswa × bab + ulangan harian
-- `/guru/kelas/[id]/pengaturan` Bobot nilai bab (Soal vs Tugas) + archive kelas + Duplicate
+- `/guru/kelas/[id]/pengaturan` Edit nama/deskripsi + archive kelas + Duplicate (bobot kelas deprecated)
 - `/guru/bank-soal` (CRUD bank soal pribadi + upload gambar)
 
 ### Siswa (`/siswa/*`)
@@ -936,7 +939,7 @@ lms/
 - E2E manual: bootstrap admin -> create akun guru & siswa -> login keduanya -> force change password -> dashboard -> verify suspend langsung kick session aktif -> verify promote butuh re-auth
 
 ### Fase 2 — Kelas, Enrollment & Bulk Import (3-4 hari)
-- Backend: Kelas CRUD (guru) + bobot nilai (BobotSoalUlangan, BobotTugas) + generate kode invite unik + archive + **duplicate** + **Version field** (optimistic concurrency)
+- Backend: Kelas CRUD (guru) + sekolah_id + legacy bobot fields ignored/deprecated + generate kode invite unik + archive + **duplicate** + **Version field** (optimistic concurrency)
 - Backend: Siswa join via kode (rate limit 10/menit per IP), tracking JoinedVia
 - Backend: Admin assign siswa ke kelas
 - Backend: **R2 storage client wrapper** (`internal/storage`) + bucket bootstrap (workspace bucket `lms-dev`, prod bucket `lms-prod`) + readyz `HeadBucket` cache (lihat #61)
@@ -944,7 +947,7 @@ lms/
 - Backend: Bulk CSV import siswa (parser, validator) + **generate password per siswa + credentials.csv di-upload ke R2 `import/<uuid>-credentials.csv` + presigned download sekali (TTL 15 menit) + auto-cleanup `s3.DeleteObject` 1 jam setelah CompletedAt**
 - Backend: **R2 object-key convention** — `<kategori>/<uuid>.<ext>` di kolom `ObjectKey`, OriginalFilename + MimeType + SizeBytes di DB column terpisah
 - Frontend admin: import CSV (drag-and-drop, preview tabel persistent — admin bisa close tab + balik tanpa lose state, confirm, modal sukses dengan link download credentials.csv), list kelas (read-only)
-- Frontend guru: dashboard list+create kelas + tombol Duplicate, kelas detail (tab Siswa, tab Pengaturan/bobot, tab Pengumuman placeholder), edit form pakai version (409 handler "konten ke-update orang lain")
+- Frontend guru: dashboard list+create kelas + tombol Duplicate, kelas detail (tab Siswa, tab Pengaturan, tab Pengumuman placeholder), school-aware class card/filter, edit form pakai version (409 handler "konten ke-update orang lain")
 - Frontend siswa: dashboard, gabung kelas via kode
 
 ### Fase 3 — Bab & Materi + Pengumuman + Bab Status (3-4 hari)
@@ -1026,6 +1029,7 @@ Progress 2026-05-23:
 - Fase 8.3 backup/restore runbook started: `docs/DEPLOY.md` now documents pg_dump cron with daily/monthly retention, manual backup smoke, disposable restore drill, pass criteria, and drill log template at `dogfood-output/fase8/backup-restore-drill.md`.
 - Fase 8.4 cleanup cron design started conservatively: `docs/DEPLOY.md` now documents dry-run-first cleanup scopes, manual SQL probes, pass criteria, destructive-mode gates, and log template at `dogfood-output/fase8/cleanup-dry-run.md`. Minimal `internal/cleanup` dry-run service + `cmd/cleanup-dry-run` CLI added; deploy builds `backend/bin/cleanup-dry-run`. It counts candidates only and reports unavailable scopes instead of deleting data.
 - Fase 8.5 Playwright E2E skeleton started: frontend adds `@playwright/test`, `playwright.config.ts`, and `e2e/login-smoke.spec.ts` for login validation + mocked admin login route. Local typecheck and `playwright test --list` pass. Remote Chromium installed and `E2E_BASE_URL=http://127.0.0.1:8200 npm run e2e` PASS 2/2 on rdpkhorur; log at `dogfood-output/fase8/e2e-playwright.md`.
+- Fase 8 side-quest shipped/deployed head `ab7278c`: item-level grade weighting (`tugas.bobot`, `ujian.bobot`, migration `000013_item_bobot`), class-level bobot deprecated/ignored, formula NilaiBab updated, guru class list shows/filter by school (`sekolah_nama`, `sekolah_id`). Validation latest: `go test ./...`, `npm run typecheck`, `npm run build`, deploy `readyz OK`. Local `LOCAL_AI_CONTEXT.md` updated; `.kiro/steering/platform-corrections.md` remains untracked.
 
 - Logging hardening, error handling, structured error response (`{ error, code, request_id }`)
 - Backup `pg_dump` cron daily ke folder lain (rotation 30 hari rolling, monthly archive 1 tahun)
@@ -1700,9 +1704,9 @@ Setelah tools jadi, runbook deploy jadi:
 
 **Task 2.B.2 — Kelas CRUD service + handler** ✅ DONE 2026-05-20
 - `GET /kelas` (guru → milik sendiri, admin → semua, query `include_archived=true|false`, pagination `page`+`page_size`)
-- `POST /kelas` (guru-only: nama wajib, deskripsi opsional, default bobot 50/50)
+- `POST /kelas` (guru-only: nama wajib, deskripsi opsional, sekolah_id opsional; bobot kelas legacy default 50/50 dan payload bobot di-ignore)
 - `GET /kelas/:id` (ownership guard: guru hanya kelasnya, admin semua)
-- `PATCH /kelas/:id` (PARTIAL — body wajib `nama`+`version`; `deskripsi`/`bobot_*` opsional via pointer; mismatch → 409 `version_conflict`; bobot total ≠ 100 → 400 `invalid_bobot`)
+- `PATCH /kelas/:id` (PARTIAL — body wajib `nama`+`version`; `deskripsi` opsional; `bobot_*` legacy di-ignore; mismatch → 409 `version_conflict`)
 - `POST /kelas/:id/archive` (idempotent: 409 `already_archived` kalau udah)
 - `POST /kelas/:id/duplicate` (reduced scope: copy basic fields + regenerate kode invite, version=1, no archive carry; child catalog Bab/Materi dst masuk Fase 3)
 - Optimistic concurrency via `WHERE id=? AND version=?` + auto bump version
@@ -1714,13 +1718,13 @@ Setelah tools jadi, runbook deploy jadi:
 **Task 2.B.3 — FE guru: list kelas + create form** ✅ DONE 2026-05-20
 - Files: `frontend/lib/kelas-api.ts` (typed API client), `frontend/app/(authed)/guru/layout.tsx` (shell + RoleGuard guru), `frontend/app/(authed)/guru/page.tsx` (dashboard), `frontend/app/(authed)/guru/kelas/page.tsx` (list + create dialog)
 - Commit: `e0a84d3`
-- Shipped: typed API wrapper (`listKelas/createKelas/getKelas/updateKelas/archiveKelas/duplicateKelas`); guru shell mirror dari admin (sidebar Dashboard+Kelas, dropdown profil/perangkat/logout); landing dashboard (total kelas + 3 recent kelas snapshot via TanStack Query); list view card grid 1/2/3 responsive dgn filter `include_archived`, pagination Prev/Next, kode invite copy-to-clipboard, archived badge; create dialog react-hook-form + zod (total bobot validasi = 100, default 50/50, friendly error mapping). Detail button DISABLED — Task 2.B.4 wire-up.
+- Shipped: typed API wrapper (`listKelas/createKelas/getKelas/updateKelas/archiveKelas/duplicateKelas`); guru shell mirror dari admin (sidebar Dashboard+Kelas, dropdown profil/perangkat/logout); landing dashboard (total kelas + 3 recent kelas snapshot via TanStack Query); list view card grid 1/2/3 responsive dgn filter `include_archived`, pagination Prev/Next, kode invite copy-to-clipboard, archived badge; create dialog react-hook-form + zod (nama/deskripsi/sekolah, tanpa bobot kelas, friendly error mapping). Detail button DISABLED — Task 2.B.4 wire-up.
 - Verified server: npm typecheck PASS, lint clean (1 warning lama di role-guard pre-existing), `npm run build` static export 17 pages (termasuk /guru + /guru/kelas), Fiber serve `/guru.html` + `/guru/kelas.html` → 200.
 
 **Task 2.B.4 — FE guru: kelas detail (tab placeholder Siswa/Pengaturan/Pengumuman) + edit pakai version + duplicate button** ✅ DONE 2026-05-20
 - Files: `frontend/app/(authed)/guru/kelas/detail/page.tsx` (query-param based detail, mirror /admin/pengguna/detail) + `frontend/app/(authed)/guru/kelas/page.tsx` (wire Detail link)
 - Commit: `a0aac67` (detail page + duplicate/archive dialogs), `78e8832` (escape JSX double-quotes lint fix)
-- Shipped: kelas detail page route `/guru/kelas/detail?id=:id` (static export friendly — pakai `useSearchParams` bukan dynamic [id] segment). Header: nama + status badge Aktif/Diarsipkan + kode invite copy-to-clipboard + tombol Refresh/Duplikat/Arsipkan. Tab nav Pengaturan/Siswa/Pengumuman (Siswa & Pengumuman placeholder pointer ke Task 2.C/2.D + Fase 3). Pengaturan tab: form edit (react-hook-form + zod) untuk nama/deskripsi/bobot dgn validasi total = 100, kirim PATCH dgn `version` field. 409 version_conflict → friendly toast + invalidateQueries → refetch → form auto re-sync via useEffect+form.reset. Form dinonaktifkan saat archived. ArchiveDialog dgn konfirmasi destructive (idempotent: 409 already_archived). DuplicateDialog dgn input `new_nama` opsional, success → router.push ke detail kelas baru. Wire link Detail di `KelasCard` (replace tombol disabled).
+- Shipped: kelas detail page route `/guru/kelas/detail?id=:id` (static export friendly — pakai `useSearchParams` bukan dynamic [id] segment). Header: nama + status badge Aktif/Diarsipkan + kode invite copy-to-clipboard + tombol Refresh/Duplikat/Arsipkan. Tab nav Pengaturan/Siswa/Pengumuman (Siswa & Pengumuman placeholder pointer ke Task 2.C/2.D + Fase 3). Pengaturan tab: form edit (react-hook-form + zod) untuk nama/deskripsi, tanpa bobot kelas, kirim PATCH dgn `version` field. 409 version_conflict → friendly toast + invalidateQueries → refetch → form auto re-sync via useEffect+form.reset. Form dinonaktifkan saat archived. ArchiveDialog dgn konfirmasi destructive (idempotent: 409 already_archived). DuplicateDialog dgn input `new_nama` opsional, success → router.push ke detail kelas baru. Wire link Detail di `KelasCard` (replace tombol disabled).
 - Verified server: typecheck PASS, build static export 18 pages termasuk `/guru/kelas/detail` (6.34 kB), Fiber serve `/guru/kelas/detail.html` → 200.
 
 #### 2.C Enrollment

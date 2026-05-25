@@ -5,6 +5,7 @@ export interface Sekolah {
   nama: string;
   npsn?: string | null;
   alamat: string;
+  jumlah_kelas: number;
   created_at: string;
   updated_at: string;
 }

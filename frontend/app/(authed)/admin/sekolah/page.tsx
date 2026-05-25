@@ -133,6 +133,9 @@ export default function AdminSekolahPage() {
               <div>
                 <div className="font-medium">{row.nama}</div>
                 <div className="text-sm text-muted-foreground">{row.npsn || 'Tanpa NPSN'} · {row.alamat || 'Tanpa alamat'}</div>
+                <div className="mt-1 text-xs font-medium text-muted-foreground">
+                  {row.jumlah_kelas ?? 0} kelas aktif
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => startEdit(row)}><Edit className="mr-2 size-4" />Edit</Button>
