@@ -39,7 +39,7 @@ type Kelas struct {
 	KodeInvite       string     `gorm:"uniqueIndex;not null" json:"kode_invite"`
 	GuruID           uuid.UUID  `gorm:"type:uuid;not null;index" json:"guru_id"`
 	SekolahID        *uuid.UUID `gorm:"type:uuid;index" json:"sekolah_id,omitempty"`
-	SekolahNama      string     `gorm:"-" json:"sekolah_nama,omitempty"`
+	SekolahNama      string     `gorm:"->;column:sekolah_nama" json:"sekolah_nama,omitempty"`
 	BobotSoalUlangan int        `gorm:"not null;default:50" json:"bobot_soal_ulangan"`
 	BobotTugas       int        `gorm:"not null;default:50" json:"bobot_tugas"`
 	Version          int        `gorm:"not null;default:1" json:"version"`
