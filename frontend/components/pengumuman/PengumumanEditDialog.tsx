@@ -235,7 +235,6 @@ export function PengumumanEditDialog({
               disabled={isPending}
               rows={8}
               showPreview={false}
-              showToolbar={false}
             />
           </div>
 
