@@ -207,17 +207,19 @@ export async function uploadSoalImage(input: {
 }): Promise<ImageUploadResponse> {
   const fd = new FormData();
   fd.append('file', input.file);
-  fd.append('slot', input.slot);
 
   const token = useAuthStore.getState().access;
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${API_BASE}/soal-bab/${input.id}/image`, {
-    method: 'POST',
-    headers,
-    body: fd,
-  });
+  const res = await fetch(
+    `${API_BASE}/soal-bab/${input.id}/image?slot=${encodeURIComponent(input.slot)}`,
+    {
+      method: 'POST',
+      headers,
+      body: fd,
+    },
+  );
 
   const requestId = res.headers.get('X-Request-ID') ?? undefined;
   const contentType = res.headers.get('Content-Type') ?? '';
