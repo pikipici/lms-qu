@@ -71,6 +71,7 @@ import {
   SiswaCardDescription,
   SiswaCardHeader,
   SiswaCardTitle,
+  ZoomableSoalImage,
 } from '@/components/siswa-ui';
 
 const OPSI_LIST: { key: UjianSoalJawaban; label: string }[] = [
@@ -646,22 +647,5 @@ function SoalCard({
 }
 
 function SlotImage({ url, alt }: { url: string; alt: string }) {
-  const [errored, setErrored] = React.useState(false);
-  if (errored) {
-    return (
-      <div className="flex h-20 items-center justify-center gap-2 rounded-siswa border-2 border-dashed border-siswa-border-soft text-xs text-siswa-text-muted">
-        <AlertCircle className="size-4" />
-        Gambar gagal dimuat
-      </div>
-    );
-  }
-  // eslint-disable-next-line @next/next/no-img-element
-  return (
-    <img
-      src={url}
-      alt={alt}
-      onError={() => setErrored(true)}
-      className="max-h-64 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface object-contain"
-    />
-  );
+  return <ZoomableSoalImage url={url} alt={alt} />;
 }

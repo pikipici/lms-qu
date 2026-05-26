@@ -8,3 +8,4 @@ export * from './siswa-empty-state';
 export * from './siswa-page-header';
 export * from './siswa-badge';
 export * from './siswa-progress';
+export * from './ZoomableSoalImage';
