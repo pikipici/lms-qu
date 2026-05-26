@@ -209,9 +209,9 @@ export function UjianLobbyCard({
 
   return (
     <SiswaCard tone="ulangan" shadow="md" className="overflow-hidden">
-      <SiswaCardHeader className="bg-siswa-surface/70 border-b-2 border-siswa-border">
+      <SiswaCardHeader className="border-b-2 border-siswa-border bg-siswa-surface/70 pb-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <SiswaCardTitle className="truncate text-base">
                 {ujian.judul}
@@ -219,7 +219,7 @@ export function UjianLobbyCard({
               <WindowBadge state={windowInfo.state} />
               <SiswaBadge tone="blue">{sourceLabel}</SiswaBadge>
             </div>
-            <SiswaCardDescription className="space-y-0.5">
+            <SiswaCardDescription className="space-y-1.5">
               {kelasName ? (
                 <div className="font-semibold text-siswa-text">
                   {kelasName}
@@ -232,8 +232,8 @@ export function UjianLobbyCard({
           </div>
         </div>
       </SiswaCardHeader>
-      <SiswaCardBody className="space-y-4">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <SiswaCardBody className="space-y-4 pt-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <InfoTile
             icon={Timer}
             label="Durasi"
