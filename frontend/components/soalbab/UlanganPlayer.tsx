@@ -30,7 +30,10 @@ import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  ListChecks,
   Loader2,
   RotateCcw,
   Send,
@@ -119,6 +122,8 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [confirmSubmit, setConfirmSubmit] = React.useState(false);
+  const [questionMapOpen, setQuestionMapOpen] = React.useState(false);
+  const [activeIndex, setActiveIndex] = React.useState(0);
   const [autosaveErr, setAutosaveErr] = React.useState<Record<string, string>>({});
   const autoSubmittedRef = React.useRef(false);
 
@@ -311,6 +316,10 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
   }
 
   const answeredCount = att.items.filter((it) => !!it.jawaban_siswa).length;
+  const safeActiveIndex = Math.min(activeIndex, Math.max(att.items.length - 1, 0));
+  const currentItem = att.items[safeActiveIndex];
+  const isFirstQuestion = safeActiveIndex === 0;
+  const isLastQuestion = safeActiveIndex === att.items.length - 1;
   const timerWarn = deadline && remaining > 0 && remaining < 5 * 60 * 1000;
   const timerCritical = deadline && remaining > 0 && remaining < 60 * 1000;
 
@@ -349,19 +358,49 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
             </div>
           ) : null}
         </SiswaCardHeader>
-        <SiswaCardBody>
-          <ol className="space-y-4">
-            {att.items.map((item, idx) => (
-              <SoalCard
-                key={item.soal_id}
-                item={item}
-                index={idx}
-                autosaveErrMsg={autosaveErr[item.soal_id]}
-                onChoose={(j) => handleAnswer(item.soal_id, j)}
-                disabled={disabled || submitMu.isPending}
-              />
-            ))}
-          </ol>
+        <SiswaCardBody className="pt-2 sm:pt-3">
+          {currentItem ? (
+            <SoalCard
+              key={currentItem.soal_id}
+              item={currentItem}
+              index={safeActiveIndex}
+              autosaveErrMsg={autosaveErr[currentItem.soal_id]}
+              onChoose={(j) => handleAnswer(currentItem.soal_id, j)}
+              disabled={disabled || submitMu.isPending}
+            />
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-siswa border-2 border-siswa-border-soft bg-siswa-cream/30 p-3">
+            <SiswaButton
+              type="button"
+              tone="ghost"
+              size="sm"
+              onClick={() => setActiveIndex((idx) => Math.max(idx - 1, 0))}
+              disabled={isFirstQuestion || submitMu.isPending}
+            >
+              <ChevronLeft className="size-4" strokeWidth={2.5} />
+              Kembali
+            </SiswaButton>
+            <SiswaButton
+              type="button"
+              tone="surface"
+              size="sm"
+              onClick={() => setQuestionMapOpen(true)}
+            >
+              <ListChecks className="size-4" strokeWidth={2.5} />
+              Nomor soal
+            </SiswaButton>
+            <SiswaButton
+              type="button"
+              tone="primary"
+              size="sm"
+              onClick={() => setActiveIndex((idx) => Math.min(idx + 1, att.items.length - 1))}
+              disabled={isLastQuestion || submitMu.isPending}
+            >
+              Lanjut
+              <ChevronRight className="size-4" strokeWidth={2.5} />
+            </SiswaButton>
+          </div>
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t-2 border-siswa-border-soft pt-4">
             <p className="text-sm text-siswa-text-muted">
               {answeredCount === att.total
@@ -384,6 +423,46 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
           </div>
         </SiswaCardBody>
       </SiswaCard>
+
+      <Dialog open={questionMapOpen} onOpenChange={setQuestionMapOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pilih nomor soal</DialogTitle>
+            <DialogDescription>
+              Lompat ke soal tertentu. Warna kuning berarti sudah dijawab, putih berarti belum.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-8">
+            {att.items.map((item, idx) => {
+              const answered = !!item.jawaban_siswa;
+              const active = idx === safeActiveIndex;
+              return (
+                <button
+                  key={item.soal_id}
+                  type="button"
+                  onClick={() => {
+                    setActiveIndex(idx);
+                    setQuestionMapOpen(false);
+                  }}
+                  className={cn(
+                    'rounded-siswa border-2 border-siswa-border px-3 py-2 text-sm font-black siswa-shadow-sm transition-transform hover:-translate-y-0.5',
+                    answered ? 'bg-siswa-yellow' : 'bg-siswa-surface',
+                    active && 'translate-x-0.5 translate-y-0.5 bg-siswa-blue shadow-none ring-2 ring-siswa-border',
+                  )}
+                  aria-label={`Buka soal ${idx + 1}${answered ? ', sudah dijawab' : ', belum dijawab'}`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold text-siswa-text-muted">
+            <span className="rounded-full border-2 border-siswa-border bg-siswa-yellow px-2 py-1">Sudah dijawab</span>
+            <span className="rounded-full border-2 border-siswa-border bg-siswa-surface px-2 py-1">Belum dijawab</span>
+            <span className="rounded-full border-2 border-siswa-border bg-siswa-blue px-2 py-1">Soal aktif</span>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={confirmSubmit}
@@ -432,7 +511,7 @@ interface SoalCardProps {
 function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardProps) {
   const pertanyaanImg = imageURLForSlot(item, 'pertanyaan');
   return (
-    <li className="rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
+    <article className="rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
         <p className="siswa-display text-sm font-bold uppercase tracking-wide text-siswa-text-muted">
           Soal {index + 1}{' '}
@@ -503,7 +582,7 @@ function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardP
           </span>
         </div>
       ) : null}
-    </li>
+    </article>
   );
 }
 
