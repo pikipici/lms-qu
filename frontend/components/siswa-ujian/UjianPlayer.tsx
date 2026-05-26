@@ -465,7 +465,7 @@ export function UjianPlayer({
       </SiswaCard>
 
       <Dialog open={questionMapOpen} onOpenChange={setQuestionMapOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="siswa-theme max-w-lg">
           <DialogHeader>
             <DialogTitle>Pilih nomor soal</DialogTitle>
             <DialogDescription>

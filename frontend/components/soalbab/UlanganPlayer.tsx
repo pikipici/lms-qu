@@ -425,7 +425,7 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
       </SiswaCard>
 
       <Dialog open={questionMapOpen} onOpenChange={setQuestionMapOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="siswa-theme max-w-lg">
           <DialogHeader>
             <DialogTitle>Pilih nomor soal</DialogTitle>
             <DialogDescription>
