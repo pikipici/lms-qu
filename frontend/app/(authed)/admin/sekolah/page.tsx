@@ -28,7 +28,21 @@ function useDebounced<T>(value: T, delay: number): T {
   return debounced;
 }
 
-const emptyForm = { nama: '', npsn: '', alamat: '' };
+type SekolahForm = {
+  nama: string;
+  npsn: string;
+  alamat: string;
+  siswa_registration_enabled: boolean;
+  siswa_registration_mode: 'auto_approve' | 'approval_required';
+};
+
+const emptyForm: SekolahForm = {
+  nama: '',
+  npsn: '',
+  alamat: '',
+  siswa_registration_enabled: false,
+  siswa_registration_mode: 'approval_required',
+};
 
 export default function AdminSekolahPage() {
   const queryClient = useQueryClient();
@@ -69,7 +83,13 @@ export default function AdminSekolahPage() {
 
   const startEdit = (row: Sekolah) => {
     setEditing(row);
-    setForm({ nama: row.nama, npsn: row.npsn ?? '', alamat: row.alamat ?? '' });
+    setForm({
+      nama: row.nama,
+      npsn: row.npsn ?? '',
+      alamat: row.alamat ?? '',
+      siswa_registration_enabled: row.siswa_registration_enabled,
+      siswa_registration_mode: row.siswa_registration_mode ?? 'approval_required',
+    });
   };
 
   const data = sekolah.data;
@@ -93,25 +113,50 @@ export default function AdminSekolahPage() {
         </CardHeader>
         <CardContent>
           <form
-            className="grid gap-3 md:grid-cols-[1.2fr_0.7fr_1.5fr_auto] md:items-end"
+            className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
               save.mutate();
             }}
           >
-            <div className="space-y-1.5">
-              <Label htmlFor="nama">Nama</Label>
-              <Input id="nama" value={form.nama} onChange={(e) => setForm((v) => ({ ...v, nama: e.target.value }))} required />
+            <div className="grid gap-3 md:grid-cols-[1.2fr_0.7fr_1.5fr]">
+              <div className="space-y-1.5">
+                <Label htmlFor="nama">Nama</Label>
+                <Input id="nama" value={form.nama} onChange={(e) => setForm((v) => ({ ...v, nama: e.target.value }))} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="npsn">NPSN</Label>
+                <Input id="npsn" value={form.npsn} onChange={(e) => setForm((v) => ({ ...v, npsn: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="alamat">Alamat</Label>
+                <Input id="alamat" value={form.alamat} onChange={(e) => setForm((v) => ({ ...v, alamat: e.target.value }))} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="npsn">NPSN</Label>
-              <Input id="npsn" value={form.npsn} onChange={(e) => setForm((v) => ({ ...v, npsn: e.target.value }))} />
+            <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <label className="flex items-center gap-3 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={form.siswa_registration_enabled}
+                  onChange={(e) => setForm((v) => ({ ...v, siswa_registration_enabled: e.target.checked }))}
+                />
+                Izinkan siswa daftar sendiri
+              </label>
+              <div className="space-y-1.5">
+                <Label htmlFor="registration-mode">Mode pendaftaran</Label>
+                <select
+                  id="registration-mode"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={form.siswa_registration_mode}
+                  onChange={(e) => setForm((v) => ({ ...v, siswa_registration_mode: e.target.value as 'auto_approve' | 'approval_required' }))}
+                >
+                  <option value="approval_required">Perlu persetujuan admin/guru</option>
+                  <option value="auto_approve">Langsung masuk kelas</option>
+                </select>
+              </div>
+              <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Menyimpan...' : 'Simpan'}</Button>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="alamat">Alamat</Label>
-              <Input id="alamat" value={form.alamat} onChange={(e) => setForm((v) => ({ ...v, alamat: e.target.value }))} />
-            </div>
-            <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Menyimpan...' : 'Simpan'}</Button>
           </form>
         </CardContent>
       </Card>
@@ -134,7 +179,7 @@ export default function AdminSekolahPage() {
                 <div className="font-medium">{row.nama}</div>
                 <div className="text-sm text-muted-foreground">{row.npsn || 'Tanpa NPSN'} · {row.alamat || 'Tanpa alamat'}</div>
                 <div className="mt-1 text-xs font-medium text-muted-foreground">
-                  {row.jumlah_kelas ?? 0} kelas aktif
+                  {row.jumlah_kelas ?? 0} kelas aktif · Daftar siswa: {row.siswa_registration_enabled ? (row.siswa_registration_mode === 'auto_approve' ? 'langsung masuk' : 'perlu approval') : 'nonaktif'}
                 </div>
               </div>
               <div className="flex gap-2">

@@ -5,6 +5,8 @@ export interface Sekolah {
   nama: string;
   npsn?: string | null;
   alamat: string;
+  siswa_registration_enabled: boolean;
+  siswa_registration_mode: 'auto_approve' | 'approval_required';
   jumlah_kelas: number;
   created_at: string;
   updated_at: string;
@@ -22,6 +24,8 @@ export interface SekolahInput {
   nama: string;
   npsn?: string;
   alamat?: string;
+  siswa_registration_enabled?: boolean;
+  siswa_registration_mode?: 'auto_approve' | 'approval_required';
 }
 
 export async function listSekolah(params: {

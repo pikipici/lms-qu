@@ -24,6 +24,7 @@ import {
   PanelLeftClose,
   ShieldAlert,
   UserCog,
+  UserPlus,
 } from 'lucide-react';
 
 import { api } from '@/lib/api';
@@ -53,6 +54,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/guru', label: 'Dashboard', Icon: LayoutDashboard, badgeKey: 'pending_total' },
   { href: '/guru/kelas', label: 'Kelas', Icon: GraduationCap },
+  { href: '/guru/siswa-join-requests', label: 'Request Siswa', Icon: UserPlus },
   { href: '/guru/bank-soal', label: 'Bank Soal', Icon: Library },
 ];
 

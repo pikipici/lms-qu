@@ -41,6 +41,7 @@ import (
 	"github.com/pikip/lms/backend/internal/middleware"
 	"github.com/pikip/lms/backend/internal/nilai"
 	"github.com/pikip/lms/backend/internal/pengumuman"
+	"github.com/pikip/lms/backend/internal/registration"
 	"github.com/pikip/lms/backend/internal/sekolah"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/soalbab"
@@ -249,6 +250,13 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	)
 	authGroup.Post("/logout", authHandler.Logout)
 
+	registrationRepo := registration.NewRepo(gdb)
+	registrationHandler := registration.NewHandler(registrationRepo, cfg)
+	publicGroup := api.Group("/public")
+	publicGroup.Get("/sekolah", registrationHandler.ListPublicSekolah)
+	publicGroup.Get("/sekolah/:id/kelas", registrationHandler.ListPublicKelas)
+	authGroup.Post("/register-siswa", registrationHandler.RegisterSiswa)
+
 	// Protected routes (bearer + force-change-password gate).
 	// ForceChangePassword whitelist lets through:
 	//   GET  /api/v1/auth/me
@@ -286,6 +294,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 
 	adminGroup.Get("/audit-log", adminHandler.ListAuditLog)
 	adminGroup.Get("/login-attempts", adminHandler.ListLoginAttempts)
+	adminGroup.Get("/siswa-join-requests", registrationHandler.ListRequests)
+	adminGroup.Post("/siswa-join-requests/:id/approve", registrationHandler.Approve)
+	adminGroup.Post("/siswa-join-requests/:id/reject", registrationHandler.Reject)
 
 	sekolahRepo := sekolah.NewRepo(gdb)
 	sekolahHandler := sekolah.NewHandler(sekolahRepo)
@@ -648,6 +659,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	)
 	guruGroup.Get("/pending-counts", pendingHandler.Count)
 	guruGroup.Get("/pending-items", pendingHandler.Items)
+	guruGroup.Get("/siswa-join-requests", registrationHandler.ListRequests)
+	guruGroup.Post("/siswa-join-requests/:id/approve", registrationHandler.Approve)
+	guruGroup.Post("/siswa-join-requests/:id/reject", registrationHandler.Reject)
 
 	// Task 7.C — Activity feed guru (locked #39+#55). UNION ALL aggregator
 	// across submission_baru / ulangan_selesai / siswa_join with opaque

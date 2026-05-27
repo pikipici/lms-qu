@@ -41,10 +41,7 @@ import {
 import { Input } from '@/components/ui/input';
 
 const loginSchema = z.object({
-  email: z
-    .string()
-    .min(1, { message: 'Email wajib diisi.' })
-    .email({ message: 'Format email tidak valid.' }),
+  email: z.string().min(1, { message: 'Email/username wajib diisi.' }),
   password: z.string().min(1, { message: 'Password wajib diisi.' }),
 });
 type LoginInput = z.infer<typeof loginSchema>;
@@ -160,12 +157,12 @@ export default function LoginPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>Email / Username</FormLabel>
                       <FormControl>
                         <Input
-                          type="email"
-                          autoComplete="email"
-                          placeholder="nama@sekolah.id"
+                          type="text"
+                          autoComplete="username"
+                          placeholder="nama@sekolah.id atau budi01"
                           disabled={mutation.isPending}
                           {...field}
                         />
@@ -204,7 +201,13 @@ export default function LoginPage() {
               </form>
             </Form>
           </CardContent>
-          <CardFooter className="justify-center">
+          <CardFooter className="flex-col gap-2">
+            <Link
+              href="/register"
+              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Belum punya akun siswa? Daftar di sini
+            </Link>
             <Link
               href="/lupa-password"
               className="text-xs text-muted-foreground underline-offset-2 hover:underline"

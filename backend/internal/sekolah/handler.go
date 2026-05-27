@@ -30,9 +30,11 @@ type listResponse struct {
 }
 
 type upsertRequest struct {
-	Nama   string `json:"nama"`
-	NPSN   string `json:"npsn"`
-	Alamat string `json:"alamat"`
+	Nama                     string `json:"nama"`
+	NPSN                     string `json:"npsn"`
+	Alamat                   string `json:"alamat"`
+	SiswaRegistrationEnabled *bool  `json:"siswa_registration_enabled"`
+	SiswaRegistrationMode    string `json:"siswa_registration_mode"`
 }
 
 func (h *Handler) List(c *fiber.Ctx) error {
@@ -79,7 +81,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return sekolahError(c, fiber.StatusBadRequest, err.Error(), "invalid_input")
 	}
-	updated, err := h.repo.Update(c.UserContext(), id, row.Nama, row.NPSN, row.Alamat)
+	updated, err := h.repo.Update(c.UserContext(), id, row.Nama, row.NPSN, row.Alamat, row.SiswaRegistrationEnabled, row.SiswaRegistrationMode)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return sekolahError(c, fiber.StatusNotFound, "sekolah not found", "not_found")
 	}
@@ -114,7 +116,24 @@ func normalize(req upsertRequest) (*Sekolah, error) {
 	if npsn != "" {
 		npsnPtr = &npsn
 	}
-	return &Sekolah{Nama: nama, NPSN: npsnPtr, Alamat: strings.TrimSpace(req.Alamat)}, nil
+	mode := strings.TrimSpace(req.SiswaRegistrationMode)
+	if mode == "" {
+		mode = "approval_required"
+	}
+	if mode != "approval_required" && mode != "auto_approve" {
+		return nil, errors.New("invalid siswa registration mode")
+	}
+	enabled := false
+	if req.SiswaRegistrationEnabled != nil {
+		enabled = *req.SiswaRegistrationEnabled
+	}
+	return &Sekolah{
+		Nama:                     nama,
+		NPSN:                     npsnPtr,
+		Alamat:                   strings.TrimSpace(req.Alamat),
+		SiswaRegistrationEnabled: enabled,
+		SiswaRegistrationMode:    mode,
+	}, nil
 }
 
 func pagination(c *fiber.Ctx) (int, int) {

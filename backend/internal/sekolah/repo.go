@@ -72,11 +72,17 @@ func (r *Repo) List(ctx context.Context, q string, limit, offset int) ([]Sekolah
 	return rows, total, nil
 }
 
-func (r *Repo) Update(ctx context.Context, id uuid.UUID, nama string, npsn *string, alamat string) (*Sekolah, error) {
+func (r *Repo) Update(ctx context.Context, id uuid.UUID, nama string, npsn *string, alamat string, registrationEnabled bool, registrationMode string) (*Sekolah, error) {
 	res := r.db.WithContext(ctx).
 		Model(&Sekolah{}).
 		Where("id = ?", id).
-		Updates(map[string]any{"nama": nama, "npsn": npsn, "alamat": alamat})
+		Updates(map[string]any{
+			"nama":                       nama,
+			"npsn":                       npsn,
+			"alamat":                     alamat,
+			"siswa_registration_enabled": registrationEnabled,
+			"siswa_registration_mode":    registrationMode,
+		})
 	if res.Error != nil {
 		return nil, res.Error
 	}
