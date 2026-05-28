@@ -85,27 +85,25 @@ function CreateKelasDialog({ open, onOpenChange, onCreated }: { open: boolean; o
   const [nama, setNama] = React.useState('');
   const [deskripsi, setDeskripsi] = React.useState('');
   const [sekolahID, setSekolahID] = React.useState('');
-  const [guruID, setGuruID] = React.useState('');
-
   React.useEffect(() => {
     if (!open) {
       setNama('');
       setDeskripsi('');
       setSekolahID('');
-      setGuruID('');
     }
   }, [open]);
 
   const sekolahQuery = useQuery({ queryKey: ['sekolah-options'], queryFn: () => listSekolahOptions({ pageSize: 100 }), enabled: open, staleTime: 60_000 });
   const guruQuery = useQuery({
     queryKey: ['admin', 'guru-options'],
-    queryFn: () => api<GuruListResponse>('/admin/users?role=guru&status=active&page_size=100'),
+    queryFn: () => api<GuruListResponse>('/admin/users?role=guru&status=active&page_size=1'),
     enabled: open,
     staleTime: 60_000,
   });
+  const fallbackGuruID = guruQuery.data?.users?.[0]?.id ?? '';
 
   const mutation = useMutation({
-    mutationFn: () => createKelas({ nama: nama.trim(), deskripsi: deskripsi.trim() || undefined, sekolah_id: sekolahID || undefined, guru_id: guruID }),
+    mutationFn: () => createKelas({ nama: nama.trim(), deskripsi: deskripsi.trim() || undefined, sekolah_id: sekolahID || undefined, guru_id: fallbackGuruID }),
     onSuccess: ({ kelas }) => {
       toast({ title: 'Kelas dibuat', description: `${kelas.nama} siap dipakai. Kode: ${kelas.kode_invite}` });
       onCreated();
@@ -118,26 +116,19 @@ function CreateKelasDialog({ open, onOpenChange, onCreated }: { open: boolean; o
     },
   });
 
-  const canSubmit = nama.trim() !== '' && guruID !== '' && !mutation.isPending;
+  const canSubmit = nama.trim() !== '' && fallbackGuruID !== '' && !guruQuery.isLoading && !mutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Tambah kelas</DialogTitle>
-          <DialogDescription>Admin menentukan sekolah dan guru pengampu. Siswa nanti memilih kelas ini saat daftar.</DialogDescription>
+          <DialogDescription>Admin menentukan sekolah untuk kelas resmi. Guru pengampu sementara tidak dipilih dari dialog ini.</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (canSubmit) mutation.mutate(); }}>
           <div className="space-y-1.5">
             <Label htmlFor="nama">Nama kelas</Label>
-            <Input id="nama" value={nama} onChange={(e) => setNama(e.target.value)} placeholder="Misal: 7A Matematika" required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="guru">Guru pengampu</Label>
-            <select id="guru" className={selectClass} value={guruID} onChange={(e) => setGuruID(e.target.value)} disabled={guruQuery.isLoading} required>
-              <option value="">Pilih guru</option>
-              {(guruQuery.data?.users ?? []).map((g) => <option key={g.id} value={g.id}>{g.name} - {g.email}</option>)}
-            </select>
+            <Input id="nama" value={nama} onChange={(e) => setNama(e.target.value)} placeholder="Misal: VII-A" required />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sekolah">Sekolah</Label>
