@@ -50,7 +50,7 @@ export function JoinRequestsPanel({ scope }: Props) {
             <div>
               <div className="font-medium">{row.siswa_name || row.username || 'Siswa'}</div>
               <div className="text-sm text-muted-foreground">
-                {row.username} · {row.sekolah_nama || 'Sekolah'} · {row.kelas_nama || 'Kelas'}
+                {row.username} · {row.sekolah_nama || 'Sekolah'} · {row.rombel_nama || row.kelas_nama || 'Rombel'}
               </div>
               <div className="mt-1 text-xs text-muted-foreground">Diajukan {new Date(row.requested_at).toLocaleString('id-ID')}</div>
             </div>

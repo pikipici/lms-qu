@@ -42,6 +42,7 @@ import (
 	"github.com/pikip/lms/backend/internal/nilai"
 	"github.com/pikip/lms/backend/internal/pengumuman"
 	"github.com/pikip/lms/backend/internal/registration"
+	"github.com/pikip/lms/backend/internal/rombel"
 	"github.com/pikip/lms/backend/internal/sekolah"
 	"github.com/pikip/lms/backend/internal/siswabab"
 	"github.com/pikip/lms/backend/internal/soalbab"
@@ -252,9 +253,13 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 
 	registrationRepo := registration.NewRepo(gdb)
 	registrationHandler := registration.NewHandler(registrationRepo, cfg)
+	rombelRepo := rombel.NewRepo(gdb)
+	rombelSvc := rombel.NewService(rombelRepo)
+	rombelHandler := rombel.NewHandler(rombelSvc)
 	publicGroup := api.Group("/public")
 	publicGroup.Get("/sekolah", registrationHandler.ListPublicSekolah)
 	publicGroup.Get("/sekolah/:id/kelas", registrationHandler.ListPublicKelas)
+	publicGroup.Get("/sekolah/:id/rombels", rombelHandler.ListPublicBySekolah)
 	authGroup.Post("/register-siswa", registrationHandler.RegisterSiswa)
 
 	// Protected routes (bearer + force-change-password gate).
@@ -305,6 +310,11 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	adminSekolah.Post("/", sekolahHandler.Create)
 	adminSekolah.Patch("/:id", sekolahHandler.Update)
 	adminSekolah.Delete("/:id", sekolahHandler.Delete)
+	adminSekolah.Get("/:sekolah_id/rombels", rombelHandler.ListBySekolah)
+	adminSekolah.Post("/:sekolah_id/rombels", rombelHandler.Create)
+	adminGroup.Patch("/rombels/:id", rombelHandler.Update)
+	adminGroup.Post("/rombels/:id/archive", rombelHandler.Archive)
+	adminGroup.Delete("/rombels/:id", rombelHandler.Delete)
 
 	sekolahOptions := api.Group("/sekolah",
 		middleware.BearerAuth(authSvc),

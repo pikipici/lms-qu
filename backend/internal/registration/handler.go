@@ -30,6 +30,7 @@ type registerRequest struct {
 	PasswordConfirm string `json:"password_confirm"`
 	SekolahID       string `json:"sekolah_id"`
 	KelasID         string `json:"kelas_id"`
+	RombelID        string `json:"rombel_id"`
 }
 
 func (h *Handler) ListPublicSekolah(c *fiber.Ctx) error {
@@ -77,9 +78,24 @@ func (h *Handler) RegisterSiswa(c *fiber.Ctx) error {
 	if err != nil {
 		return regError(c, fiber.StatusBadRequest, "invalid sekolah id", "invalid_sekolah_id")
 	}
-	kelasID, err := uuid.Parse(req.KelasID)
-	if err != nil {
-		return regError(c, fiber.StatusBadRequest, "invalid kelas id", "invalid_kelas_id")
+	var kelasID *uuid.UUID
+	if strings.TrimSpace(req.KelasID) != "" {
+		parsed, err := uuid.Parse(req.KelasID)
+		if err != nil {
+			return regError(c, fiber.StatusBadRequest, "invalid kelas id", "invalid_kelas_id")
+		}
+		kelasID = &parsed
+	}
+	var rombelID *uuid.UUID
+	if strings.TrimSpace(req.RombelID) != "" {
+		parsed, err := uuid.Parse(req.RombelID)
+		if err != nil {
+			return regError(c, fiber.StatusBadRequest, "invalid rombel id", "invalid_rombel_id")
+		}
+		rombelID = &parsed
+	}
+	if kelasID == nil && rombelID == nil {
+		return regError(c, fiber.StatusBadRequest, "rombel_id is required", "rombel_required")
 	}
 
 	cost := 0
@@ -100,7 +116,7 @@ func (h *Handler) RegisterSiswa(c *fiber.Ctx) error {
 		Status:             auth.Active,
 		MustChangePassword: false,
 	}
-	mode, err := h.repo.RegisterSiswa(c.UserContext(), user, sekolahID, kelasID)
+	mode, err := h.repo.RegisterSiswa(c.UserContext(), user, sekolahID, kelasID, rombelID)
 	if err != nil {
 		return h.mapRegisterError(c, err)
 	}
@@ -185,6 +201,8 @@ func (h *Handler) mapRegisterError(c *fiber.Ctx, err error) error {
 		return regError(c, fiber.StatusForbidden, "registration disabled", "registration_disabled")
 	case errors.Is(err, ErrKelasNotInSekolah):
 		return regError(c, fiber.StatusBadRequest, "kelas does not belong to selected sekolah", "kelas_not_in_sekolah")
+	case errors.Is(err, ErrRombelNotInSekolah):
+		return regError(c, fiber.StatusBadRequest, "rombel does not belong to selected sekolah", "rombel_not_in_sekolah")
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return regError(c, fiber.StatusBadRequest, "invalid sekolah or kelas", "invalid_reference")
 	case strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "SQLSTATE 23505"):

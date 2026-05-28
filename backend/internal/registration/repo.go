@@ -54,7 +54,13 @@ type kelasRegistration struct {
 	SekolahID uuid.UUID
 }
 
-func (r *Repo) RegisterSiswa(ctx context.Context, user *auth.User, sekolahID, kelasID uuid.UUID) (string, error) {
+type rombelRegistration struct {
+	ID        uuid.UUID
+	Nama      string
+	SekolahID uuid.UUID
+}
+
+func (r *Repo) RegisterSiswa(ctx context.Context, user *auth.User, sekolahID uuid.UUID, kelasID, rombelID *uuid.UUID) (string, error) {
 	return r.withTx(ctx, func(tx *gorm.DB) (string, error) {
 		var s sekolahRegistration
 		if err := tx.Table("sekolah").
@@ -67,15 +73,37 @@ func (r *Repo) RegisterSiswa(ctx context.Context, user *auth.User, sekolahID, ke
 			return "", ErrRegistrationDisabled
 		}
 
-		var k kelasRegistration
-		if err := tx.Table("kelas").
-			Select("id, nama, sekolah_id").
-			Where("id = ? AND archived_at IS NULL", kelasID).
-			First(&k).Error; err != nil {
-			return "", err
+		var k *kelasRegistration
+		if kelasID != nil {
+			var row kelasRegistration
+			if err := tx.Table("kelas").
+				Select("id, nama, sekolah_id").
+				Where("id = ? AND archived_at IS NULL", *kelasID).
+				First(&row).Error; err != nil {
+				return "", err
+			}
+			if row.SekolahID != sekolahID {
+				return "", ErrKelasNotInSekolah
+			}
+			k = &row
 		}
-		if k.SekolahID != sekolahID {
-			return "", ErrKelasNotInSekolah
+
+		var rb *rombelRegistration
+		if rombelID != nil {
+			var row rombelRegistration
+			if err := tx.Table("rombels").
+				Select("id, nama, sekolah_id").
+				Where("id = ? AND archived_at IS NULL AND active = true", *rombelID).
+				First(&row).Error; err != nil {
+				return "", err
+			}
+			if row.SekolahID != sekolahID {
+				return "", ErrRombelNotInSekolah
+			}
+			rb = &row
+		}
+		if k == nil && rb == nil {
+			return "", ErrRombelNotInSekolah
 		}
 
 		if err := tx.Create(user).Error; err != nil {
@@ -87,17 +115,27 @@ func (r *Repo) RegisterSiswa(ctx context.Context, user *auth.User, sekolahID, ke
 			mode = ModeApprovalRequired
 		}
 
-		req := &JoinRequest{ID: uuid.New(), SiswaID: user.ID, SekolahID: sekolahID, KelasID: kelasID, Status: RequestPending}
+		req := &JoinRequest{ID: uuid.New(), SiswaID: user.ID, SekolahID: sekolahID, KelasID: kelasID, RombelID: rombelID, Status: RequestPending}
 		if mode == ModeAutoApprove {
 			now := time.Now()
 			req.Status = RequestApproved
 			req.DecidedAt = &now
-			enrollment := &kelas.Enrollment{KelasID: kelasID, SiswaID: user.ID, Status: kelas.EnrollmentActive, JoinedAt: now, JoinedVia: kelas.JoinedViaKode}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "kelas_id"}, {Name: "siswa_id"}},
-				DoUpdates: clause.Assignments(map[string]any{"status": kelas.EnrollmentActive, "joined_at": now, "joined_via": kelas.JoinedViaKode}),
-			}).Create(enrollment).Error; err != nil {
-				return "", err
+			if rb != nil {
+				membership := map[string]any{"rombel_id": rb.ID, "siswa_id": user.ID, "status": "active", "joined_via": "self_registration", "joined_at": now}
+				if err := tx.Table("rombel_memberships").Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "rombel_id"}, {Name: "siswa_id"}},
+					DoUpdates: clause.Assignments(map[string]any{"status": "active", "joined_at": now, "joined_via": "self_registration", "removed_at": nil}),
+				}).Create(membership).Error; err != nil {
+					return "", err
+				}
+			} else if k != nil && kelasID != nil {
+				enrollment := &kelas.Enrollment{KelasID: *kelasID, SiswaID: user.ID, Status: kelas.EnrollmentActive, JoinedAt: now, JoinedVia: kelas.JoinedViaKode}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "kelas_id"}, {Name: "siswa_id"}},
+					DoUpdates: clause.Assignments(map[string]any{"status": kelas.EnrollmentActive, "joined_at": now, "joined_via": kelas.JoinedViaKode}),
+				}).Create(enrollment).Error; err != nil {
+					return "", err
+				}
 			}
 		}
 		if err := tx.Create(req).Error; err != nil {
@@ -126,10 +164,11 @@ func (r *Repo) withTx(ctx context.Context, fn func(*gorm.DB) (string, error)) (s
 func (r *Repo) ListRequests(ctx context.Context, status string, guruID *uuid.UUID) ([]JoinRequest, error) {
 	q := r.db.WithContext(ctx).
 		Table("siswa_join_requests r").
-		Select("r.*, u.name AS siswa_name, u.email AS username, s.nama AS sekolah_nama, k.nama AS kelas_nama").
+		Select("r.*, u.name AS siswa_name, u.email AS username, s.nama AS sekolah_nama, k.nama AS kelas_nama, rb.nama AS rombel_nama").
 		Joins("JOIN users u ON u.id = r.siswa_id").
 		Joins("JOIN sekolah s ON s.id = r.sekolah_id").
-		Joins("JOIN kelas k ON k.id = r.kelas_id")
+		Joins("LEFT JOIN kelas k ON k.id = r.kelas_id").
+		Joins("LEFT JOIN rombels rb ON rb.id = r.rombel_id")
 	if status != "" {
 		q = q.Where("r.status = ?", status)
 	}
@@ -149,8 +188,11 @@ func (r *Repo) Approve(ctx context.Context, requestID, actorID uuid.UUID, guruID
 			return err
 		}
 		if guruID != nil {
+			if req.KelasID == nil {
+				return ErrForbiddenScope
+			}
 			var count int64
-			if err := tx.Table("kelas").Where("id = ? AND guru_id = ?", req.KelasID, *guruID).Count(&count).Error; err != nil {
+			if err := tx.Table("kelas").Where("id = ? AND guru_id = ?", *req.KelasID, *guruID).Count(&count).Error; err != nil {
 				return err
 			}
 			if count == 0 {
@@ -161,12 +203,22 @@ func (r *Repo) Approve(ctx context.Context, requestID, actorID uuid.UUID, guruID
 			return ErrRequestNotPending
 		}
 		now := time.Now()
-		enrollment := &kelas.Enrollment{KelasID: req.KelasID, SiswaID: req.SiswaID, Status: kelas.EnrollmentActive, JoinedAt: now, JoinedVia: kelas.JoinedViaAdmin}
-		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "kelas_id"}, {Name: "siswa_id"}},
-			DoUpdates: clause.Assignments(map[string]any{"status": kelas.EnrollmentActive, "joined_at": now, "joined_via": kelas.JoinedViaAdmin}),
-		}).Create(enrollment).Error; err != nil {
-			return err
+		if req.RombelID != nil {
+			membership := map[string]any{"rombel_id": *req.RombelID, "siswa_id": req.SiswaID, "status": "active", "joined_via": "admin", "joined_at": now}
+			if err := tx.Table("rombel_memberships").Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "rombel_id"}, {Name: "siswa_id"}},
+				DoUpdates: clause.Assignments(map[string]any{"status": "active", "joined_at": now, "joined_via": "admin", "removed_at": nil}),
+			}).Create(membership).Error; err != nil {
+				return err
+			}
+		} else if req.KelasID != nil {
+			enrollment := &kelas.Enrollment{KelasID: *req.KelasID, SiswaID: req.SiswaID, Status: kelas.EnrollmentActive, JoinedAt: now, JoinedVia: kelas.JoinedViaAdmin}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "kelas_id"}, {Name: "siswa_id"}},
+				DoUpdates: clause.Assignments(map[string]any{"status": kelas.EnrollmentActive, "joined_at": now, "joined_via": kelas.JoinedViaAdmin}),
+			}).Create(enrollment).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Model(&JoinRequest{}).Where("id = ?", requestID).Updates(map[string]any{"status": RequestApproved, "decided_at": now, "decided_by": actorID}).Error
 	})
@@ -179,8 +231,11 @@ func (r *Repo) Reject(ctx context.Context, requestID, actorID uuid.UUID, reason 
 			return err
 		}
 		if guruID != nil {
+			if req.KelasID == nil {
+				return ErrForbiddenScope
+			}
 			var count int64
-			if err := tx.Table("kelas").Where("id = ? AND guru_id = ?", req.KelasID, *guruID).Count(&count).Error; err != nil {
+			if err := tx.Table("kelas").Where("id = ? AND guru_id = ?", *req.KelasID, *guruID).Count(&count).Error; err != nil {
 				return err
 			}
 			if count == 0 {
@@ -202,6 +257,7 @@ func (r *Repo) Reject(ctx context.Context, requestID, actorID uuid.UUID, reason 
 var (
 	ErrRegistrationDisabled = errors.New("registration disabled")
 	ErrKelasNotInSekolah    = errors.New("kelas not in sekolah")
+	ErrRombelNotInSekolah   = errors.New("rombel not in sekolah")
 	ErrRequestNotPending    = errors.New("join request not pending")
 	ErrForbiddenScope       = errors.New("forbidden kelas scope")
 )

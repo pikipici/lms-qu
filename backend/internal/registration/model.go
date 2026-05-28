@@ -22,8 +22,10 @@ type JoinRequest struct {
 	Username     string     `gorm:"->;column:username" json:"username,omitempty"`
 	SekolahID    uuid.UUID  `gorm:"type:uuid;not null" json:"sekolah_id"`
 	SekolahNama  string     `gorm:"->;column:sekolah_nama" json:"sekolah_nama,omitempty"`
-	KelasID      uuid.UUID  `gorm:"type:uuid;not null" json:"kelas_id"`
+	KelasID      *uuid.UUID `gorm:"type:uuid" json:"kelas_id,omitempty"`
 	KelasNama    string     `gorm:"->;column:kelas_nama" json:"kelas_nama,omitempty"`
+	RombelID     *uuid.UUID `gorm:"type:uuid" json:"rombel_id,omitempty"`
+	RombelNama   string     `gorm:"->;column:rombel_nama" json:"rombel_nama,omitempty"`
 	Status       string     `gorm:"not null;default:pending" json:"status"`
 	RequestedAt  time.Time  `gorm:"not null;default:now()" json:"requested_at"`
 	DecidedAt    *time.Time `json:"decided_at,omitempty"`

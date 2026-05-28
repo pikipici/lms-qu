@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '@/lib/api';
-import { listPublicKelas, listPublicSekolah, registerSiswa } from '@/lib/registration-api';
+import { listPublicRombels, listPublicSekolah, registerSiswa } from '@/lib/registration-api';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,14 +19,14 @@ const emptyForm = {
   password: '',
   password_confirm: '',
   sekolah_id: '',
-  kelas_id: '',
+  rombel_id: '',
 };
 
 function friendlyError(err: unknown): string {
   if (!(err instanceof ApiError)) return 'Tidak dapat terhubung ke server.';
   if (err.code === 'username_taken') return 'Username sudah dipakai. Pilih username lain.';
   if (err.code === 'registration_disabled') return 'Pendaftaran mandiri belum aktif untuk sekolah ini.';
-  if (err.code === 'kelas_not_in_sekolah') return 'Kelas tidak cocok dengan sekolah yang dipilih.';
+  if (err.code === 'kelas_not_in_sekolah' || err.code === 'rombel_not_in_sekolah') return 'Rombel tidak cocok dengan sekolah yang dipilih.';
   if (err.code === 'password_mismatch') return 'Konfirmasi password tidak sama.';
   return err.message;
 }
@@ -40,9 +40,9 @@ export default function RegisterSiswaPage() {
   const sekolahItems = sekolahQ.data?.data ?? [];
   const noSekolahOpen = sekolahQ.isSuccess && sekolahItems.length === 0;
   const selectedSekolah = sekolahItems.find((s) => s.id === form.sekolah_id);
-  const kelasQ = useQuery({
-    queryKey: ['public-kelas', form.sekolah_id],
-    queryFn: () => listPublicKelas(form.sekolah_id),
+  const rombelQ = useQuery({
+    queryKey: ['public-rombel', form.sekolah_id],
+    queryFn: () => listPublicRombels(form.sekolah_id),
     enabled: Boolean(form.sekolah_id),
   });
 
@@ -61,7 +61,7 @@ export default function RegisterSiswaPage() {
         <Card>
           <CardHeader className="space-y-2 text-center">
             <CardTitle className="text-2xl">Daftar sebagai Siswa</CardTitle>
-            <CardDescription>Pilih sekolah dan kelas yang sudah disiapkan admin.</CardDescription>
+            <CardDescription>Pilih sekolah dan rombel resmi yang sudah disiapkan admin.</CardDescription>
           </CardHeader>
           <CardContent>
             <form
@@ -97,7 +97,7 @@ export default function RegisterSiswaPage() {
                     id="sekolah"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={form.sekolah_id}
-                    onChange={(e) => setForm((v) => ({ ...v, sekolah_id: e.target.value, kelas_id: '' }))}
+                    onChange={(e) => setForm((v) => ({ ...v, sekolah_id: e.target.value, rombel_id: '' }))}
                     disabled={noSekolahOpen}
                     required
                   >
@@ -106,17 +106,17 @@ export default function RegisterSiswaPage() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="kelas">Kelas</Label>
+                  <Label htmlFor="rombel">Rombel</Label>
                   <select
-                    id="kelas"
+                    id="rombel"
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    value={form.kelas_id}
-                    onChange={(e) => setForm((v) => ({ ...v, kelas_id: e.target.value }))}
-                    disabled={!form.sekolah_id || kelasQ.isLoading}
+                    value={form.rombel_id}
+                    onChange={(e) => setForm((v) => ({ ...v, rombel_id: e.target.value }))}
+                    disabled={!form.sekolah_id || rombelQ.isLoading}
                     required
                   >
-                    <option value="">{form.sekolah_id ? 'Pilih kelas' : 'Pilih sekolah dulu'}</option>
-                    {(kelasQ.data?.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.nama}</option>)}
+                    <option value="">{form.sekolah_id ? 'Pilih rombel' : 'Pilih sekolah dulu'}</option>
+                    {(rombelQ.data?.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.nama}</option>)}
                   </select>
                 </div>
               </div>
@@ -133,7 +133,7 @@ export default function RegisterSiswaPage() {
               ) : null}
               {selectedSekolah ? (
                 <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
-                  Mode sekolah ini: {selectedSekolah.siswa_registration_mode === 'auto_approve' ? 'langsung masuk kelas setelah daftar.' : 'menunggu persetujuan admin/guru setelah daftar.'}
+                  Mode sekolah ini: {selectedSekolah.siswa_registration_mode === 'auto_approve' ? 'langsung masuk rombel setelah daftar.' : 'menunggu persetujuan admin setelah daftar.'}
                 </p>
               ) : null}
               <Button className="w-full" type="submit" disabled={mutation.isPending || sekolahQ.isLoading || noSekolahOpen}>

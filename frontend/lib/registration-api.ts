@@ -12,6 +12,12 @@ export interface PublicKelas {
   nama: string;
 }
 
+export interface PublicRombel {
+  id: string;
+  nama: string;
+  sekolah_id: string;
+}
+
 export interface JoinRequest {
   id: string;
   siswa_id: string;
@@ -19,8 +25,10 @@ export interface JoinRequest {
   username?: string;
   sekolah_id: string;
   sekolah_nama?: string;
-  kelas_id: string;
+  kelas_id?: string;
   kelas_nama?: string;
+  rombel_id?: string;
+  rombel_nama?: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   requested_at: string;
   decided_at?: string;
@@ -33,7 +41,7 @@ export interface RegisterSiswaInput {
   password: string;
   password_confirm: string;
   sekolah_id: string;
-  kelas_id: string;
+  rombel_id: string;
 }
 
 export async function listPublicSekolah(): Promise<{ data: PublicSekolah[] }> {
@@ -42,6 +50,10 @@ export async function listPublicSekolah(): Promise<{ data: PublicSekolah[] }> {
 
 export async function listPublicKelas(sekolahId: string): Promise<{ data: PublicKelas[] }> {
   return api<{ data: PublicKelas[] }>(`/public/sekolah/${sekolahId}/kelas`, { anon: true, skipRefresh: true });
+}
+
+export async function listPublicRombels(sekolahId: string): Promise<{ data: PublicRombel[] }> {
+  return api<{ data: PublicRombel[] }>(`/public/sekolah/${sekolahId}/rombels`, { anon: true, skipRefresh: true });
 }
 
 export async function registerSiswa(input: RegisterSiswaInput): Promise<{
