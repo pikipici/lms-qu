@@ -36,6 +36,7 @@ type authRepo interface {
 	CountRecentFailedAttempts(ctx context.Context, email string, ip *string, since time.Time) (int64, error)
 	ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error
 	LogAudit(ctx context.Context, entry *AuditLog) error
+	IsSelfRegisteredSiswa(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
 // Service coordinates auth domain behavior.
@@ -154,6 +155,11 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 	}
 
 	_ = s.repo.ResetFailedLogin(ctx, user.ID)
+	if user.Role == Siswa && user.MustChangePassword {
+		if selfRegistered, selfRegErr := s.repo.IsSelfRegisteredSiswa(ctx, user.ID); selfRegErr == nil && selfRegistered {
+			user.MustChangePassword = false
+		}
+	}
 	// UX fix: clear the rate-limit counter on success so a user who fumbled
 	// their password 1-2x doesn't stay blocked for 15 minutes when they
 	// finally type it right.

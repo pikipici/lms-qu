@@ -63,6 +63,18 @@ func (r *Repo) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	return &user, nil
 }
 
+// IsSelfRegisteredSiswa reports whether a siswa account came from public self-registration.
+func (r *Repo) IsSelfRegisteredSiswa(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Table("siswa_join_requests").
+		Where("siswa_id = ?", userID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // CreateUser inserts a new user.
 func (r *Repo) CreateUser(ctx context.Context, u *User) error {
 	return r.db.WithContext(ctx).Create(u).Error

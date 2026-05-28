@@ -46,14 +46,18 @@ type mockRepo struct {
 	loginAttempts       []*LoginAttempt
 	audits              []*AuditLog
 	errFindByEmail      error
+	selfRegistered      map[uuid.UUID]bool
+	selfRegisteredErr   error
+	selfRegisteredCalls int
 }
 
 func newTestService(t *testing.T) (*Service, *mockRepo, func()) {
 	t.Helper()
 
 	repo := &mockRepo{
-		userByEmail: map[string]*User{},
-		userByID:    map[uuid.UUID]*User{},
+		userByEmail:    map[string]*User{},
+		userByID:       map[uuid.UUID]*User{},
+		selfRegistered: map[uuid.UUID]bool{},
 	}
 	svc := &Service{
 		repo: repo,
@@ -117,6 +121,27 @@ func TestLogin_Success_IssuesTokens(t *testing.T) {
 	}
 	if repo.audits[0].ActorRole == nil || *repo.audits[0].ActorRole != string(user.Role) {
 		t.Fatalf("audit ActorRole = %v, want %s", repo.audits[0].ActorRole, user.Role)
+	}
+}
+
+func TestLogin_SelfRegisteredSiswa_DoesNotForcePasswordChange(t *testing.T) {
+	svc, repo, cleanup := newTestService(t)
+	defer cleanup()
+	user := newLoginTestUser(t, Active, 0)
+	user.Role = Siswa
+	user.MustChangePassword = true
+	repo.selfRegistered[user.ID] = true
+	repo.addUser(user)
+
+	got, err := svc.Login(context.Background(), user.Email, loginTestPassword, "127.0.0.1", "test-agent")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if got.User.MustChangePassword {
+		t.Fatal("Login() MustChangePassword = true, want false for self-registered siswa")
+	}
+	if repo.selfRegisteredCalls != 1 {
+		t.Fatalf("IsSelfRegisteredSiswa calls = %d, want 1", repo.selfRegisteredCalls)
 	}
 }
 
@@ -832,6 +857,14 @@ func (m *mockRepo) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error
 		return nil, gorm.ErrRecordNotFound
 	}
 	return user, nil
+}
+
+func (m *mockRepo) IsSelfRegisteredSiswa(ctx context.Context, userID uuid.UUID) (bool, error) {
+	m.selfRegisteredCalls++
+	if m.selfRegisteredErr != nil {
+		return false, m.selfRegisteredErr
+	}
+	return m.selfRegistered[userID], nil
 }
 
 func (m *mockRepo) UpdateUserPassword(ctx context.Context, userID uuid.UUID, newHash string) error {
