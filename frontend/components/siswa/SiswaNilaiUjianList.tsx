@@ -54,7 +54,7 @@ export function SiswaNilaiUjianList({ rows }: Props) {
               Terakhir
             </th>
             <th className="border-b-2 border-siswa-border px-3 py-2 text-right">
-              Attempt
+              Kesempatan
             </th>
           </tr>
         </thead>

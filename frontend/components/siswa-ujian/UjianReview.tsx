@@ -157,7 +157,7 @@ function ReviewBody({
             <div>
               <SiswaCardTitle>Pembahasan Ujian</SiswaCardTitle>
               <SiswaCardDescription>
-                Attempt #{review.attempt_no} ·{' '}
+                Kesempatan #{review.attempt_no} ·{' '}
                 {review.selesai_at
                   ? new Date(review.selesai_at).toLocaleString('id-ID', {
                       dateStyle: 'medium',

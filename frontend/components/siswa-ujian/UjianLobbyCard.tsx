@@ -414,7 +414,7 @@ function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
   }
   return (
     <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
-      Pembahasan tersedia langsung setelah lu submit attempt.
+      Pembahasan tersedia langsung setelah lu submit jawaban.
     </p>
   );
 }
@@ -434,7 +434,7 @@ function LastAttemptLine({
     <div className="rounded-siswa border-2 border-siswa-border bg-siswa-surface p-3 text-xs siswa-shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="siswa-display font-bold">
-          Attempt terakhir #{latest.attempt_no}
+          Kesempatan terakhir #{latest.attempt_no}
         </span>
         <StatusBadge status={latest.status} />
         {latest.nilai_total != null ? (

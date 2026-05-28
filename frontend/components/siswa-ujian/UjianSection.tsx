@@ -426,17 +426,17 @@ function LobbyPanel({
 
       <SiswaCard tone="surface" shadow="sm">
         <SiswaCardHeader>
-          <SiswaCardTitle>Riwayat attempt</SiswaCardTitle>
+          <SiswaCardTitle>Riwayat kesempatan</SiswaCardTitle>
           <SiswaCardDescription>
             {myItems.length === 0
-              ? 'Belum ada attempt untuk ujian ini.'
-              : `Total ${attemptCount} attempt selesai${cancelledCount > 0 ? `, ${cancelledCount} dibatalkan guru` : ''}.`}
+              ? 'Belum ada kesempatan untuk ujian ini.'
+              : `Total ${attemptCount} kesempatan selesai${cancelledCount > 0 ? `, ${cancelledCount} dibatalkan guru` : ''}.`}
           </SiswaCardDescription>
         </SiswaCardHeader>
         <SiswaCardBody>
           {myItems.length === 0 ? (
             <p className="text-sm text-siswa-text-muted">
-              Begitu lu mulai ujian, attempt akan tampil di sini.
+              Begitu lu mulai ujian, riwayatnya akan tampil di sini.
             </p>
           ) : (
             <ul className="space-y-2">
@@ -493,7 +493,7 @@ function ResultPanel({
               </SiswaCardTitle>
               <SiswaCardDescription>
                 {summary.already_submitted
-                  ? 'Attempt ini sudah disubmit sebelumnya — menampilkan rekap nilai.'
+                  ? 'Jawaban ini sudah disubmit sebelumnya — menampilkan rekap nilai.'
                   : 'Nilai sudah keluar. Lu bisa lihat pembahasan kalau guru aktivasi.'}
               </SiswaCardDescription>
             </div>
@@ -656,7 +656,7 @@ function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
   }
   return (
     <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
-      Pembahasan tersedia langsung setelah lu submit attempt.
+      Pembahasan tersedia langsung setelah lu submit jawaban.
     </p>
   );
 }
@@ -733,7 +733,7 @@ function HistoryRow({ hasil, ujian, now, onReview, onResume }: HistoryRowProps) 
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="siswa-display text-sm font-bold">
-            Attempt #{hasil.attempt_no}
+            Kesempatan #{hasil.attempt_no}
           </span>
           <StatusBadge status={hasil.status} />
         </div>

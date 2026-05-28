@@ -219,7 +219,7 @@ export default function SiswaUjianPage() {
       <SiswaPageHeader
         eyebrow="Ujian saya"
         title="Lobby ujian"
-        description="Daftar ulangan dari semua kelas. Klik kartu untuk mulai atau melanjutkan attempt."
+        description="Daftar ulangan dari semua kelas. Klik kartu untuk mulai atau melanjutkan ujian."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -250,7 +250,7 @@ export default function SiswaUjianPage() {
                 ? '—'
                 : 'Belum ada'
           }
-          hint={`${counts.attemptSelesai} attempt selesai`}
+          hint={`${counts.attemptSelesai} kesempatan selesai`}
           Icon={Trophy}
           tone="latihan"
         />

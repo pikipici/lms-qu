@@ -253,7 +253,7 @@ export function UjianPlayer({
     setConfirmSubmit(false);
     toast({
       title: 'Waktu habis',
-      description: 'Sistem otomatis submit attempt ini.',
+      description: 'Sistem otomatis submit jawaban ini.',
     });
     submitMu.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -384,7 +384,7 @@ export function UjianPlayer({
           </div>
           {att.attempt_no ? (
             <div className="text-xs font-semibold text-siswa-text-muted">
-              Attempt #{att.attempt_no}
+              Kesempatan #{att.attempt_no}
             </div>
           ) : null}
         </SiswaCardHeader>
@@ -514,7 +514,7 @@ export function UjianPlayer({
             <DialogTitle>Submit ujian?</DialogTitle>
             <DialogDescription>
               Lu sudah menjawab <strong>{answeredCount}</strong> dari {att.total}{' '}
-              soal. Setelah submit, attempt ini dinilai dan tidak bisa diubah
+              soal. Setelah submit, jawaban ini dinilai dan tidak bisa diubah
               lagi.
             </DialogDescription>
           </DialogHeader>
