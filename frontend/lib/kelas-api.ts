@@ -44,6 +44,7 @@ export interface CreateKelasInput {
   nama: string;
   deskripsi?: string;
   sekolah_id?: string;
+  guru_id?: string;
 }
 
 export interface UpdateKelasInput {

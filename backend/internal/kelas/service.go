@@ -93,6 +93,15 @@ func (s *Service) Create(ctx context.Context, guruID uuid.UUID, in CreateInput, 
 	if nama == "" {
 		return nil, fmt.Errorf("%w: nama is required", ErrInvalidInput)
 	}
+	if s.users != nil {
+		guru, err := s.users.FindUserByID(ctx, guruID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: guru not found", ErrInvalidInput)
+		}
+		if guru.Role != auth.Guru {
+			return nil, fmt.Errorf("%w: guru_id must be a guru user", ErrInvalidInput)
+		}
+	}
 	// Class-level bobot is deprecated. Keep persisted defaults for backwards
 	// compatibility, but do not allow API callers to customize it anymore.
 	bobotSoalUlangan := 50

@@ -25,6 +25,7 @@ import {
   FileSpreadsheet,
   School,
   UserPlus,
+  GraduationCap,
 } from 'lucide-react';
 
 import { api } from '@/lib/api';
@@ -52,6 +53,7 @@ const NAV: NavItem[] = [
   { href: '/admin', label: 'Dashboard', Icon: LayoutDashboard },
   { href: '/admin/pengguna', label: 'Pengguna', Icon: Users },
   { href: '/admin/sekolah', label: 'Sekolah', Icon: School },
+  { href: '/admin/kelas', label: 'Kelas', Icon: GraduationCap },
   { href: '/admin/siswa-join-requests', label: 'Request Siswa', Icon: UserPlus },
   { href: '/admin/import-csv', label: 'Import CSV', Icon: FileSpreadsheet },
   { href: '/admin/audit-log', label: 'Audit Log', Icon: ScrollText },

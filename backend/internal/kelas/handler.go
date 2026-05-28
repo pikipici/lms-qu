@@ -62,6 +62,7 @@ type createRequest struct {
 	Nama             string `json:"nama"`
 	Deskripsi        string `json:"deskripsi"`
 	SekolahID        string `json:"sekolah_id"`
+	GuruID           string `json:"guru_id"`
 	BobotSoalUlangan int    `json:"bobot_soal_ulangan"`
 	BobotTugas       int    `json:"bobot_tugas"`
 }
@@ -121,16 +122,29 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	})
 }
 
-// Create handles POST /api/v1/kelas. Guru-only.
+// Create handles POST /api/v1/kelas. Admin creates and assigns a guru;
+// guru self-create is no longer exposed in the UI but remains API-compatible.
 func (h *Handler) Create(c *fiber.Ctx) error {
-	guruID, err := middleware.UserIDFromCtx(c)
+	callerID, err := middleware.UserIDFromCtx(c)
 	if err != nil {
 		return kelasError(c, fiber.StatusInternalServerError, "internal server error", "internal")
 	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
 
 	var req createRequest
 	if err := c.BodyParser(&req); err != nil {
 		return kelasError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+
+	guruID := callerID
+	if role == string(auth.Admin) {
+		parsedGuruID, err := uuid.Parse(strings.TrimSpace(req.GuruID))
+		if err != nil {
+			return kelasError(c, fiber.StatusBadRequest, "guru_id is required", "invalid_guru_id")
+		}
+		guruID = parsedGuruID
+	} else if role != string(auth.Guru) {
+		return kelasError(c, fiber.StatusForbidden, "insufficient role", "forbidden")
 	}
 
 	sekolahID, err := parseOptionalUUID(req.SekolahID)
