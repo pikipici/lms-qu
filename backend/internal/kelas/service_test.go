@@ -296,8 +296,7 @@ func newSvc(t *testing.T) (*Service, *mockRepo, *recordingAudit) {
 	t.Helper()
 	repo := newMockRepo()
 	audit := &recordingAudit{}
-	users := newStubUserLookup()
-	svc := NewService(repo, audit, users)
+	svc := NewService(repo, audit, nil)
 	svc.now = func() time.Time { return time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC) }
 	return svc, repo, audit
 }
@@ -639,6 +638,7 @@ func TestService_ListEnrollmentsByKelas_HappyPath(t *testing.T) {
 	svc, repo, _, users := newSvcWithUsers(t)
 	guruID := uuid.New()
 	siswa1, siswa2 := uuid.New(), uuid.New()
+	users.users[guruID] = &auth.User{ID: guruID, Name: "Guru", Email: "guru@example.com", Role: auth.Guru, Status: auth.Active}
 	users.users[siswa1] = &auth.User{ID: siswa1, Name: "Andi", Email: "andi@example.com", Role: auth.Siswa, Status: auth.Active}
 	users.users[siswa2] = &auth.User{ID: siswa2, Name: "Budi", Email: "budi@example.com", Role: auth.Siswa, Status: auth.Active}
 
@@ -671,6 +671,7 @@ func TestService_ListEnrollmentsByKelas_HidesRemovedByDefault(t *testing.T) {
 	svc, repo, _, users := newSvcWithUsers(t)
 	guruID := uuid.New()
 	siswa := uuid.New()
+	users.users[guruID] = &auth.User{ID: guruID, Name: "Guru", Email: "guru@example.com", Role: auth.Guru, Status: auth.Active}
 	users.users[siswa] = &auth.User{ID: siswa, Name: "Andi", Email: "andi@example.com", Role: auth.Siswa, Status: auth.Active}
 
 	k, err := svc.Create(context.Background(), guruID, CreateInput{Nama: "K", BobotSoalUlangan: 50, BobotTugas: 50}, "1.1.1.1", "ua")
@@ -711,9 +712,10 @@ func TestService_ListEnrollmentsByKelas_HidesRemovedByDefault(t *testing.T) {
 }
 
 func TestService_ListEnrollmentsByKelas_ForbiddenForOtherGuru(t *testing.T) {
-	svc, _, _, _ := newSvcWithUsers(t)
+	svc, _, _, users := newSvcWithUsers(t)
 	owner := uuid.New()
 	intruder := uuid.New()
+	users.users[owner] = &auth.User{ID: owner, Name: "Guru", Email: "guru@example.com", Role: auth.Guru, Status: auth.Active}
 
 	k, err := svc.Create(context.Background(), owner, CreateInput{Nama: "K", BobotSoalUlangan: 50, BobotTugas: 50}, "1.1.1.1", "ua")
 	if err != nil {
@@ -745,6 +747,7 @@ func TestService_ListEnrollmentsByKelas_DanglingUserSkipped(t *testing.T) {
 	guruID := uuid.New()
 	live := uuid.New()
 	dangling := uuid.New()
+	users.users[guruID] = &auth.User{ID: guruID, Name: "Guru", Email: "guru@example.com", Role: auth.Guru, Status: auth.Active}
 	users.users[live] = &auth.User{ID: live, Name: "Live", Email: "live@x", Role: auth.Siswa, Status: auth.Active}
 	// dangling siswa intentionally missing from users map
 

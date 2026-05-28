@@ -1,8 +1,8 @@
 # LMS Project — Roadmap & Living Plan
 
-> Status: v0.13.0 + Fase 8 operational baseline ready; latest deployed head `ab7278c`. Fase 0-7 ✅ CLOSED; grade weighting item-level migration + school-aware class list shipped.
+> Status: v0.13.0 + Fase 8 operational baseline ready; latest deployed head `772777d`. Fase 0-7 ✅ CLOSED; rombel master data for self-registration shipped.
 > Owner: User (guru) + Apis (assistant)
-> Last updated: 2026-05-24 (item-level grade weighting + school-aware class list deployed).
+> Last updated: 2026-05-28 (real rombel table/API deployed for self-registration; kelas tests fixed after guru validation drift).
 
 ## Daftar Isi
 - [0. Locked Decisions](#0-locked-decisions-v0120)
@@ -1030,6 +1030,8 @@ Progress 2026-05-23:
 - Fase 8.4 cleanup cron design started conservatively: `docs/DEPLOY.md` now documents dry-run-first cleanup scopes, manual SQL probes, pass criteria, destructive-mode gates, and log template at `dogfood-output/fase8/cleanup-dry-run.md`. Minimal `internal/cleanup` dry-run service + `cmd/cleanup-dry-run` CLI added; deploy builds `backend/bin/cleanup-dry-run`. It counts candidates only and reports unavailable scopes instead of deleting data.
 - Fase 8.5 Playwright E2E skeleton started: frontend adds `@playwright/test`, `playwright.config.ts`, and `e2e/login-smoke.spec.ts` for login validation + mocked admin login route. Local typecheck and `playwright test --list` pass. Remote Chromium installed and `E2E_BASE_URL=http://127.0.0.1:8200 npm run e2e` PASS 2/2 on rdpkhorur; log at `dogfood-output/fase8/e2e-playwright.md`.
 - Fase 8 side-quest shipped/deployed head `ab7278c`: item-level grade weighting (`tugas.bobot`, `ujian.bobot`, migration `000013_item_bobot`), class-level bobot deprecated/ignored, formula NilaiBab updated, guru class list shows/filter by school (`sekolah_nama`, `sekolah_id`). Validation latest: `go test ./...`, `npm run typecheck`, `npm run build`, deploy `readyz OK`. Local `LOCAL_AI_CONTEXT.md` updated; `.kiro/steering/platform-corrections.md` remains untracked.
+- Fase 8 pengumuman polish shipped/deployed head `7f2085e`: pengumuman create/edit pakai markdown rich editor, list siswa/guru render markdown, attachment berubah ke tabel `pengumuman_attachment` dengan max 10 file, endpoint presign/delete per attachment ID, dan legacy single attachment tetap difallback. Validation latest: `go test ./internal/pengumuman`, `go test ./...`, `npm run typecheck`, deploy `readyz OK`, migration version `15`, table `pengumuman_attachment` exists.
+- Fase 8 rombel master data shipped/deployed head `772777d`: admin Sekolah & Rombel sekarang pakai tabel/API `rombels` + `rombel_memberships`, public `/register` memilih rombel resmi, `siswa_join_requests.rombel_id` ditambahkan, dan self-registration auto/pending membuat membership rombel. Validation latest: backend `go build ./cmd/server`, frontend `npm run build`, remote deploy `readyz OK`, migration version `17`; follow-up test fixture drift fixed so `go test ./...` PASS locally.
 
 - Logging hardening, error handling, structured error response (`{ error, code, request_id }`)
 - Backup `pg_dump` cron daily ke folder lain (rotation 30 hari rolling, monthly archive 1 tahun)
@@ -1043,6 +1045,7 @@ Progress 2026-05-23:
   - HasilSoalBab/HasilUjian deleted_at >1 tahun → hard delete + audit log
   - Submission file: kelas archived + 1 tahun → `s3.DeleteObject` ke AttachmentObjectKey (DB row tetap untuk nilai history)
 - Web performance pass (bundle size, Core Web Vitals)
+- Frontend warning cleanup (deferred): prioritaskan `react-hooks/exhaustive-deps` di area timer/autosave/player karena paling dekat ke risiko behavior; `no-img-element` lebih rendah dan boleh dipertahankan kalau presigned URL/R2 lebih simpel daripada `next/image`.
 - Timezone validation: server `Asia/Jakarta`, frontend tampil WIB explicit, semua timestamp di-format konsisten
 - **Coverage gate ketat**: backend `auth/admin/soalbab/ujian/nilai` ≥ 70%, fail CI kalau di bawah
 - Playwright E2E core flows:
