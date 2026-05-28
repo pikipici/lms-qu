@@ -2,16 +2,22 @@
 
 ## Keputusan Utama
 
-Admin harus jadi pemilik master data sekolah dan kelas. Guru tidak membuat kelas sendiri; guru hanya mengelola kelas yang sudah di-assign oleh admin.
+Admin harus jadi pemilik master data sekolah dan rombel/kelas resmi. Guru tetap boleh membuat kelas pembelajaran sendiri dan punya akses penuh atas kelas yang dia buat.
+
+Definisi yang disepakati:
+
+- `Rombel / Kelas resmi`: struktur sekolah dari admin, contoh `VII-A`, `VII-B`, `VIII-A`. Dipakai untuk pendaftaran mandiri siswa.
+- `Kelas pembelajaran / Course`: kelas operasional guru, contoh `Matematika VII-A Semester 1`. Dipakai untuk materi, tugas, soal, ujian, dan rekap.
 
 Alur yang disarankan:
 
 1. Admin membuat `Sekolah`.
-2. Admin membuat `Kelas` dan assign `Guru Pengampu`.
-3. Admin mengaktifkan pendaftaran mandiri siswa per sekolah jika sudah siap.
-4. Siswa daftar dari `/register` dan memilih sekolah + kelas dari data yang sudah dibuat admin.
-5. Jika mode `approval_required`, admin/guru approve request siswa.
-6. Jika mode `auto_approve`, siswa langsung masuk kelas.
+2. Admin membuat `Rombel / Kelas resmi` untuk struktur sekolah.
+3. Guru tetap bisa membuat `Kelas pembelajaran` sendiri dan mengelola penuh kelas tersebut.
+4. Admin mengaktifkan pendaftaran mandiri siswa per sekolah jika sudah siap.
+5. Siswa daftar dari `/register` dan memilih sekolah + rombel/kelas resmi dari data admin.
+6. Jika mode `approval_required`, admin/guru approve request siswa.
+7. Jika mode `auto_approve`, siswa masuk ke rombel/kelas resmi sesuai aturan onboarding.
 
 ## Rekomendasi Lanjutan
 
