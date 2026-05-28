@@ -59,6 +59,8 @@ export interface Ujian {
   source_config_json: UjianSourceConfig | Record<string, never>;
   izinkan_review_setelah_submit: boolean;
   waktu_buka_review?: string | null;
+  batas_attempt: number;
+  attempt_unlimited: boolean;
   bobot: number;
   status: UjianStatus;
   version: number;
@@ -81,6 +83,8 @@ export interface CreateUjianInput {
   waktu_selesai?: string | null;
   izinkan_review_setelah_submit?: boolean;
   waktu_buka_review?: string | null;
+  batas_attempt?: number;
+  attempt_unlimited?: boolean;
   bobot?: number;
   status?: UjianStatus;
   source?: UjianSourceConfig;
@@ -95,6 +99,8 @@ export interface UpdateUjianInput {
   waktu_selesai?: string | null;
   izinkan_review_setelah_submit?: boolean;
   waktu_buka_review?: string | null;
+  batas_attempt?: number;
+  attempt_unlimited?: boolean;
   bobot?: number;
   status?: UjianStatus;
   source?: UjianSourceConfig;

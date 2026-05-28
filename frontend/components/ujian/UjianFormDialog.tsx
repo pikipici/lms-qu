@@ -60,6 +60,8 @@ interface FormState {
   waktu_selesai: string;
   izinkan_review_setelah_submit: boolean;
   waktu_buka_review: string;
+  batas_attempt: number;
+  attempt_unlimited: boolean;
   status: UjianStatus;
   source: UjianSourceConfig | null;
 }
@@ -94,6 +96,8 @@ function initialFromUjian(u?: Ujian | null): FormState {
     izinkan_review_setelah_submit:
       u?.izinkan_review_setelah_submit ?? true,
     waktu_buka_review: toLocalInputValue(u?.waktu_buka_review ?? null),
+    batas_attempt: u?.batas_attempt ?? 1,
+    attempt_unlimited: u?.attempt_unlimited ?? false,
     status: u?.status === 'published' ? 'published' : 'draft',
     source: sc && sc.mode ? sc : null,
   };
@@ -147,6 +151,9 @@ export function UjianFormDialog({
     if (form.bobot < 0) {
       e.bobot = 'Bobot minimal 0.';
     }
+    if (form.batas_attempt < 1 || form.batas_attempt > 999) {
+      e.batas_attempt = 'Batas attempts 1-999.';
+    }
     if (form.waktu_mulai && form.waktu_selesai) {
       if (
         new Date(form.waktu_mulai).getTime() >=
@@ -198,6 +205,8 @@ export function UjianFormDialog({
         waktu_buka_review: form.izinkan_review_setelah_submit
           ? localInputToRFC3339(form.waktu_buka_review)
           : null,
+        batas_attempt: form.batas_attempt,
+        attempt_unlimited: form.attempt_unlimited,
         status: form.status,
       };
       if (isEdit && ujian) {
@@ -408,6 +417,56 @@ export function UjianFormDialog({
                   {errors.waktu_selesai}
                 </p>
               )}
+            </div>
+          </div>
+
+          {/* Attempt limit */}
+          <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+            <div className="flex items-center gap-2">
+              <input
+                id="attemptUnlimited"
+                type="checkbox"
+                checked={form.attempt_unlimited}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    attempt_unlimited: e.target.checked,
+                  }))
+                }
+                disabled={mutation.isPending}
+                className="size-4"
+              />
+              <Label htmlFor="attemptUnlimited" className="cursor-pointer">
+                Attempts tidak dibatasi
+              </Label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-3 items-start">
+              <div className="space-y-1.5">
+                <Label htmlFor="batasAttempt">Batas attempts</Label>
+                <Input
+                  id="batasAttempt"
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={form.batas_attempt}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      batas_attempt: Number(e.target.value) || 0,
+                    }))
+                  }
+                  disabled={mutation.isPending || form.attempt_unlimited}
+                />
+                {errors.batas_attempt && (
+                  <p className="text-xs text-destructive">
+                    {errors.batas_attempt}
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground sm:pt-7">
+                Default 1 kali. Kalau unlimited aktif, angka ini tetap disimpan
+                tapi tidak dipakai saat siswa mulai ulangan.
+              </p>
             </div>
           </div>
 

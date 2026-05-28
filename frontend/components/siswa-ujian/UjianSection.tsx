@@ -313,9 +313,17 @@ function LobbyPanel({
   const jumlahSoal = jumlahSoalEstimasi(ujian);
 
   const attemptCount = myItems.filter((h) => h.status === 'selesai').length;
+  const usedAttemptCount = myItems.filter(
+    (h) => h.status !== 'dibatalkan',
+  ).length;
   const cancelledCount = myItems.filter(
     (h) => h.status === 'dibatalkan',
   ).length;
+  const attemptLimit = ujian.batas_attempt ?? 1;
+  const remainingAttempts = ujian.attempt_unlimited
+    ? null
+    : Math.max(0, attemptLimit - usedAttemptCount);
+  const attemptsExhausted = remainingAttempts === 0;
   const bestNilai = bestNilaiOf(myItems);
 
   return (
@@ -355,8 +363,12 @@ function LobbyPanel({
             />
             <InfoTile
               icon={Repeat}
-              label="Attempt selesai"
-              value={`${attemptCount}×${cancelledCount > 0 ? ` · ${cancelledCount} dibatalkan` : ''}`}
+              label="Attempt tersedia"
+              value={
+                ujian.attempt_unlimited
+                  ? `${usedAttemptCount}x selesai / unlimited`
+                  : `${remainingAttempts} sisa (${usedAttemptCount}/${attemptLimit})${cancelledCount > 0 ? ` · ${cancelledCount} batal` : ''}`
+              }
             />
             <InfoTile
               icon={Trophy}
@@ -402,6 +414,7 @@ function LobbyPanel({
               <PrimaryStartButton
                 window={window_}
                 attemptCount={attemptCount}
+                attemptsExhausted={attemptsExhausted}
                 onStart={onStart}
                 starting={starting}
                 now={now}
@@ -651,6 +664,7 @@ function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
 interface PrimaryStartButtonProps {
   window: { state: WindowState; target?: number };
   attemptCount: number;
+  attemptsExhausted: boolean;
   onStart: () => void;
   starting: boolean;
   now: number;
@@ -659,6 +673,7 @@ interface PrimaryStartButtonProps {
 function PrimaryStartButton({
   window,
   attemptCount,
+  attemptsExhausted,
   onStart,
   starting,
   now,
@@ -676,6 +691,14 @@ function PrimaryStartButton({
       <SiswaButton tone="surface" disabled>
         <XCircle className="size-4" />
         Window berakhir
+      </SiswaButton>
+    );
+  }
+  if (attemptsExhausted) {
+    return (
+      <SiswaButton tone="surface" disabled>
+        <XCircle className="size-4" />
+        Batas attempts habis
       </SiswaButton>
     );
   }

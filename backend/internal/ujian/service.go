@@ -58,6 +58,8 @@ const (
 	MinDurasiMenit    = 1
 	MaxDurasiMenit    = 300 // 5 jam max (matches DB CHECK ujian_durasi_menit_check di migration 000011)
 	MaxManualSoalIDs  = 200
+	MinBatasAttempt   = 1
+	MaxBatasAttempt   = 999
 )
 
 // repoAPI is the subset of *Repo the service depends on.
@@ -164,6 +166,8 @@ type CreateInput struct {
 	WaktuSelesai               *time.Time
 	IzinkanReviewSetelahSubmit bool
 	WaktuBukaReview            *time.Time
+	BatasAttempt               int16
+	AttemptUnlimited           bool
 	Bobot                      *int
 	Status                     *Status      // optional; default = draft
 	Source                     *SourceInput // optional; bisa di-set saat create atau lewat PATCH source
@@ -190,6 +194,13 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 	}
 	if in.WaktuMulai != nil && in.WaktuSelesai != nil && in.WaktuSelesai.Before(*in.WaktuMulai) {
 		return nil, fmt.Errorf("%w: waktu_selesai before waktu_mulai", ErrInvalidInput)
+	}
+	batasAttempt := in.BatasAttempt
+	if batasAttempt == 0 {
+		batasAttempt = 1
+	}
+	if batasAttempt < MinBatasAttempt || batasAttempt > MaxBatasAttempt {
+		return nil, fmt.Errorf("%w: batas_attempt must be between %d and %d", ErrInvalidInput, MinBatasAttempt, MaxBatasAttempt)
 	}
 	bobot := 100
 	if in.Bobot != nil {
@@ -240,6 +251,8 @@ func (s *Service) Create(ctx context.Context, kelasID, callerID uuid.UUID, calle
 		SourceConfigJSON:           sourceBlob,
 		IzinkanReviewSetelahSubmit: in.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            in.WaktuBukaReview,
+		BatasAttempt:               batasAttempt,
+		AttemptUnlimited:           in.AttemptUnlimited,
 		Bobot:                      bobot,
 		Status:                     status,
 		Version:                    1,
@@ -350,6 +363,8 @@ type UpdateInput struct {
 	IzinkanReviewSetelahSubmit *bool
 	WaktuBukaReview            *time.Time
 	WaktuBukaReviewExplicit    bool
+	BatasAttempt               *int16
+	AttemptUnlimited           *bool
 	Bobot                      *int
 	Status                     *Status
 	Source                     *SourceInput // optional source change (Task 6.C.2)
@@ -428,6 +443,19 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 	if in.WaktuBukaReviewExplicit {
 		merged.WaktuBukaReview = in.WaktuBukaReview
 		fields["waktu_buka_review"] = in.WaktuBukaReview
+	}
+	if in.BatasAttempt != nil {
+		if *in.BatasAttempt < MinBatasAttempt || *in.BatasAttempt > MaxBatasAttempt {
+			return nil, fmt.Errorf("%w: batas_attempt must be between %d and %d", ErrInvalidInput, MinBatasAttempt, MaxBatasAttempt)
+		}
+		if *in.BatasAttempt != merged.BatasAttempt {
+			merged.BatasAttempt = *in.BatasAttempt
+			fields["batas_attempt"] = *in.BatasAttempt
+		}
+	}
+	if in.AttemptUnlimited != nil && *in.AttemptUnlimited != merged.AttemptUnlimited {
+		merged.AttemptUnlimited = *in.AttemptUnlimited
+		fields["attempt_unlimited"] = *in.AttemptUnlimited
 	}
 	if in.Bobot != nil {
 		if *in.Bobot < 0 {

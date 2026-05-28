@@ -210,11 +210,9 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		}, nil
 	}
 
-	// New attempt path under lock — single-attempt enforcement.
-	// HasilUjian partial-unique (ujian_id, siswa_id) WHERE deleted_at
-	// IS NULL menjamin: kalau ada row selesai/dibatalkan, deleted_at
-	// must be NOT NULL (cancel path) atau status=selesai (sudah
-	// selesai). Kita reject siswa retry kecuali guru cancel attempt.
+	// New attempt path under lock: block only when configured limit is spent.
+	// A partial unique index now guards one active berlangsung attempt, while
+	// finished attempts remain as visible history for retry counting.
 	var n int64
 	if err := tx.Model(&HasilUjian{}).
 		Where("ujian_id = ? AND siswa_id = ? AND deleted_at IS NULL", ujianID, siswaID).
@@ -222,7 +220,11 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		tx.Rollback()
 		return nil, fmt.Errorf("ujian start count: %w", err)
 	}
-	if n > 0 {
+	batasAttempt := u.BatasAttempt
+	if batasAttempt == 0 {
+		batasAttempt = 1
+	}
+	if !u.AttemptUnlimited && n >= int64(batasAttempt) {
 		tx.Rollback()
 		return nil, ErrUjianAlreadyAttempted
 	}
@@ -278,7 +280,7 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		SoalIDsJSON: datatypes.JSON(encoded),
 		MulaiAt:     mulaiAt,
 		DeadlineAt:  &deadline,
-		AttemptNo:   1, // single-attempt MVP; remedial = guru bikin ujian baru
+		AttemptNo:   int16(n + 1),
 	}
 	if err := tx.Create(hasil).Error; err != nil {
 		tx.Rollback()
@@ -319,7 +321,7 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		MulaiAt:     mulaiAt,
 		DeadlineAt:  deadline,
 		DurasiDetik: int(u.DurasiMenit) * 60,
-		AttemptNo:   1,
+		AttemptNo:   hasil.AttemptNo,
 		Resume:      false,
 	}, nil
 }

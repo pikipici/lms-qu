@@ -120,6 +120,8 @@ type Ujian struct {
 	SourceConfigJSON           datatypes.JSON `gorm:"type:jsonb;not null;default:'{}';column:source_config_json" json:"source_config_json"`
 	IzinkanReviewSetelahSubmit bool           `gorm:"not null;default:true;column:izinkan_review_setelah_submit" json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *time.Time     `gorm:"column:waktu_buka_review" json:"waktu_buka_review,omitempty"`
+	BatasAttempt               int16          `gorm:"not null;default:1;column:batas_attempt" json:"batas_attempt"`
+	AttemptUnlimited           bool           `gorm:"not null;default:false;column:attempt_unlimited" json:"attempt_unlimited"`
 	Bobot                      int            `gorm:"not null;default:100;column:bobot" json:"bobot"`
 	Status                     Status         `gorm:"not null;default:draft" json:"status"`
 	Version                    int            `gorm:"not null;default:1" json:"version"`

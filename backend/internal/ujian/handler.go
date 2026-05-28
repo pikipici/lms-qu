@@ -140,6 +140,8 @@ type createRequest struct {
 	WaktuSelesai               *string        `json:"waktu_selesai,omitempty"`
 	IzinkanReviewSetelahSubmit bool           `json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *string        `json:"waktu_buka_review,omitempty"`
+	BatasAttempt               int16          `json:"batas_attempt,omitempty"`
+	AttemptUnlimited           bool           `json:"attempt_unlimited,omitempty"`
 	Bobot                      *int           `json:"bobot,omitempty"`
 	Status                     *string        `json:"status,omitempty"`
 	Source                     *sourceRequest `json:"source,omitempty"`
@@ -188,6 +190,8 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		WaktuSelesai:               selesaiAt,
 		IzinkanReviewSetelahSubmit: req.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            bukaReview,
+		BatasAttempt:               req.BatasAttempt,
+		AttemptUnlimited:           req.AttemptUnlimited,
 		Bobot:                      req.Bobot,
 		Source:                     source,
 	}
@@ -296,6 +300,8 @@ type updateRequest struct {
 	WaktuSelesai               *string        `json:"waktu_selesai,omitempty"`
 	IzinkanReviewSetelahSubmit *bool          `json:"izinkan_review_setelah_submit,omitempty"`
 	WaktuBukaReview            *string        `json:"waktu_buka_review,omitempty"`
+	BatasAttempt               *int16         `json:"batas_attempt,omitempty"`
+	AttemptUnlimited           *bool          `json:"attempt_unlimited,omitempty"`
 	Bobot                      *int           `json:"bobot,omitempty"`
 	Status                     *string        `json:"status,omitempty"`
 	Source                     *sourceRequest `json:"source,omitempty"`
@@ -363,6 +369,8 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		IzinkanReviewSetelahSubmit: req.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            bukaReview,
 		WaktuBukaReviewExplicit:    hasBuka,
+		BatasAttempt:               req.BatasAttempt,
+		AttemptUnlimited:           req.AttemptUnlimited,
 		Bobot:                      req.Bobot,
 		Source:                     source,
 	}

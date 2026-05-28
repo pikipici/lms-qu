@@ -197,9 +197,17 @@ export function UjianLobbyCard({
   const bestNilai = React.useMemo(() => pickBestNilai(myItems), [myItems]);
 
   const attemptCount = myItems.filter((h) => h.status === 'selesai').length;
+  const usedAttemptCount = myItems.filter(
+    (h) => h.status !== 'dibatalkan',
+  ).length;
   const cancelledCount = myItems.filter(
     (h) => h.status === 'dibatalkan',
   ).length;
+  const attemptLimit = ujian.batas_attempt ?? 1;
+  const remainingAttempts = ujian.attempt_unlimited
+    ? null
+    : Math.max(0, attemptLimit - usedAttemptCount);
+  const attemptsExhausted = remainingAttempts === 0;
 
   const jumlahSoal = jumlahSoalEstimasi(ujian);
   const sourceLabel = sourceModeLabel(ujian);
@@ -246,8 +254,12 @@ export function UjianLobbyCard({
           />
           <InfoTile
             icon={Repeat}
-            label="Attempt selesai"
-            value={`${attemptCount}×${cancelledCount > 0 ? ` · ${cancelledCount} dibatalkan` : ''}`}
+            label="Attempt tersedia"
+            value={
+              ujian.attempt_unlimited
+                ? `${usedAttemptCount}x selesai / unlimited`
+                : `${remainingAttempts} sisa (${usedAttemptCount}/${attemptLimit})${cancelledCount > 0 ? ` · ${cancelledCount} batal` : ''}`
+            }
           />
           <InfoTile
             icon={ShieldCheck}
@@ -281,6 +293,7 @@ export function UjianLobbyCard({
             now={now}
             targetMillis={windowInfo.targetMillis}
             attemptCount={attemptCount}
+            attemptsExhausted={attemptsExhausted}
           />
           {latest &&
           latest.status === 'selesai' &&
@@ -465,6 +478,7 @@ interface PrimaryCTAProps {
   now: number;
   targetMillis?: number;
   attemptCount: number;
+  attemptsExhausted: boolean;
 }
 
 function PrimaryCTA({
@@ -474,6 +488,7 @@ function PrimaryCTA({
   now,
   targetMillis,
   attemptCount,
+  attemptsExhausted,
 }: PrimaryCTAProps) {
   if (inflight) {
     return (
@@ -499,6 +514,14 @@ function PrimaryCTA({
       <SiswaButton tone="surface" disabled>
         <XCircle className="size-4" />
         Window berakhir
+      </SiswaButton>
+    );
+  }
+  if (attemptsExhausted) {
+    return (
+      <SiswaButton tone="surface" disabled>
+        <XCircle className="size-4" />
+        Batas attempts habis
       </SiswaButton>
     );
   }
