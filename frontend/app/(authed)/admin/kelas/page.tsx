@@ -5,7 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Archive, ArchiveRestore, Plus, RotateCcw } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
-import { type Kelas, createKelas, listKelas } from '@/lib/kelas-api';
+import { type Kelas, archiveKelas, createKelas, listKelas, updateKelas } from '@/lib/kelas-api';
 import { listSekolahOptions } from '@/lib/sekolah-api';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -36,7 +36,7 @@ function formatDate(input?: string | null): string {
   }
 }
 
-function KelasCard({ kelas }: { kelas: Kelas }) {
+function KelasCard({ kelas, onEdit, onArchive }: { kelas: Kelas; onEdit: (kelas: Kelas) => void; onArchive: (kelas: Kelas) => void }) {
   const archived = Boolean(kelas.archived_at);
   return (
     <Card className={archived ? 'opacity-70' : undefined}>
@@ -65,6 +65,16 @@ function KelasCard({ kelas }: { kelas: Kelas }) {
           <dt className="text-muted-foreground">Dibuat</dt>
           <dd className="text-right text-muted-foreground">{formatDate(kelas.created_at)}</dd>
         </dl>
+        <div className="flex gap-2 pt-1">
+          <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => onEdit(kelas)}>
+            Edit
+          </Button>
+          {!archived ? (
+            <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => onArchive(kelas)}>
+              Arsipkan
+            </Button>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );
@@ -150,11 +160,99 @@ function CreateKelasDialog({ open, onOpenChange, onCreated }: { open: boolean; o
   );
 }
 
+function EditKelasDialog({ kelas, onOpenChange, onSaved }: { kelas: Kelas | null; onOpenChange: (open: boolean) => void; onSaved: () => void }) {
+  const { toast } = useToast();
+  const [nama, setNama] = React.useState('');
+  const [deskripsi, setDeskripsi] = React.useState('');
+
+  React.useEffect(() => {
+    setNama(kelas?.nama ?? '');
+    setDeskripsi(kelas?.deskripsi ?? '');
+  }, [kelas]);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!kelas) throw new Error('kelas kosong');
+      return updateKelas(kelas.id, { version: kelas.version, nama: nama.trim(), deskripsi: deskripsi.trim() });
+    },
+    onSuccess: ({ kelas: saved }) => {
+      toast({ title: 'Kelas diperbarui', description: saved.nama });
+      onSaved();
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      const message = err instanceof ApiError ? err.message : 'Gagal memperbarui kelas.';
+      toast({ title: 'Tidak bisa update kelas', description: message, variant: 'destructive' });
+    },
+  });
+
+  return (
+    <Dialog open={Boolean(kelas)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit kelas</DialogTitle>
+          <DialogDescription>Ubah nama dan deskripsi kelas. Sekolah/guru pengampu belum dipindah dari dialog ini.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (nama.trim()) mutation.mutate(); }}>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-nama">Nama kelas</Label>
+            <Input id="edit-nama" value={nama} onChange={(e) => setNama(e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-deskripsi">Deskripsi</Label>
+            <textarea id="edit-deskripsi" className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" value={deskripsi} onChange={(e) => setDeskripsi(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>Batal</Button>
+            <Button type="submit" disabled={!nama.trim() || mutation.isPending}>{mutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ArchiveKelasDialog({ kelas, onOpenChange, onArchived }: { kelas: Kelas | null; onOpenChange: (open: boolean) => void; onArchived: () => void }) {
+  const { toast } = useToast();
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!kelas) throw new Error('kelas kosong');
+      return archiveKelas(kelas.id);
+    },
+    onSuccess: ({ kelas: archived }) => {
+      toast({ title: 'Kelas diarsipkan', description: archived.nama });
+      onArchived();
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      const message = err instanceof ApiError ? err.message : 'Gagal mengarsipkan kelas.';
+      toast({ title: 'Tidak bisa arsipkan kelas', description: message, variant: 'destructive' });
+    },
+  });
+
+  return (
+    <Dialog open={Boolean(kelas)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Arsipkan kelas?</DialogTitle>
+          <DialogDescription>Kelas {kelas?.nama ? `"${kelas.nama}"` : 'ini'} akan disembunyikan dari daftar aktif.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>Batal</Button>
+          <Button type="button" variant="destructive" onClick={() => mutation.mutate()} disabled={mutation.isPending}>{mutation.isPending ? 'Mengarsipkan...' : 'Arsipkan'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminKelasPage() {
   const [page, setPage] = React.useState(1);
   const [includeArchived, setIncludeArchived] = React.useState(false);
   const [selectedSekolahId, setSelectedSekolahId] = React.useState('');
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [editingKelas, setEditingKelas] = React.useState<Kelas | null>(null);
+  const [archivingKelas, setArchivingKelas] = React.useState<Kelas | null>(null);
   const queryClient = useQueryClient();
 
   React.useEffect(() => setPage(1), [includeArchived, selectedSekolahId]);
@@ -207,7 +305,11 @@ export default function AdminKelasPage() {
           ) : items.length === 0 ? (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">Belum ada kelas. Klik Tambah kelas untuk mulai.</div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{items.map((k) => <KelasCard key={k.id} kelas={k} />)}</div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {items.map((k) => (
+                <KelasCard key={k.id} kelas={k} onEdit={setEditingKelas} onArchive={setArchivingKelas} />
+              ))}
+            </div>
           )}
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground">
             <Button variant="outline" size="sm" disabled={page <= 1 || kelasQuery.isFetching} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</Button>
@@ -216,7 +318,28 @@ export default function AdminKelasPage() {
         </CardContent>
       </Card>
 
-      <CreateKelasDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => { setPage(1); queryClient.invalidateQueries({ queryKey: ['admin', 'kelas'] }); }} />
+      <CreateKelasDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={() => {
+          setPage(1);
+          queryClient.invalidateQueries({ queryKey: ['admin', 'kelas'] });
+        }}
+      />
+      <EditKelasDialog
+        kelas={editingKelas}
+        onOpenChange={(open) => {
+          if (!open) setEditingKelas(null);
+        }}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ['admin', 'kelas'] })}
+      />
+      <ArchiveKelasDialog
+        kelas={archivingKelas}
+        onOpenChange={(open) => {
+          if (!open) setArchivingKelas(null);
+        }}
+        onArchived={() => queryClient.invalidateQueries({ queryKey: ['admin', 'kelas'] })}
+      />
     </div>
   );
 }
