@@ -30,7 +30,10 @@ export function RoleGuard({
 }) {
   const router = useRouter();
   const role = useAuthStore((s) => s.user?.role ?? null);
-  const allowed = Array.isArray(allow) ? allow : [allow];
+  const allowed = React.useMemo(
+    () => (Array.isArray(allow) ? allow : [allow]),
+    [allow],
+  );
 
   React.useEffect(() => {
     if (!role) return; // parent AuthGuard handles anonymous

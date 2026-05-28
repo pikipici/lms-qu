@@ -77,7 +77,7 @@ export function GradeSubmissionDialog({
     setNilaiInput(submission.nilai_asli?.toString() ?? '');
     setFeedback(submission.feedback ?? '');
     setError(null);
-  }, [submission.id, submission.version]);
+  }, [submission.feedback, submission.id, submission.nilai_asli, submission.version]);
 
   const nilaiNum = Number(nilaiInput);
   const nilaiValid =

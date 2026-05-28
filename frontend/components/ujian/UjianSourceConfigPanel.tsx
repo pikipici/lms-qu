@@ -88,7 +88,10 @@ export function UjianSourceConfigPanel({
     staleTime: 30_000,
   });
 
-  const allSoal = masterQuery.data?.items ?? [];
+  const allSoal = React.useMemo(
+    () => masterQuery.data?.items ?? [],
+    [masterQuery.data?.items],
+  );
 
   const allMapel = React.useMemo(() => {
     const set = new Set<string>();

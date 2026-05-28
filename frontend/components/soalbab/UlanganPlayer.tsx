@@ -240,8 +240,9 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
   // Debounce timer per soalID.
   const debounceRef = React.useRef<Record<string, number>>({});
   React.useEffect(() => {
+    const timers = debounceRef.current;
     return () => {
-      Object.values(debounceRef.current).forEach((id) => window.clearTimeout(id));
+      Object.values(timers).forEach((id) => window.clearTimeout(id));
     };
   }, []);
 

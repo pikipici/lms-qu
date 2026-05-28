@@ -19,6 +19,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, ImageOff, Loader2 } from 'lucide-react';
 
@@ -256,12 +257,13 @@ function SlotImage({ soal, slot }: SlotImageProps) {
     );
   }
 
-  // Static export → tidak pakai next/image; <img> aman dari rules.
-  // eslint-disable-next-line @next/next/no-img-element
   return (
-    <img
+    <Image
       src={presign.data.url}
       alt={`Gambar slot ${slot}`}
+      width={960}
+      height={540}
+      unoptimized
       className="max-h-64 rounded-md border bg-card object-contain"
     />
   );
