@@ -19,7 +19,7 @@ type Repo struct {
 func NewRepo(db *gorm.DB) *Repo { return &Repo{db: db} }
 
 func (r *Repo) ListPublicSekolah(ctx context.Context) ([]PublicSekolah, error) {
-	var rows []PublicSekolah
+	rows := make([]PublicSekolah, 0)
 	err := r.db.WithContext(ctx).
 		Table("sekolah").
 		Select("id, nama, siswa_registration_enabled, siswa_registration_mode").
@@ -30,7 +30,7 @@ func (r *Repo) ListPublicSekolah(ctx context.Context) ([]PublicSekolah, error) {
 }
 
 func (r *Repo) ListPublicKelas(ctx context.Context, sekolahID uuid.UUID) ([]PublicKelas, error) {
-	var rows []PublicKelas
+	rows := make([]PublicKelas, 0)
 	err := r.db.WithContext(ctx).
 		Table("kelas k").
 		Select("k.id, k.nama").

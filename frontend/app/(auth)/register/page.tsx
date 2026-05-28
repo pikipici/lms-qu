@@ -37,7 +37,8 @@ export default function RegisterSiswaPage() {
   const [form, setForm] = React.useState(emptyForm);
 
   const sekolahQ = useQuery({ queryKey: ['public-sekolah'], queryFn: listPublicSekolah });
-  const selectedSekolah = sekolahQ.data?.data.find((s) => s.id === form.sekolah_id);
+  const sekolahItems = sekolahQ.data?.data ?? [];
+  const selectedSekolah = sekolahItems.find((s) => s.id === form.sekolah_id);
   const kelasQ = useQuery({
     queryKey: ['public-kelas', form.sekolah_id],
     queryFn: () => listPublicKelas(form.sekolah_id),
@@ -99,7 +100,7 @@ export default function RegisterSiswaPage() {
                     required
                   >
                     <option value="">Pilih sekolah</option>
-                    {(sekolahQ.data?.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
+                    {sekolahItems.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
