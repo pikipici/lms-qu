@@ -363,11 +363,11 @@ function LobbyPanel({
             />
             <InfoTile
               icon={Repeat}
-              label="Attempt tersedia"
+              label="Kesempatan"
               value={
                 ujian.attempt_unlimited
-                  ? `${usedAttemptCount}x selesai / unlimited`
-                  : `${remainingAttempts} sisa (${usedAttemptCount}/${attemptLimit})${cancelledCount > 0 ? ` · ${cancelledCount} batal` : ''}`
+                  ? 'Tidak terbatas'
+                  : `${remainingAttempts} tersisa dari ${attemptLimit}${cancelledCount > 0 ? ` · ${cancelledCount} batal` : ''}`
               }
             />
             <InfoTile
@@ -698,7 +698,7 @@ function PrimaryStartButton({
     return (
       <SiswaButton tone="surface" disabled>
         <XCircle className="size-4" />
-        Batas attempts habis
+        Kesempatan habis
       </SiswaButton>
     );
   }
