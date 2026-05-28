@@ -1,36 +1,47 @@
 'use client';
 
 /**
- * /guru/kelas — list kelas yang di-assign admin ke guru.
+ * /guru/kelas — list + create kelas (Fase 2.B.3).
  *
- * Backend contract:
- *   GET /api/v1/kelas?page&page_size&include_archived&sekolah_id
+ * Backend contract (commits c14640d → 620594f):
+ *   GET  /api/v1/kelas?page&page_size&include_archived&sekolah_id
  *     -> { items, page, page_size, total, total_pages }
+ *   POST /api/v1/kelas { nama, deskripsi?, sekolah_id? }
+ *     -> 201 { kelas }
  *
  * UX:
  *   - Card grid (1/2/3 col responsive).
  *   - Filter `include_archived` checkbox.
  *   - Pagination via Prev/Next + total info, mirrors /admin/pengguna.
+ *   - "+ Buat Kelas Baru" opens shadcn Dialog with react-hook-form + zod.
  *   - Kode invite copy-to-clipboard from each card.
+ *   - 2.B.4 (detail/edit) belum dibangun → tombol "Detail" disabled w/ note.
  */
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
+  useMutation,
   useQuery,
   keepPreviousData,
+  useQueryClient,
 } from '@tanstack/react-query';
 import {
   Archive,
   ArchiveRestore,
   ClipboardCheck,
   ClipboardCopy,
+  Plus,
   RotateCcw,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import {
   type Kelas,
+  createKelas,
   listKelas,
 } from '@/lib/kelas-api';
 import { listSekolahOptions } from '@/lib/sekolah-api';
@@ -44,9 +55,54 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 const PAGE_SIZE = 12;
+
+const createSchema = z.object({
+  nama: z
+    .string()
+    .trim()
+    .min(1, { message: 'Nama wajib diisi.' })
+    .max(120, { message: 'Maksimal 120 karakter.' }),
+  deskripsi: z.string().trim().max(500, { message: 'Maksimal 500 karakter.' }),
+  sekolah_id: z.string().trim(),
+});
+
+type CreateForm = z.infer<typeof createSchema>;
+
+function friendlyCreateError(err: ApiError): string {
+  switch (err.code) {
+    case 'invalid_input':
+      return 'Input tidak valid. Cek kembali nama kelas.';
+    case 'invalid_bobot':
+      return 'Konfigurasi bobot kelas tidak valid.';
+    case 'kode_invite_collision':
+      return 'Server gagal generate kode invite (collision). Coba lagi.';
+    case 'forbidden':
+      return 'Akun lu tidak diizinkan membuat kelas baru.';
+    default:
+      return err.message;
+  }
+}
 
 function formatDate(input?: string | null): string {
   if (!input) return '—';
@@ -163,10 +219,161 @@ function KelasCard({ kelas }: { kelas: Kelas }) {
   );
 }
 
+function CreateKelasDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const form = useForm<CreateForm>({
+    resolver: zodResolver(createSchema),
+    defaultValues: {
+      nama: '',
+      deskripsi: '',
+      sekolah_id: '',
+    },
+  });
+
+  React.useEffect(() => {
+    if (!open) form.reset();
+  }, [open, form]);
+
+  const sekolahQuery = useQuery({
+    queryKey: ['sekolah-options'],
+    queryFn: () => listSekolahOptions({ pageSize: 100 }),
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (input: CreateForm) =>
+      createKelas({
+        nama: input.nama.trim(),
+        deskripsi: input.deskripsi.trim() || undefined,
+        sekolah_id: input.sekolah_id || undefined,
+      }),
+    onSuccess: ({ kelas }) => {
+      toast({
+        title: 'Kelas dibuat',
+        description: `Kode invite: ${kelas.kode_invite}`,
+      });
+      onCreated();
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      const message =
+        err instanceof ApiError ? friendlyCreateError(err) : 'Gagal membuat kelas.';
+      const requestId = err instanceof ApiError ? err.requestId : undefined;
+      toast({
+        title: 'Tidak bisa membuat kelas',
+        description: requestId ? `${message} (req: ${requestId})` : message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const onSubmit = form.handleSubmit((values) => mutation.mutate(values));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Buat kelas baru</DialogTitle>
+          <DialogDescription>
+            Isi nama kelas. Kode invite akan di-generate otomatis (6 karakter,
+            hindari karakter ambigu seperti O/0/I/1).
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="nama"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nama kelas</FormLabel>
+                  <FormControl>
+                    <Input
+                      autoFocus
+                      placeholder="Misal: Matematika 7A 2026/2027"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="deskripsi"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Deskripsi (opsional)</FormLabel>
+                  <FormControl>
+                    <textarea
+                      className="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      placeholder="Catatan singkat tentang kelas ini."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="sekolah_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sekolah (opsional)</FormLabel>
+                  <FormControl>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      {...field}
+                    >
+                      <option value="">Tanpa sekolah</option>
+                      {(sekolahQuery.data?.items ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>{s.nama}</option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Pilihan ini muncul dari master sekolah admin.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={mutation.isPending}
+              >
+                Batal
+              </Button>
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? 'Menyimpan…' : 'Buat kelas'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function GuruKelasListPage() {
   const [page, setPage] = React.useState(1);
   const [includeArchived, setIncludeArchived] = React.useState(false);
   const [selectedSekolahId, setSelectedSekolahId] = React.useState('');
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     setPage(1);
@@ -195,16 +402,25 @@ export default function GuruKelasListPage() {
   const total = kelasQuery.data?.total ?? 0;
   const totalPages = kelasQuery.data?.total_pages ?? 0;
 
+  const onCreated = React.useCallback(() => {
+    setPage(1);
+    queryClient.invalidateQueries({ queryKey: ['guru', 'kelas'] });
+  }, [queryClient]);
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Kelas</h1>
           <p className="text-sm text-muted-foreground">
-            Daftar kelas yang ditugaskan admin ke akun lu. Salin kode invite,
-            atau buka detail untuk atur siswa dan materi.
+            Daftar kelas yang lu kelola. Buat kelas baru, salin kode invite,
+            atau buka detail untuk atur siswa dan materi (segera).
           </p>
         </div>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="size-4" />
+          Buat kelas baru
+        </Button>
       </header>
 
       <Card>
@@ -279,8 +495,8 @@ export default function GuruKelasListPage() {
           ) : items.length === 0 ? (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
               {includeArchived
-                ? 'Belum ada kelas.'
-                : 'Belum ada kelas aktif. Centang "Tampilkan diarsipkan" atau hubungi admin.'}
+                ? 'Belum ada kelas. Buat kelas pertama lu sekarang.'
+                : 'Belum ada kelas aktif. Centang "Tampilkan diarsipkan" atau buat kelas baru.'}
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -313,6 +529,11 @@ export default function GuruKelasListPage() {
         </CardContent>
       </Card>
 
+      <CreateKelasDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={onCreated}
+      />
     </div>
   );
 }
