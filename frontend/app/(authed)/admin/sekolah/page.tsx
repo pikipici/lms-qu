@@ -2,8 +2,10 @@
 
 import * as React from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit, Plus, Search, Trash2 } from 'lucide-react';
+import { Archive, Edit, Plus, Search, Trash2 } from 'lucide-react';
 
+import { api, ApiError } from '@/lib/api';
+import { archiveKelas, createKelas, listKelas, updateKelas, type Kelas } from '@/lib/kelas-api';
 import {
   createSekolah,
   deleteSekolah,
@@ -43,6 +45,124 @@ const emptyForm: SekolahForm = {
   siswa_registration_enabled: false,
   siswa_registration_mode: 'approval_required',
 };
+
+type GuruOption = { id: string; name: string; email: string };
+type GuruListResponse = { users: GuruOption[] };
+
+function RombelSection({ sekolah }: { sekolah: Sekolah }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [nama, setNama] = React.useState('');
+  const [editing, setEditing] = React.useState<Kelas | null>(null);
+  const [editNama, setEditNama] = React.useState('');
+
+  const rombel = useQuery({
+    queryKey: ['admin-rombel', sekolah.id],
+    queryFn: () => listKelas({ sekolahId: sekolah.id, pageSize: 100 }),
+    enabled: Boolean(sekolah.id),
+  });
+  const guruQuery = useQuery({
+    queryKey: ['admin', 'guru-options', 'fallback'],
+    queryFn: () => api<GuruListResponse>('/admin/users?role=guru&status=active&page_size=1'),
+    staleTime: 60_000,
+  });
+  const fallbackGuruID = guruQuery.data?.users?.[0]?.id ?? '';
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-rombel', sekolah.id] });
+    queryClient.invalidateQueries({ queryKey: ['admin-sekolah'] });
+  };
+
+  const create = useMutation({
+    mutationFn: () => createKelas({ nama: nama.trim(), sekolah_id: sekolah.id, guru_id: fallbackGuruID }),
+    onSuccess: () => {
+      setNama('');
+      invalidate();
+      toast({ title: 'Rombel ditambahkan' });
+    },
+    onError: (err) => {
+      const message = err instanceof ApiError ? err.message : 'Gagal menambah rombel';
+      toast({ title: 'Gagal menambah rombel', description: message, variant: 'destructive' });
+    },
+  });
+
+  const update = useMutation({
+    mutationFn: () => {
+      if (!editing) throw new Error('rombel kosong');
+      return updateKelas(editing.id, { version: editing.version, nama: editNama.trim(), deskripsi: editing.deskripsi ?? '' });
+    },
+    onSuccess: () => {
+      setEditing(null);
+      setEditNama('');
+      invalidate();
+      toast({ title: 'Rombel diperbarui' });
+    },
+    onError: (err) => {
+      const message = err instanceof ApiError ? err.message : 'Gagal update rombel';
+      toast({ title: 'Gagal update rombel', description: message, variant: 'destructive' });
+    },
+  });
+
+  const archive = useMutation({
+    mutationFn: archiveKelas,
+    onSuccess: () => {
+      invalidate();
+      toast({ title: 'Rombel diarsipkan' });
+    },
+    onError: () => toast({ title: 'Gagal arsipkan rombel', variant: 'destructive' }),
+  });
+
+  const canCreate = nama.trim() !== '' && fallbackGuruID !== '' && !create.isPending;
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+      <div>
+        <h3 className="text-sm font-semibold">Rombel {sekolah.nama}</h3>
+        <p className="text-xs text-muted-foreground">Rombel adalah kelas resmi sekolah, contoh VII-A atau VIII-B. Guru pengampu tidak dipilih di sini.</p>
+      </div>
+      <form
+        className="flex flex-col gap-2 md:flex-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canCreate) create.mutate();
+        }}
+      >
+        <Input value={nama} onChange={(e) => setNama(e.target.value)} placeholder="Nama rombel, misal: VII-A" />
+        <Button type="submit" disabled={!canCreate}>{create.isPending ? 'Menambah...' : 'Tambah Rombel'}</Button>
+      </form>
+      {fallbackGuruID === '' && !guruQuery.isLoading ? <p className="text-xs text-destructive">Belum ada akun guru aktif. Buat satu akun guru dulu agar rombel sementara bisa disimpan.</p> : null}
+      <div className="space-y-2">
+        {(rombel.data?.items ?? []).map((item) => (
+          <div key={item.id} className="flex flex-col gap-2 rounded-md border bg-background p-2 md:flex-row md:items-center md:justify-between">
+            {editing?.id === item.id ? (
+              <Input value={editNama} onChange={(e) => setEditNama(e.target.value)} className="md:max-w-xs" />
+            ) : (
+              <div>
+                <div className="font-medium">{item.nama}</div>
+                <div className="text-xs text-muted-foreground">{item.jumlah_murid ?? 0} siswa</div>
+              </div>
+            )}
+            <div className="flex gap-2">
+              {editing?.id === item.id ? (
+                <>
+                  <Button size="sm" onClick={() => update.mutate()} disabled={!editNama.trim() || update.isPending}>Simpan</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditing(null)}>Batal</Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => { setEditing(item); setEditNama(item.nama); }}><Edit className="mr-2 size-4" />Edit</Button>
+                  <Button size="sm" variant="outline" onClick={() => archive.mutate(item.id)} disabled={archive.isPending}><Archive className="mr-2 size-4" />Arsipkan</Button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        {rombel.isLoading ? <p className="text-sm text-muted-foreground">Memuat rombel...</p> : null}
+        {!rombel.isLoading && rombel.data?.items.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada rombel untuk sekolah ini.</p> : null}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminSekolahPage() {
   const queryClient = useQueryClient();
@@ -98,8 +218,8 @@ export default function AdminSekolahPage() {
     <main className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Master Sekolah</h1>
-          <p className="text-sm text-muted-foreground">Kelola daftar sekolah untuk metadata kelas guru.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Sekolah & Rombel</h1>
+          <p className="text-sm text-muted-foreground">Kelola sekolah dan rombel resmi untuk pendaftaran siswa.</p>
         </div>
         <Button onClick={() => { setEditing(null); setForm(emptyForm); }}>
           <Plus className="mr-2 size-4" /> Tambah Sekolah
@@ -158,6 +278,7 @@ export default function AdminSekolahPage() {
               <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Menyimpan...' : 'Simpan'}</Button>
             </div>
           </form>
+          {editing ? <div className="mt-4"><RombelSection sekolah={editing} /></div> : null}
         </CardContent>
       </Card>
 
@@ -179,7 +300,7 @@ export default function AdminSekolahPage() {
                 <div className="font-medium">{row.nama}</div>
                 <div className="text-sm text-muted-foreground">{row.npsn || 'Tanpa NPSN'} · {row.alamat || 'Tanpa alamat'}</div>
                 <div className="mt-1 text-xs font-medium text-muted-foreground">
-                  {row.jumlah_kelas ?? 0} kelas aktif · Daftar siswa: {row.siswa_registration_enabled ? (row.siswa_registration_mode === 'auto_approve' ? 'langsung masuk' : 'perlu approval') : 'nonaktif'}
+                  {row.jumlah_kelas ?? 0} rombel aktif · Daftar siswa: {row.siswa_registration_enabled ? (row.siswa_registration_mode === 'auto_approve' ? 'langsung masuk' : 'perlu approval') : 'nonaktif'}
                 </div>
               </div>
               <div className="flex gap-2">
