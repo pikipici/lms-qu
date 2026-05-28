@@ -74,11 +74,10 @@ export function UlanganLobby({
     [ulanganItems],
   );
 
-  const sisaAttempt = Math.max(
-    0,
-    setting.batas_attempt - hasilList.attempt_count,
-  );
-  const batasReached = !inflight && sisaAttempt <= 0;
+  const sisaAttempt = setting.attempt_unlimited
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, setting.batas_attempt - hasilList.attempt_count);
+  const batasReached = !inflight && !setting.attempt_unlimited && sisaAttempt <= 0;
 
   return (
     <div className="space-y-4">
@@ -138,7 +137,7 @@ export function UlanganLobby({
             <InfoTile
               icon={Repeat}
               label="Batas attempt"
-              value={`${setting.batas_attempt}×`}
+              value={setting.attempt_unlimited ? 'Unlimited' : `${setting.batas_attempt}×`}
             />
             <InfoTile
               icon={Clock3}
@@ -146,7 +145,9 @@ export function UlanganLobby({
               value={
                 inflight
                   ? '— (masih ada attempt berjalan)'
-                  : `${sisaAttempt}×`
+                  : setting.attempt_unlimited
+                    ? 'Unlimited'
+                    : `${sisaAttempt}×`
               }
               accent={!inflight && sisaAttempt === 0 ? 'rose' : 'default'}
             />

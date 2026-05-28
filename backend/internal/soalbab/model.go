@@ -122,29 +122,29 @@ func (j Jawaban) Valid() bool {
 // atau keduanya (default). KelasID di-denormal untuk query cepat tanpa
 // join via bab.
 type SoalBab struct {
-	ID                    uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	BabID                 uuid.UUID `gorm:"type:uuid;not null;index;column:bab_id" json:"bab_id"`
-	KelasID               uuid.UUID `gorm:"type:uuid;not null;index;column:kelas_id" json:"kelas_id"`
-	Pertanyaan            string    `gorm:"not null;default:''" json:"pertanyaan"`
-	PertanyaanObjectKey   *string   `gorm:"column:pertanyaan_object_key" json:"pertanyaan_object_key,omitempty"`
-	OpsiA                 string    `gorm:"not null;default:'';column:opsi_a" json:"opsi_a"`
-	OpsiAObjectKey        *string   `gorm:"column:opsi_a_object_key" json:"opsi_a_object_key,omitempty"`
-	OpsiB                 string    `gorm:"not null;default:'';column:opsi_b" json:"opsi_b"`
-	OpsiBObjectKey        *string   `gorm:"column:opsi_b_object_key" json:"opsi_b_object_key,omitempty"`
-	OpsiC                 string    `gorm:"not null;default:'';column:opsi_c" json:"opsi_c"`
-	OpsiCObjectKey        *string   `gorm:"column:opsi_c_object_key" json:"opsi_c_object_key,omitempty"`
-	OpsiD                 string    `gorm:"not null;default:'';column:opsi_d" json:"opsi_d"`
-	OpsiDObjectKey        *string   `gorm:"column:opsi_d_object_key" json:"opsi_d_object_key,omitempty"`
-	OpsiE                 string    `gorm:"not null;default:'';column:opsi_e" json:"opsi_e"`
-	OpsiEObjectKey        *string   `gorm:"column:opsi_e_object_key" json:"opsi_e_object_key,omitempty"`
-	Jawaban               Jawaban   `gorm:"not null" json:"jawaban"`
-	Poin                  int16     `gorm:"not null;default:1" json:"poin"`
-	Mode                  Mode      `gorm:"not null;default:keduanya" json:"mode"`
-	Urutan                int       `gorm:"not null;default:0" json:"urutan"`
-	Version               int       `gorm:"not null;default:1" json:"version"`
-	CreatedByID           uuid.UUID `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                  uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	BabID               uuid.UUID `gorm:"type:uuid;not null;index;column:bab_id" json:"bab_id"`
+	KelasID             uuid.UUID `gorm:"type:uuid;not null;index;column:kelas_id" json:"kelas_id"`
+	Pertanyaan          string    `gorm:"not null;default:''" json:"pertanyaan"`
+	PertanyaanObjectKey *string   `gorm:"column:pertanyaan_object_key" json:"pertanyaan_object_key,omitempty"`
+	OpsiA               string    `gorm:"not null;default:'';column:opsi_a" json:"opsi_a"`
+	OpsiAObjectKey      *string   `gorm:"column:opsi_a_object_key" json:"opsi_a_object_key,omitempty"`
+	OpsiB               string    `gorm:"not null;default:'';column:opsi_b" json:"opsi_b"`
+	OpsiBObjectKey      *string   `gorm:"column:opsi_b_object_key" json:"opsi_b_object_key,omitempty"`
+	OpsiC               string    `gorm:"not null;default:'';column:opsi_c" json:"opsi_c"`
+	OpsiCObjectKey      *string   `gorm:"column:opsi_c_object_key" json:"opsi_c_object_key,omitempty"`
+	OpsiD               string    `gorm:"not null;default:'';column:opsi_d" json:"opsi_d"`
+	OpsiDObjectKey      *string   `gorm:"column:opsi_d_object_key" json:"opsi_d_object_key,omitempty"`
+	OpsiE               string    `gorm:"not null;default:'';column:opsi_e" json:"opsi_e"`
+	OpsiEObjectKey      *string   `gorm:"column:opsi_e_object_key" json:"opsi_e_object_key,omitempty"`
+	Jawaban             Jawaban   `gorm:"not null" json:"jawaban"`
+	Poin                int16     `gorm:"not null;default:1" json:"poin"`
+	Mode                Mode      `gorm:"not null;default:keduanya" json:"mode"`
+	Urutan              int       `gorm:"not null;default:0" json:"urutan"`
+	Version             int       `gorm:"not null;default:1" json:"version"`
+	CreatedByID         uuid.UUID `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // TableName binds the struct to the soal_bab table.
@@ -164,6 +164,7 @@ type UlanganBabSetting struct {
 	JumlahSoal                 int16      `gorm:"not null;default:10;column:jumlah_soal" json:"jumlah_soal"`
 	DurasiMenit                int16      `gorm:"not null;default:30;column:durasi_menit" json:"durasi_menit"`
 	BatasAttempt               int16      `gorm:"not null;default:1;column:batas_attempt" json:"batas_attempt"`
+	AttemptUnlimited           bool       `gorm:"not null;default:false;column:attempt_unlimited" json:"attempt_unlimited"`
 	IzinkanReviewSetelahSubmit bool       `gorm:"not null;default:true;column:izinkan_review_setelah_submit" json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *time.Time `gorm:"column:waktu_buka_review" json:"waktu_buka_review,omitempty"`
 	Version                    int        `gorm:"not null;default:1" json:"version"`
@@ -251,12 +252,12 @@ func (EventBab) TableName() string {
 // UNIQUE (source_bab_id, target_bab_id) supaya idempotent. Out-of-scope
 // MVP untuk endpoint; defer ke Fase 5+ kalau guru request fitur ini.
 type SoalAssignment struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	SourceBabID  uuid.UUID `gorm:"type:uuid;not null;column:source_bab_id" json:"source_bab_id"`
-	TargetBabID  uuid.UUID `gorm:"type:uuid;not null;column:target_bab_id" json:"target_bab_id"`
-	CopiedCount  int       `gorm:"not null;default:0;column:copied_count" json:"copied_count"`
-	CreatedByID  uuid.UUID `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	SourceBabID uuid.UUID `gorm:"type:uuid;not null;column:source_bab_id" json:"source_bab_id"`
+	TargetBabID uuid.UUID `gorm:"type:uuid;not null;column:target_bab_id" json:"target_bab_id"`
+	CopiedCount int       `gorm:"not null;default:0;column:copied_count" json:"copied_count"`
+	CreatedByID uuid.UUID `gorm:"type:uuid;not null;column:created_by_id" json:"created_by_id"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // TableName binds the struct to the soal_assignment table.

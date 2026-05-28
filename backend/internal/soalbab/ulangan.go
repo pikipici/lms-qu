@@ -108,15 +108,16 @@ func NewUlanganService(repo UlanganRepoAPI, b babLookup, enr enrollmentLookup, a
 // UlanganStartResult is the response payload for POST start. AttemptNo
 // surfaced supaya FE bisa tampilin "Attempt 2 dari 3" di lobby.
 type UlanganStartResult struct {
-	HasilID      uuid.UUID   `json:"hasil_id"`
-	SoalIDs      []uuid.UUID `json:"soal_ids"`
-	Total        int         `json:"total"`
-	MulaiAt      time.Time   `json:"mulai_at"`
-	DeadlineAt   time.Time   `json:"deadline_at"`
-	DurasiDetik  int         `json:"durasi_detik"`
-	AttemptNo    int16       `json:"attempt_no"`
-	BatasAttempt int16       `json:"batas_attempt"`
-	Resume       bool        `json:"resume"`
+	HasilID          uuid.UUID   `json:"hasil_id"`
+	SoalIDs          []uuid.UUID `json:"soal_ids"`
+	Total            int         `json:"total"`
+	MulaiAt          time.Time   `json:"mulai_at"`
+	DeadlineAt       time.Time   `json:"deadline_at"`
+	DurasiDetik      int         `json:"durasi_detik"`
+	AttemptNo        int16       `json:"attempt_no"`
+	BatasAttempt     int16       `json:"batas_attempt"`
+	AttemptUnlimited bool        `json:"attempt_unlimited"`
+	Resume           bool        `json:"resume"`
 }
 
 // Start either resumes an in-progress ulangan attempt for (siswa, bab)
@@ -188,15 +189,16 @@ func (s *UlanganService) Start(ctx context.Context, babID, siswaID uuid.UUID, ip
 			return nil, fmt.Errorf("soalbab ulangan commit resume: %w", err)
 		}
 		result = &UlanganStartResult{
-			HasilID:      active.ID,
-			SoalIDs:      ids,
-			Total:        len(ids),
-			MulaiAt:      active.MulaiAt,
-			DeadlineAt:   *active.DeadlineAt,
-			DurasiDetik:  int(active.DeadlineAt.Sub(active.MulaiAt).Seconds()),
-			AttemptNo:    active.AttemptNo,
-			BatasAttempt: setting.BatasAttempt,
-			Resume:       true,
+			HasilID:          active.ID,
+			SoalIDs:          ids,
+			Total:            len(ids),
+			MulaiAt:          active.MulaiAt,
+			DeadlineAt:       *active.DeadlineAt,
+			DurasiDetik:      int(active.DeadlineAt.Sub(active.MulaiAt).Seconds()),
+			AttemptNo:        active.AttemptNo,
+			BatasAttempt:     setting.BatasAttempt,
+			AttemptUnlimited: setting.AttemptUnlimited,
+			Resume:           true,
 		}
 		return result, nil
 	}
@@ -212,7 +214,7 @@ func (s *UlanganService) Start(ctx context.Context, babID, siswaID uuid.UUID, ip
 		return nil, fmt.Errorf("soalbab ulangan count: %w", err)
 	}
 	attemptNo := int16(n + 1)
-	if attemptNo > setting.BatasAttempt {
+	if !setting.AttemptUnlimited && attemptNo > setting.BatasAttempt {
 		tx.Rollback()
 		return nil, fmt.Errorf("%w: attempt_no=%d, batas=%d",
 			ErrBatasAttemptExceeded, attemptNo, setting.BatasAttempt)
@@ -296,15 +298,16 @@ func (s *UlanganService) Start(ctx context.Context, babID, siswaID uuid.UUID, ip
 	})
 
 	result = &UlanganStartResult{
-		HasilID:      hasil.ID,
-		SoalIDs:      pickedIDs,
-		Total:        int(setting.JumlahSoal),
-		MulaiAt:      mulaiAt,
-		DeadlineAt:   deadline,
-		DurasiDetik:  int(setting.DurasiMenit) * 60,
-		AttemptNo:    attemptNo,
-		BatasAttempt: setting.BatasAttempt,
-		Resume:       false,
+		HasilID:          hasil.ID,
+		SoalIDs:          pickedIDs,
+		Total:            int(setting.JumlahSoal),
+		MulaiAt:          mulaiAt,
+		DeadlineAt:       deadline,
+		DurasiDetik:      int(setting.DurasiMenit) * 60,
+		AttemptNo:        attemptNo,
+		BatasAttempt:     setting.BatasAttempt,
+		AttemptUnlimited: setting.AttemptUnlimited,
+		Resume:           false,
 	}
 	return result, nil
 }

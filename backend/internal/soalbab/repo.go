@@ -333,6 +333,7 @@ func (r *Repo) UpsertSetting(ctx context.Context, s *UlanganBabSetting, expected
 			"jumlah_soal":                   s.JumlahSoal,
 			"durasi_menit":                  s.DurasiMenit,
 			"batas_attempt":                 s.BatasAttempt,
+			"attempt_unlimited":             s.AttemptUnlimited,
 			"izinkan_review_setelah_submit": s.IzinkanReviewSetelahSubmit,
 			"waktu_buka_review":             s.WaktuBukaReview,
 			"version":                       gorm.Expr("version + 1"),

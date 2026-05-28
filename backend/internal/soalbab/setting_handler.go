@@ -45,6 +45,7 @@ type upsertSettingRequest struct {
 	JumlahSoal                 int16   `json:"jumlah_soal"`
 	DurasiMenit                int16   `json:"durasi_menit"`
 	BatasAttempt               int16   `json:"batas_attempt"`
+	AttemptUnlimited           bool    `json:"attempt_unlimited"`
 	IzinkanReviewSetelahSubmit bool    `json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *string `json:"waktu_buka_review,omitempty"`
 	Version                    int     `json:"version"`
@@ -113,6 +114,7 @@ func (h *SettingHandler) Upsert(c *fiber.Ctx) error {
 		JumlahSoal:                 req.JumlahSoal,
 		DurasiMenit:                req.DurasiMenit,
 		BatasAttempt:               req.BatasAttempt,
+		AttemptUnlimited:           req.AttemptUnlimited,
 		IzinkanReviewSetelahSubmit: req.IzinkanReviewSetelahSubmit,
 	}
 	if req.WaktuBukaReview != nil {

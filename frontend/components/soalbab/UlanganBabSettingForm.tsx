@@ -48,7 +48,7 @@ const JUMLAH_MAX = 200;
 const DURASI_MIN = 1;
 const DURASI_MAX = 300;
 const ATTEMPT_MIN = 1;
-const ATTEMPT_MAX = 10;
+const ATTEMPT_MAX = 999;
 
 export interface UlanganBabSettingFormProps {
   babID: string;
@@ -59,6 +59,7 @@ interface FormState {
   jumlah_soal: string;
   durasi_menit: string;
   batas_attempt: string;
+  attempt_unlimited: boolean;
   izinkan_review_setelah_submit: boolean;
   /** datetime-local format (YYYY-MM-DDTHH:mm) atau '' */
   waktu_buka_review_local: string;
@@ -69,6 +70,7 @@ function viewToForm(v: SettingView): FormState {
     jumlah_soal: String(v.jumlah_soal),
     durasi_menit: String(v.durasi_menit),
     batas_attempt: String(v.batas_attempt),
+    attempt_unlimited: v.attempt_unlimited,
     izinkan_review_setelah_submit: v.izinkan_review_setelah_submit,
     waktu_buka_review_local: v.waktu_buka_review
       ? rfc3339ToLocalInput(v.waktu_buka_review)
@@ -205,6 +207,7 @@ export function UlanganBabSettingForm({ babID, disabled }: UlanganBabSettingForm
     formNonNull.jumlah_soal !== String(viewNonNull.jumlah_soal) ||
     formNonNull.durasi_menit !== String(viewNonNull.durasi_menit) ||
     formNonNull.batas_attempt !== String(viewNonNull.batas_attempt) ||
+    formNonNull.attempt_unlimited !== viewNonNull.attempt_unlimited ||
     formNonNull.izinkan_review_setelah_submit !== viewNonNull.izinkan_review_setelah_submit ||
     formNonNull.waktu_buka_review_local !==
       (viewNonNull.waktu_buka_review ? rfc3339ToLocalInput(viewNonNull.waktu_buka_review) : '');
@@ -221,8 +224,8 @@ export function UlanganBabSettingForm({ babID, disabled }: UlanganBabSettingForm
     if (!Number.isInteger(durasi) || durasi < DURASI_MIN || durasi > DURASI_MAX) {
       errs.durasi_menit = `Harus angka bulat ${DURASI_MIN}–${DURASI_MAX} menit.`;
     }
-    if (!Number.isInteger(attempt) || attempt < ATTEMPT_MIN || attempt > ATTEMPT_MAX) {
-      errs.batas_attempt = `Harus angka bulat ${ATTEMPT_MIN}–${ATTEMPT_MAX}.`;
+    if (!formNonNull.attempt_unlimited && (!Number.isInteger(attempt) || attempt < ATTEMPT_MIN || attempt > ATTEMPT_MAX)) {
+      errs.batas_attempt = `Harus angka bulat ${ATTEMPT_MIN}–${ATTEMPT_MAX}, atau aktifkan unlimited.`;
     }
     if (formNonNull.waktu_buka_review_local) {
       const iso = localInputToRFC3339(formNonNull.waktu_buka_review_local);
@@ -242,7 +245,8 @@ export function UlanganBabSettingForm({ babID, disabled }: UlanganBabSettingForm
     upsertMu.mutate({
       jumlah_soal: jumlah,
       durasi_menit: durasi,
-      batas_attempt: attempt,
+      batas_attempt: formNonNull.attempt_unlimited ? ATTEMPT_MIN : attempt,
+      attempt_unlimited: formNonNull.attempt_unlimited,
       izinkan_review_setelah_submit: formNonNull.izinkan_review_setelah_submit,
       waktu_buka_review: formNonNull.waktu_buka_review_local
         ? localInputToRFC3339(formNonNull.waktu_buka_review_local)
@@ -341,11 +345,21 @@ export function UlanganBabSettingForm({ babID, disabled }: UlanganBabSettingForm
                 max={ATTEMPT_MAX}
                 value={form.batas_attempt}
                 onChange={(e) => setForm({ ...form, batas_attempt: e.target.value })}
-                disabled={disabled}
+                disabled={disabled || form.attempt_unlimited}
                 aria-invalid={Boolean(errors.batas_attempt)}
               />
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="size-3.5 rounded border-input"
+                  checked={form.attempt_unlimited}
+                  onChange={(e) => setForm({ ...form, attempt_unlimited: e.target.checked })}
+                  disabled={disabled}
+                />
+                Unlimited attempts
+              </label>
               <p className={cn('text-xs', errors.batas_attempt ? 'text-destructive' : 'text-muted-foreground')}>
-                {errors.batas_attempt ?? `${ATTEMPT_MIN}–${ATTEMPT_MAX}.`}
+                {errors.batas_attempt ?? (form.attempt_unlimited ? 'Siswa bisa mengulang tanpa batas.' : `${ATTEMPT_MIN}–${ATTEMPT_MAX}.`)}
               </p>
             </div>
           </div>

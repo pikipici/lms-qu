@@ -29,6 +29,7 @@ export interface SiswaLobbyView {
   bab_id: string;
   durasi_menit: number;
   batas_attempt: number;
+  attempt_unlimited: boolean;
   izinkan_review_setelah_submit: boolean;
   waktu_buka_review?: string | null;
   configured: boolean;
@@ -64,6 +65,7 @@ export interface UlanganStartResult {
   durasi_detik: number;
   attempt_no: number;
   batas_attempt: number;
+  attempt_unlimited: boolean;
   resume: boolean;
 }
 

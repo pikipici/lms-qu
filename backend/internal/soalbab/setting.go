@@ -55,7 +55,7 @@ const (
 	SettingMinDurasiMenit  = 1
 	SettingMaxDurasiMenit  = 300
 	SettingMinBatasAttempt = 1
-	SettingMaxBatasAttempt = 10
+	SettingMaxBatasAttempt = 999
 )
 
 // UpsertSettingInput is the resolved payload for PUT
@@ -67,6 +67,7 @@ type UpsertSettingInput struct {
 	JumlahSoal                 int16
 	DurasiMenit                int16
 	BatasAttempt               int16
+	AttemptUnlimited           bool
 	IzinkanReviewSetelahSubmit bool
 	WaktuBukaReview            *time.Time
 }
@@ -77,6 +78,7 @@ type SettingView struct {
 	JumlahSoal                 int16      `json:"jumlah_soal"`
 	DurasiMenit                int16      `json:"durasi_menit"`
 	BatasAttempt               int16      `json:"batas_attempt"`
+	AttemptUnlimited           bool       `json:"attempt_unlimited"`
 	IzinkanReviewSetelahSubmit bool       `json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *time.Time `json:"waktu_buka_review,omitempty"`
 	Version                    int        `json:"version"`
@@ -97,6 +99,7 @@ type SiswaLobbyView struct {
 	BabID                      uuid.UUID  `json:"bab_id"`
 	DurasiMenit                int16      `json:"durasi_menit"`
 	BatasAttempt               int16      `json:"batas_attempt"`
+	AttemptUnlimited           bool       `json:"attempt_unlimited"`
 	IzinkanReviewSetelahSubmit bool       `json:"izinkan_review_setelah_submit"`
 	WaktuBukaReview            *time.Time `json:"waktu_buka_review,omitempty"`
 	// Configured: false → siswa lihat "guru belum mengaktifkan ulangan",
@@ -197,6 +200,7 @@ func (s *SettingService) GetForSiswa(ctx context.Context, babID, siswaID uuid.UU
 		BabID:                      b.ID,
 		DurasiMenit:                row.DurasiMenit,
 		BatasAttempt:               row.BatasAttempt,
+		AttemptUnlimited:           row.AttemptUnlimited,
 		IzinkanReviewSetelahSubmit: row.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            row.WaktuBukaReview,
 		Configured:                 true,
@@ -253,6 +257,7 @@ func (s *SettingService) Upsert(ctx context.Context, babID, callerID uuid.UUID, 
 		JumlahSoal:                 in.JumlahSoal,
 		DurasiMenit:                in.DurasiMenit,
 		BatasAttempt:               in.BatasAttempt,
+		AttemptUnlimited:           in.AttemptUnlimited,
 		IzinkanReviewSetelahSubmit: in.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            in.WaktuBukaReview,
 	}
@@ -271,13 +276,14 @@ func (s *SettingService) Upsert(ctx context.Context, babID, callerID uuid.UUID, 
 	view := settingViewFromRow(row, pool)
 
 	meta := map[string]any{
-		"bab_id":                       b.ID.String(),
-		"jumlah_soal":                  row.JumlahSoal,
-		"durasi_menit":                 row.DurasiMenit,
-		"batas_attempt":                row.BatasAttempt,
-		"izinkan_review":               row.IzinkanReviewSetelahSubmit,
-		"pool_size":                    pool,
-		"insert":                       isInsert,
+		"bab_id":            b.ID.String(),
+		"jumlah_soal":       row.JumlahSoal,
+		"durasi_menit":      row.DurasiMenit,
+		"batas_attempt":     row.BatasAttempt,
+		"attempt_unlimited": row.AttemptUnlimited,
+		"izinkan_review":    row.IzinkanReviewSetelahSubmit,
+		"pool_size":         pool,
+		"insert":            isInsert,
 	}
 	if row.WaktuBukaReview != nil {
 		meta["waktu_buka_review"] = row.WaktuBukaReview.UTC().Format(time.RFC3339)
@@ -320,6 +326,7 @@ func defaultSettingView(babID uuid.UUID, pool int64) *SettingView {
 		JumlahSoal:                 10,
 		DurasiMenit:                30,
 		BatasAttempt:               1,
+		AttemptUnlimited:           false,
 		IzinkanReviewSetelahSubmit: true,
 		Version:                    0,
 		PoolSize:                   pool,
@@ -332,6 +339,7 @@ func defaultLobbyView(babID uuid.UUID) *SiswaLobbyView {
 		BabID:                      babID,
 		DurasiMenit:                30,
 		BatasAttempt:               1,
+		AttemptUnlimited:           false,
 		IzinkanReviewSetelahSubmit: true,
 		Configured:                 false,
 	}
@@ -345,6 +353,7 @@ func settingViewFromRow(s *UlanganBabSetting, pool int64) *SettingView {
 		JumlahSoal:                 s.JumlahSoal,
 		DurasiMenit:                s.DurasiMenit,
 		BatasAttempt:               s.BatasAttempt,
+		AttemptUnlimited:           s.AttemptUnlimited,
 		IzinkanReviewSetelahSubmit: s.IzinkanReviewSetelahSubmit,
 		WaktuBukaReview:            s.WaktuBukaReview,
 		Version:                    s.Version,

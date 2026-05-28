@@ -31,6 +31,7 @@ export interface SettingView {
   jumlah_soal: number;
   durasi_menit: number;
   batas_attempt: number;
+  attempt_unlimited: boolean;
   izinkan_review_setelah_submit: boolean;
   waktu_buka_review?: string | null;
   version: number;
@@ -44,6 +45,7 @@ export interface UpsertSettingInput {
   jumlah_soal: number;
   durasi_menit: number;
   batas_attempt: number;
+  attempt_unlimited: boolean;
   izinkan_review_setelah_submit: boolean;
   /** RFC3339 string. Empty/null clears the field. */
   waktu_buka_review?: string | null;
