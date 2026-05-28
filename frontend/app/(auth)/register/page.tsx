@@ -38,6 +38,7 @@ export default function RegisterSiswaPage() {
 
   const sekolahQ = useQuery({ queryKey: ['public-sekolah'], queryFn: listPublicSekolah });
   const sekolahItems = sekolahQ.data?.data ?? [];
+  const noSekolahOpen = sekolahQ.isSuccess && sekolahItems.length === 0;
   const selectedSekolah = sekolahItems.find((s) => s.id === form.sekolah_id);
   const kelasQ = useQuery({
     queryKey: ['public-kelas', form.sekolah_id],
@@ -97,9 +98,10 @@ export default function RegisterSiswaPage() {
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={form.sekolah_id}
                     onChange={(e) => setForm((v) => ({ ...v, sekolah_id: e.target.value, kelas_id: '' }))}
+                    disabled={noSekolahOpen}
                     required
                   >
-                    <option value="">Pilih sekolah</option>
+                    <option value="">{noSekolahOpen ? 'Belum ada sekolah aktif' : 'Pilih sekolah'}</option>
                     {sekolahItems.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
                   </select>
                 </div>
@@ -118,12 +120,23 @@ export default function RegisterSiswaPage() {
                   </select>
                 </div>
               </div>
+              {noSekolahOpen ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="font-medium">Pendaftaran mandiri belum dibuka.</p>
+                  <p className="mt-1">Belum ada sekolah yang mengaktifkan daftar mandiri. Hubungi admin sekolah untuk dibuatkan akses atau tunggu sampai pendaftaran dibuka.</p>
+                </div>
+              ) : null}
+              {sekolahQ.isError ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                  Gagal memuat daftar sekolah. Coba refresh halaman.
+                </div>
+              ) : null}
               {selectedSekolah ? (
                 <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
                   Mode sekolah ini: {selectedSekolah.siswa_registration_mode === 'auto_approve' ? 'langsung masuk kelas setelah daftar.' : 'menunggu persetujuan admin/guru setelah daftar.'}
                 </p>
               ) : null}
-              <Button className="w-full" type="submit" disabled={mutation.isPending || sekolahQ.isLoading}>
+              <Button className="w-full" type="submit" disabled={mutation.isPending || sekolahQ.isLoading || noSekolahOpen}>
                 {mutation.isPending ? 'Mendaftar...' : 'Daftar'}
               </Button>
             </form>
