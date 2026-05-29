@@ -28,6 +28,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
@@ -37,10 +38,12 @@ import {
   type UjianSourceMode,
   deleteUjian,
   duplicateUjian,
+  forceDeleteUjianTesting,
   friendlyUjianError,
   listUjianByKelas,
 } from '@/lib/ujian-api';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -68,6 +71,7 @@ export interface UjianListProps {
 
 export function UjianList({ kelasID, disabled }: UjianListProps) {
   const { toast } = useToast();
+  const userRole = useAuthStore((state) => state.user?.role);
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(
     () => ['guru', 'kelas', kelasID, 'ujian'] as const,
@@ -122,6 +126,30 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
         : 'Gagal menduplikasi ujian.';
       toast({
         title: 'Gagal menduplikasi',
+        description: apiErr?.requestId
+          ? `${message} (req: ${apiErr.requestId})`
+          : message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const forceDeleteMutation = useMutation({
+    mutationFn: (u: Ujian) => forceDeleteUjianTesting(u.id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey });
+      toast({
+        title: 'Data testing ujian dihapus',
+        description: `${res.hasil_deleted} attempt dan ${res.jawaban_deleted} jawaban ikut dibersihkan.`,
+      });
+    },
+    onError: (err) => {
+      const apiErr = err instanceof ApiError ? err : null;
+      const message = apiErr
+        ? friendlyUjianError(apiErr, 'force_delete_testing')
+        : 'Gagal menghapus data testing ujian.';
+      toast({
+        title: 'Gagal hapus data testing',
         description: apiErr?.requestId
           ? `${message} (req: ${apiErr.requestId})`
           : message,
@@ -190,10 +218,22 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
                     deleteMutation.mutate(u);
                   }
                 }}
+                onForceDeleteTesting={() => {
+                  if (
+                    confirm(
+                      `Hapus paksa data testing ujian "${u.judul}"? Semua attempt dan jawaban siswa untuk ujian ini ikut terhapus permanen.`,
+                    ) &&
+                    confirm('Konfirmasi sekali lagi: aksi ini hanya untuk testing/dev dan tidak bisa di-undo.')
+                  ) {
+                    forceDeleteMutation.mutate(u);
+                  }
+                }}
+                showTestingCleanup={userRole === 'admin'}
                 disabled={
                   disabled ||
                   deleteMutation.isPending ||
-                  duplicateMutation.isPending
+                  duplicateMutation.isPending ||
+                  forceDeleteMutation.isPending
                 }
               />
             ))}
@@ -234,6 +274,8 @@ function UjianRow({
   onEdit,
   onDuplicate,
   onDelete,
+  onForceDeleteTesting,
+  showTestingCleanup,
   disabled,
 }: {
   ujian: Ujian;
@@ -242,6 +284,8 @@ function UjianRow({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onForceDeleteTesting: () => void;
+  showTestingCleanup?: boolean;
   disabled?: boolean;
 }) {
   const sourceMode: UjianSourceMode | '' =
@@ -331,6 +375,16 @@ function UjianRow({
               <Trash2 className="size-4" />
               Hapus
             </DropdownMenuItem>
+            {showTestingCleanup && (
+              <DropdownMenuItem
+                onClick={onForceDeleteTesting}
+                disabled={disabled}
+                className="text-destructive focus:text-destructive"
+              >
+                <ShieldAlert className="size-4" />
+                Hapus data testing
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

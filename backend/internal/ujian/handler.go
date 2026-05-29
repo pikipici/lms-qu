@@ -36,17 +36,22 @@ type ujianService interface {
 	Get(ctx context.Context, id, callerID uuid.UUID, callerRole string) (*Ujian, error)
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Ujian, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole string, expectedVersion int, ip, userAgent string) (*Ujian, error)
+	ForceDeleteTesting(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Ujian, int64, int64, error)
 	Duplicate(ctx context.Context, srcID, callerID uuid.UUID, callerRole string, in DuplicateInput, ip, userAgent string) (*Ujian, error)
 	PreviewSource(ctx context.Context, ujianID, callerID uuid.UUID, callerRole string, in SourceInput) (*SourcePreview, error)
 }
 
 // Handler wires HTTP routes to ujian Service.
 type Handler struct {
-	svc ujianService
+	svc                 ujianService
+	allowTestingCleanup bool
 }
 
 // NewHandler returns an ujian HTTP handler.
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// EnableTestingCleanup toggles admin-only destructive cleanup endpoints.
+func (h *Handler) EnableTestingCleanup(enabled bool) { h.allowTestingCleanup = enabled }
 
 // ListResponse shape for GET ujian list.
 type ListResponse struct {
@@ -440,6 +445,34 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"ujian_id": u.ID,
 		"deleted":  true,
+	})
+}
+
+// ForceDeleteTesting handles POST /api/v1/ujian/:id/force-delete-testing.
+// It is admin-only and disabled when ENV=production.
+func (h *Handler) ForceDeleteTesting(c *fiber.Ctx) error {
+	if !h.allowTestingCleanup {
+		return errResp(c, fiber.StatusForbidden, "testing cleanup is disabled", "testing_cleanup_disabled")
+	}
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid ujian id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+
+	u, hasilDeleted, jawabanDeleted, err := h.svc.ForceDeleteTesting(c.UserContext(), id, callerID, role, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"ujian_id":        u.ID,
+		"deleted":         true,
+		"hasil_deleted":   hasilDeleted,
+		"jawaban_deleted": jawabanDeleted,
 	})
 }
 

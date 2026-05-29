@@ -198,6 +198,23 @@ export async function deleteUjian(
   });
 }
 
+export async function forceDeleteUjianTesting(id: string): Promise<{
+  ujian_id: string;
+  deleted: boolean;
+  hasil_deleted: number;
+  jawaban_deleted: number;
+}> {
+  return api<{
+    ujian_id: string;
+    deleted: boolean;
+    hasil_deleted: number;
+    jawaban_deleted: number;
+  }>(`/ujian/${id}/force-delete-testing`, {
+    method: 'POST',
+    body: {},
+  });
+}
+
 export async function duplicateUjian(
   id: string,
   judul?: string,
@@ -242,6 +259,7 @@ export type UjianAction =
   | 'create'
   | 'update'
   | 'delete'
+  | 'force_delete_testing'
   | 'duplicate'
   | 'preview'
   | 'cancel'
@@ -279,6 +297,8 @@ export function friendlyUjianError(
       return 'Ujian tidak ditemukan (mungkin sudah dihapus).';
     case 'attempts_exist':
       return 'Ujian ini sudah dipakai siswa; tidak bisa dihapus. Archive saja.';
+    case 'testing_cleanup_disabled':
+      return 'Cleanup testing dimatikan di environment ini.';
     case 'active_attempts_block':
       return 'Ada siswa yang sedang mengerjakan ujian ini. Cancel attempt mereka dulu sebelum ubah timing/sumber soal.';
     case 'kelas_archived':
@@ -299,6 +319,8 @@ export function friendlyUjianError(
           return err.message || 'Gagal menyimpan ujian.';
         case 'delete':
           return err.message || 'Gagal menghapus ujian.';
+        case 'force_delete_testing':
+          return err.message || 'Gagal menghapus data testing ujian.';
         case 'duplicate':
           return err.message || 'Gagal menduplikasi ujian.';
         case 'preview':

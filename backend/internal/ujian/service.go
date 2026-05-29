@@ -71,6 +71,7 @@ type repoAPI interface {
 	DeleteUjian(ctx context.Context, id uuid.UUID, expectedVersion int) error
 	HasActiveAttempts(ctx context.Context, ujianID uuid.UUID) (bool, error)
 	CountHasilByUjian(ctx context.Context, ujianID uuid.UUID) (int64, error)
+	ForceDeleteUjianTesting(ctx context.Context, ujianID uuid.UUID) (int64, int64, error)
 	SetUjianSoalIDs(ctx context.Context, ujianID uuid.UUID, soalIDs []uuid.UUID) error
 	ListUjianSoalIDs(ctx context.Context, ujianID uuid.UUID) ([]uuid.UUID, error)
 }
@@ -576,6 +577,37 @@ func (s *Service) Delete(ctx context.Context, id, callerID uuid.UUID, callerRole
 		"judul":    existing.Judul,
 	})
 	return existing, nil
+}
+
+// ForceDeleteTesting removes an ujian plus all attempt data. It is admin-only
+// and must be gated by the HTTP layer to development/testing mode.
+func (s *Service) ForceDeleteTesting(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Ujian, int64, int64, error) {
+	if callerRole != string(auth.Admin) {
+		return nil, 0, 0, ErrForbidden
+	}
+	existing, err := s.repo.FindUjianByID(ctx, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, 0, 0, ErrNotFound
+	}
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("ujian force delete find: %w", err)
+	}
+
+	hasilDeleted, jawabanDeleted, err := s.repo.ForceDeleteUjianTesting(ctx, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, 0, 0, ErrNotFound
+	}
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("ujian force delete: %w", err)
+	}
+
+	s.logAudit(ctx, "ujian_force_deleted_testing", &callerID, callerRole, &id, &existing.KelasID, ip, userAgent, map[string]any{
+		"ujian_id":        id.String(),
+		"judul":           existing.Judul,
+		"hasil_deleted":   hasilDeleted,
+		"jawaban_deleted": jawabanDeleted,
+	})
+	return existing, hasilDeleted, jawabanDeleted, nil
 }
 
 // ---------------------------------------------------------------------------

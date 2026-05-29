@@ -152,6 +152,46 @@ func (r *Repo) CountHasilByUjian(ctx context.Context, ujianID uuid.UUID) (int64,
 	return n, err
 }
 
+// ForceDeleteUjianTesting hard-deletes an ujian and its attempt data in a
+// single transaction. This is intentionally only for admin/dev testing cleanup;
+// production flows should archive or cancel attempts instead.
+func (r *Repo) ForceDeleteUjianTesting(ctx context.Context, ujianID uuid.UUID) (int64, int64, error) {
+	var hasilIDs []uuid.UUID
+	var jawabanDeleted int64
+	var hasilDeleted int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&HasilUjian{}).
+			Where("ujian_id = ?", ujianID).
+			Pluck("id", &hasilIDs).Error; err != nil {
+			return err
+		}
+
+		if len(hasilIDs) > 0 {
+			res := tx.Where("hasil_id IN ?", hasilIDs).Delete(&JawabanUjian{})
+			if res.Error != nil {
+				return res.Error
+			}
+			jawabanDeleted = res.RowsAffected
+
+			res = tx.Where("ujian_id = ?", ujianID).Delete(&HasilUjian{})
+			if res.Error != nil {
+				return res.Error
+			}
+			hasilDeleted = res.RowsAffected
+		}
+
+		res := tx.Where("id = ?", ujianID).Delete(&Ujian{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	return hasilDeleted, jawabanDeleted, err
+}
+
 // HasActiveAttempts reports whether ujianID still has any HasilUjian
 // row dengan Status='berlangsung' AND DeletedAt IS NULL.
 func (r *Repo) HasActiveAttempts(ctx context.Context, ujianID uuid.UUID) (bool, error) {
