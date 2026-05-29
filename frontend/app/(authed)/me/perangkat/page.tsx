@@ -63,11 +63,6 @@ function decodeRefreshJti(refresh: string | null): string | null {
   }
 }
 
-function maskJti(jti: string): string {
-  if (jti.length <= 8) return jti;
-  return `${jti.slice(0, 4)}…${jti.slice(-4)}`;
-}
-
 function formatDate(input?: string | null): string {
   if (!input) return '—';
   try {
@@ -155,16 +150,17 @@ export default function MePerangkatPage() {
   const totalActive = sessions.length;
 
   return (
-    <main className="container max-w-2xl py-12 space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Perangkat aktif</h1>
-        <p className="text-sm text-muted-foreground">
-          Daftar sesi refresh token yang masih hidup. Logout dari semua
-          perangkat akan mengakhiri seluruh sesi termasuk perangkat ini.
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbeafe,_transparent_24rem),linear-gradient(135deg,_#f8fafc_0%,_#ecfeff_100%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl space-y-6">
+      <header className="rounded-3xl border bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Sesi login</p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Perangkat aktif</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Cek perangkat yang masih login. Logout dari semua perangkat akan mengakhiri seluruh sesi termasuk perangkat ini.
         </p>
       </header>
 
-      <Card>
+      <Card className="border-slate-200 bg-white/90 shadow-sm">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
             <CardTitle>Sesi aktif</CardTitle>
@@ -223,7 +219,7 @@ export default function MePerangkatPage() {
                         ) : null}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        IP {s.ip ?? '—'} • JTI {maskJti(s.jti)}
+                        Lokasi jaringan: {s.ip ?? 'tidak diketahui'}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Mulai {formatDate(s.issued_at)} • Berakhir{' '}
@@ -237,18 +233,18 @@ export default function MePerangkatPage() {
           )}
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-          Per-perangkat revoke akan ditambahkan di v0.8. Untuk sementara, gunakan
-          tombol logout-all di atas.
+          Kalau ada perangkat yang tidak dikenal, gunakan tombol logout dari semua perangkat.
         </CardFooter>
       </Card>
 
       <div className="text-sm">
         <Link
           href="/me"
-          className="text-muted-foreground underline-offset-2 hover:underline"
+          className="font-semibold text-slate-600 underline-offset-2 hover:underline"
         >
-          ← Kembali ke profil
+          ← Kembali ke pusat akun
         </Link>
+      </div>
       </div>
     </main>
   );

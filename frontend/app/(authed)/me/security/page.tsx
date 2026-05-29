@@ -129,12 +129,13 @@ export default function MeSecurityPage() {
   const onSubmit = (values: FormInput) => mutation.mutate(values);
 
   return (
-    <main className="container max-w-xl py-12 space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Keamanan</h1>
-        <p className="text-sm text-muted-foreground">
-          Ganti password akun. Setelah berhasil, semua sesi akan keluar dan
-          Anda perlu login ulang.
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#fee2e2,_transparent_24rem),linear-gradient(135deg,_#f8fafc_0%,_#fff7ed_100%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl space-y-6">
+      <header className="rounded-3xl border bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Keamanan akun</p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Ganti password</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Setelah password berhasil diganti, semua sesi akan keluar dan Anda perlu login ulang.
         </p>
       </header>
 
@@ -150,12 +151,11 @@ export default function MeSecurityPage() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card className="border-slate-200 bg-white/90 shadow-sm">
         <CardHeader>
           <CardTitle>Form ganti password</CardTitle>
           <CardDescription>
-            Minimal 8 karakter. Hindari memakai password lama Anda di sistem
-            lain.
+            Minimal 8 karakter dan harus berbeda dari password lama.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -233,19 +233,20 @@ export default function MeSecurityPage() {
           </Form>
         </CardContent>
         <CardFooter className="justify-between text-xs text-muted-foreground">
-          <span>Kembali ke profil</span>
+          <span>Kembali ke pusat akun</span>
           <Link
             href="/me"
-            className={`underline-offset-2 hover:underline ${
+            className={`font-semibold underline-offset-2 hover:underline ${
               mustChange ? 'pointer-events-none opacity-50' : ''
             }`}
             aria-disabled={mustChange}
             tabIndex={mustChange ? -1 : 0}
           >
-            /me
+            Profil akun
           </Link>
         </CardFooter>
       </Card>
+      </div>
     </main>
   );
 }
