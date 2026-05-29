@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageCircle, RotateCcw, Send } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
+import { listKelas } from '@/lib/kelas-api';
 import {
   getAdminChatMessages,
   listAdminChatConversations,
@@ -44,10 +45,17 @@ export default function AdminChatPage() {
   const [body, setBody] = React.useState('');
   const [status, setStatus] = React.useState<ChatStatus | 'all'>('all');
   const [unreadOnly, setUnreadOnly] = React.useState(false);
+  const [kelasID, setKelasID] = React.useState('');
+
+  const kelasQuery = useQuery({
+    queryKey: ['admin', 'chat', 'kelas-filter'],
+    queryFn: () => listKelas({ page: 1, pageSize: 100 }),
+    staleTime: 60_000,
+  });
 
   const listQuery = useQuery({
-    queryKey: ['admin', 'chat', 'conversations', status, unreadOnly],
-    queryFn: () => listAdminChatConversations({ status, unread: unreadOnly, limit: 100 }),
+    queryKey: ['admin', 'chat', 'conversations', status, unreadOnly, kelasID],
+    queryFn: () => listAdminChatConversations({ status, unread: unreadOnly, kelasID, limit: 100 }),
     refetchInterval: 12_000,
     staleTime: 5_000,
   });
@@ -158,8 +166,22 @@ export default function AdminChatPage() {
             setSelectedID(null);
           }}
         >
-          Unread admin
+          Belum dibaca admin
         </Button>
+        <select
+          value={kelasID}
+          onChange={(e) => {
+            setKelasID(e.target.value);
+            setSelectedID(null);
+          }}
+          className="h-9 min-w-56 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Filter kelas"
+        >
+          <option value="">Semua kelas</option>
+          {(kelasQuery.data?.items ?? []).map((kelas) => (
+            <option key={kelas.id} value={kelas.id}>{kelas.nama}</option>
+          ))}
+        </select>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">

@@ -512,5 +512,5 @@ Acceptance:
 - [x] Label produk: tab kelas pakai `Chat Guru`/`Tanya Guru`, bukan chat admin.
 - [x] Label produk v2: sidebar siswa pakai `Bantuan Admin` untuk support/admin.
 - [x] Migration tambahan `000021_chat_scope_sekolah` disiapkan untuk `scope` + `sekolah_id` karena `000020_chat` sudah applied di server.
-- [ ] Admin boleh reply di chat kelas? Rekomendasi: ya, sebagai `Admin`.
-- [ ] Admin unread dihitung dari pesan siswa saja atau semua non-admin? Rekomendasi: pesan siswa saja.
+- [x] Admin boleh reply di chat kelas sebagai `Admin`.
+- [x] Admin unread dihitung dari pesan siswa saja, bukan semua non-admin.

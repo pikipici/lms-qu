@@ -49,12 +49,14 @@ interface Envelope<T> {
 export async function listAdminChatConversations(params: {
   status?: ChatStatus | 'all';
   unread?: boolean;
+  kelasID?: string;
   limit?: number;
   offset?: number;
 } = {}): Promise<ChatConversationList> {
   const query = new URLSearchParams();
   if (params.status && params.status !== 'all') query.set('status', params.status);
   if (params.unread) query.set('unread', 'true');
+  if (params.kelasID) query.set('kelas_id', params.kelasID);
   if (params.limit) query.set('limit', String(params.limit));
   if (params.offset) query.set('offset', String(params.offset));
   const suffix = query.toString() ? `?${query}` : '';

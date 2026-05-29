@@ -104,7 +104,7 @@ func (s *Service) ListAdminConversations(ctx context.Context, kelasID uuid.UUID,
 }
 
 func (s *Service) GetAdminMessages(ctx context.Context, conversationID uuid.UUID, limit int) (*ConversationWithMessages, error) {
-	conv, err := s.repo.GetConversation(ctx, conversationID)
+	conv, err := s.authorizeAdminClassConversation(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (s *Service) GetAdminMessages(ctx context.Context, conversationID uuid.UUID
 }
 
 func (s *Service) SendAdminMessage(ctx context.Context, adminID, conversationID uuid.UUID, body string) (*Message, error) {
-	if _, err := s.repo.GetConversation(ctx, conversationID); err != nil {
+	if _, err := s.authorizeAdminClassConversation(ctx, conversationID); err != nil {
 		return nil, err
 	}
 	body, err := normalizeBody(body)
@@ -127,7 +127,7 @@ func (s *Service) SendAdminMessage(ctx context.Context, adminID, conversationID 
 }
 
 func (s *Service) MarkAdminRead(ctx context.Context, conversationID uuid.UUID) error {
-	if _, err := s.repo.GetConversation(ctx, conversationID); err != nil {
+	if _, err := s.authorizeAdminClassConversation(ctx, conversationID); err != nil {
 		return err
 	}
 	return s.repo.MarkRead(ctx, conversationID, SenderAdmin)
@@ -136,6 +136,9 @@ func (s *Service) MarkAdminRead(ctx context.Context, conversationID uuid.UUID) e
 func (s *Service) SetAdminStatus(ctx context.Context, conversationID uuid.UUID, status ConversationStatus, version int) (*Conversation, error) {
 	if status != StatusOpen && status != StatusClosed {
 		return nil, ErrInvalidStatus
+	}
+	if _, err := s.authorizeAdminClassConversation(ctx, conversationID); err != nil {
+		return nil, err
 	}
 	return s.repo.SetStatus(ctx, conversationID, status, version)
 }
@@ -231,7 +234,18 @@ func (s *Service) authorizeGuruConversation(ctx context.Context, kelasID, guruID
 	if err != nil {
 		return nil, err
 	}
-	if conv.KelasID != kelasID || conv.GuruID != guruID {
+	if conv.Scope != ScopeKelas || conv.KelasID != kelasID || conv.GuruID != guruID {
+		return nil, ErrForbidden
+	}
+	return conv, nil
+}
+
+func (s *Service) authorizeAdminClassConversation(ctx context.Context, conversationID uuid.UUID) (*Conversation, error) {
+	conv, err := s.repo.GetConversation(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if conv.Scope != ScopeKelas {
 		return nil, ErrForbidden
 	}
 	return conv, nil
