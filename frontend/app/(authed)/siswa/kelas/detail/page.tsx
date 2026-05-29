@@ -103,7 +103,7 @@ const DETAIL_TABS: {
   { key: 'tugas', label: 'Tugas', description: 'Tugas kelas-wide dari guru.', Icon: ClipboardList },
   { key: 'ujian', label: 'Ujian', description: 'Ujian khusus kelas ini.', Icon: GraduationCap },
   { key: 'pengumuman', label: 'Pengumuman', description: 'Info terbaru dari guru.', Icon: Megaphone },
-  { key: 'chat', label: 'Chat', description: 'Tanya guru kelas langsung.', Icon: MessageCircle },
+  { key: 'chat', label: 'Chat Guru', description: 'Tanya guru pengampu kelas ini.', Icon: MessageCircle },
   { key: 'nilai', label: 'Nilai', description: 'Rekap nilai kelas ini.', Icon: TrendingUp },
 ];
 
@@ -203,11 +203,11 @@ function SiswaChatBox({ kelasID }: { kelasID: string }) {
               <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
                 <MessageCircle className="size-4" strokeWidth={2.5} />
               </span>
-              Chat guru
+              Tanya guru
             </SiswaCardTitle>
             <SiswaCardDescription>
-              Tanya materi, tugas, atau ulangan di kelas ini. Chat ini kebaca guru
-              dan admin sekolah.
+              Tanya materi, tugas, ulangan, atau nilai ke guru pengampu kelas ini.
+              Admin sekolah dapat memonitor untuk keamanan dan bantuan.
             </SiswaCardDescription>
           </div>
           <SiswaButton
@@ -242,7 +242,7 @@ function SiswaChatBox({ kelasID }: { kelasID: string }) {
               </div>
             ) : messages.length === 0 ? (
               <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-white/50 p-6 text-center text-sm text-siswa-text-muted">
-                Belum ada pesan. Mulai tanya guru kamu di sini.
+                Belum ada pesan. Tanyakan materi, tugas, ulangan, atau nilai ke guru kelas ini.
               </div>
             ) : (
               messages.map((msg) => {
@@ -267,6 +267,12 @@ function SiswaChatBox({ kelasID }: { kelasID: string }) {
           </div>
         )}
 
+        {chatQuery.data?.conversation.status === 'closed' ? (
+          <div className="rounded-siswa siswa-border bg-siswa-primary/30 p-3 text-sm font-semibold text-siswa-text">
+            Percakapan ini sudah ditutup guru. Kirim pesan baru kalau kamu masih butuh bantuan, nanti chat akan terbuka lagi.
+          </div>
+        ) : null}
+
         <form
           className="space-y-2"
           onSubmit={(e) => {
@@ -280,7 +286,7 @@ function SiswaChatBox({ kelasID }: { kelasID: string }) {
             onChange={(e) => setBody(e.target.value)}
             maxLength={4000}
             rows={3}
-            placeholder="Tulis pesan ke guru..."
+            placeholder="Tulis pertanyaan untuk guru..."
             className="min-h-24 w-full rounded-siswa siswa-border bg-siswa-surface px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-siswa-border-soft"
           />
           <div className="flex flex-wrap items-center justify-between gap-2">

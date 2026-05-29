@@ -13,6 +13,13 @@ const (
 	StatusClosed ConversationStatus = "closed"
 )
 
+type ConversationScope string
+
+const (
+	ScopeKelas ConversationScope = "kelas"
+	ScopeAdmin ConversationScope = "admin"
+)
+
 type SenderRole string
 
 const (
@@ -23,7 +30,9 @@ const (
 
 type Conversation struct {
 	ID                 uuid.UUID          `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Scope              ConversationScope  `gorm:"not null;default:kelas" json:"scope"`
 	KelasID            uuid.UUID          `gorm:"type:uuid;not null;index" json:"kelas_id"`
+	SekolahID          *uuid.UUID         `gorm:"type:uuid;index" json:"sekolah_id,omitempty"`
 	SiswaID            uuid.UUID          `gorm:"type:uuid;not null;index" json:"siswa_id"`
 	GuruID             uuid.UUID          `gorm:"type:uuid;not null;index" json:"guru_id"`
 	Status             ConversationStatus `gorm:"not null;default:open" json:"status"`

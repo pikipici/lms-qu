@@ -202,7 +202,7 @@ func (s *Service) getOrCreateSiswaConversation(ctx context.Context, kelasID, sis
 	}
 	conv, err := s.repo.FindConversationByKelasSiswa(ctx, kelasID, siswaID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		conv = &Conversation{KelasID: kelasID, SiswaID: siswaID, GuruID: k.GuruID, Status: StatusOpen}
+		conv = &Conversation{Scope: ScopeKelas, KelasID: kelasID, SekolahID: k.SekolahID, SiswaID: siswaID, GuruID: k.GuruID, Status: StatusOpen}
 		if createErr := s.repo.CreateConversation(ctx, conv); createErr != nil {
 			return nil, createErr
 		}
@@ -211,8 +211,8 @@ func (s *Service) getOrCreateSiswaConversation(ctx context.Context, kelasID, sis
 	if err != nil {
 		return nil, err
 	}
-	if conv.GuruID != k.GuruID {
-		if err := s.repo.UpdateConversationGuru(ctx, conv.ID, k.GuruID); err != nil {
+	if conv.GuruID != k.GuruID || !sameUUIDPtr(conv.SekolahID, k.SekolahID) {
+		if err := s.repo.UpdateConversationClassSnapshot(ctx, conv.ID, k.GuruID, k.SekolahID); err != nil {
 			return nil, err
 		}
 	}
@@ -262,6 +262,13 @@ func clampLimit(v, def, maxV int) int {
 		return maxV
 	}
 	return v
+}
+
+func sameUUIDPtr(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func senderRoleFromAuthRole(role string) SenderRole {

@@ -825,7 +825,7 @@ function ChatTab({ kelasID }: { kelasID: string }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <MessageCircle className="size-4" />
-            Inbox chat
+            Chat siswa
           </CardTitle>
           <CardDescription>
             Percakapan siswa di kelas ini. Dibuat otomatis saat siswa mulai chat.
@@ -1026,7 +1026,7 @@ const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?
   { key: 'tugas', label: 'Tugas', Icon: ClipboardList },
   { key: 'ujian', label: 'Ulangan', Icon: GraduationCap },
   { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
-  { key: 'chat', label: 'Chat', Icon: MessageCircle },
+  { key: 'chat', label: 'Chat Siswa', Icon: MessageCircle },
 ];
 
 function isTabKey(value: string | null): value is TabKey {

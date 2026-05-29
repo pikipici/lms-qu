@@ -35,7 +35,7 @@ func (r *Repo) IsSiswaEnrolled(ctx context.Context, kelasID, siswaID uuid.UUID) 
 func (r *Repo) FindConversationByKelasSiswa(ctx context.Context, kelasID, siswaID uuid.UUID) (*Conversation, error) {
 	var c Conversation
 	if err := r.db.WithContext(ctx).
-		Where("kelas_id = ? AND siswa_id = ? AND deleted_at IS NULL", kelasID, siswaID).
+		Where("scope = ? AND kelas_id = ? AND siswa_id = ? AND deleted_at IS NULL", ScopeKelas, kelasID, siswaID).
 		First(&c).Error; err != nil {
 		return nil, err
 	}
@@ -46,10 +46,14 @@ func (r *Repo) CreateConversation(ctx context.Context, c *Conversation) error {
 	return r.db.WithContext(ctx).Create(c).Error
 }
 
-func (r *Repo) UpdateConversationGuru(ctx context.Context, conversationID, guruID uuid.UUID) error {
+func (r *Repo) UpdateConversationClassSnapshot(ctx context.Context, conversationID, guruID uuid.UUID, sekolahID *uuid.UUID) error {
 	return r.db.WithContext(ctx).Model(&Conversation{}).
 		Where("id = ?", conversationID).
-		UpdateColumns(map[string]any{"guru_id": guruID, "version": gorm.Expr("version + 1")}).Error
+		UpdateColumns(map[string]any{
+			"guru_id":    guruID,
+			"sekolah_id": sekolahID,
+			"version":    gorm.Expr("version + 1"),
+		}).Error
 }
 
 func (r *Repo) GetConversation(ctx context.Context, id uuid.UUID) (*Conversation, error) {
@@ -86,7 +90,7 @@ func (r *Repo) ListMessages(ctx context.Context, conversationID uuid.UUID, limit
 
 func (r *Repo) ListGuruConversations(ctx context.Context, kelasID, guruID uuid.UUID, status string, unread bool, limit, offset int) ([]Conversation, int64, error) {
 	q := r.db.WithContext(ctx).Model(&Conversation{}).
-		Where("chat_conversations.kelas_id = ? AND chat_conversations.guru_id = ? AND chat_conversations.deleted_at IS NULL", kelasID, guruID)
+		Where("chat_conversations.scope = ? AND chat_conversations.kelas_id = ? AND chat_conversations.guru_id = ? AND chat_conversations.deleted_at IS NULL", ScopeKelas, kelasID, guruID)
 	if status != "" {
 		q = q.Where("chat_conversations.status = ?", status)
 	}
@@ -111,7 +115,7 @@ func (r *Repo) ListGuruConversations(ctx context.Context, kelasID, guruID uuid.U
 
 func (r *Repo) ListAdminConversations(ctx context.Context, kelasID uuid.UUID, status string, unread bool, limit, offset int) ([]Conversation, int64, error) {
 	q := r.db.WithContext(ctx).Model(&Conversation{}).
-		Where("chat_conversations.deleted_at IS NULL")
+		Where("chat_conversations.scope = ? AND chat_conversations.deleted_at IS NULL", ScopeKelas)
 	if kelasID != uuid.Nil {
 		q = q.Where("chat_conversations.kelas_id = ?", kelasID)
 	}
@@ -182,7 +186,7 @@ func (r *Repo) ListSiswaUnreadByKelas(ctx context.Context, siswaID uuid.UUID) ([
 	var rows []UnreadSummary
 	if err := r.db.WithContext(ctx).Model(&Conversation{}).
 		Select("kelas_id, siswa_unread_count AS unread").
-		Where("siswa_id = ? AND siswa_unread_count > 0 AND deleted_at IS NULL", siswaID).
+		Where("scope = ? AND siswa_id = ? AND siswa_unread_count > 0 AND deleted_at IS NULL", ScopeKelas, siswaID).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -193,7 +197,7 @@ func (r *Repo) ListGuruUnreadByKelas(ctx context.Context, guruID uuid.UUID) ([]U
 	var rows []UnreadSummary
 	if err := r.db.WithContext(ctx).Model(&Conversation{}).
 		Select("kelas_id, SUM(guru_unread_count) AS unread").
-		Where("guru_id = ? AND guru_unread_count > 0 AND deleted_at IS NULL", guruID).
+		Where("scope = ? AND guru_id = ? AND guru_unread_count > 0 AND deleted_at IS NULL", ScopeKelas, guruID).
 		Group("kelas_id").
 		Find(&rows).Error; err != nil {
 		return nil, err
