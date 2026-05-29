@@ -203,7 +203,7 @@ export function TugasComposer({
           <DialogTitle>Tugas baru</DialogTitle>
           <DialogDescription>
             Scope: {scopeLabel}. Default tersimpan sebagai draft — siswa belum
-            lihat sampai lu publish. Lampiran (PDF/DOCX/gambar) bisa diunggah
+            lihat sampai kamu publish. Lampiran (PDF/DOCX/gambar) bisa diunggah
             setelah tugas dibuat lewat Edit.
           </DialogDescription>
         </DialogHeader>

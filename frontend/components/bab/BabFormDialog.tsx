@@ -214,7 +214,7 @@ export function BabFormDialog({
   const title = mode === 'create' ? 'Tambah bab baru' : 'Edit bab';
   const description =
     mode === 'create'
-      ? 'Bab baru akan dibuat dengan status draft. Lu bisa publikasikan setelah materi siap.'
+      ? 'Bab baru akan dibuat dengan status draft. Kamu bisa publikasikan setelah materi siap.'
       : `Edit detail bab. Versi saat ini: ${bab?.version ?? '-'}.`;
 
   return (

@@ -181,7 +181,7 @@ function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
         <SiswaCardHeader>
           <SiswaCardTitle>Kelas tidak ditemukan</SiswaCardTitle>
           <SiswaCardDescription>
-            Lu belum gabung kelas ini, atau ID kelas tidak valid. Gabung
+            Kamu belum gabung kelas ini, atau ID kelas tidak valid. Gabung
             kelas baru pakai kode invite di /siswa/gabung.
           </SiswaCardDescription>
         </SiswaCardHeader>
@@ -271,7 +271,7 @@ function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
               </SiswaCardTitle>
               <SiswaCardDescription>
                 Klik bab buat lihat materi, latihan, ulangan, dan tugas.
-                Progress bar nge-track materi yang udah lu baca.
+                Progress bar nge-track materi yang udah kamu baca.
               </SiswaCardDescription>
             </div>
             <SiswaButton
@@ -381,7 +381,7 @@ function BabListBody({
         </p>
         <p className="text-siswa-text-muted">
           {isForbidden
-            ? 'Lu tidak terdaftar aktif di kelas ini. Hubungi guru atau admin.'
+            ? 'Kamu tidak terdaftar aktif di kelas ini. Hubungi guru atau admin.'
             : apiErr?.message ?? 'Terjadi kesalahan tidak terduga.'}
           {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
         </p>
@@ -406,7 +406,7 @@ function BabListBody({
       <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-siswa-surface/60 p-8 text-center">
         <BookOpen className="mx-auto mb-2 size-8 text-siswa-text-muted" strokeWidth={2.5} />
         <p className="text-sm text-siswa-text-muted">
-          Belum ada bab yang dipublish di kelas ini. Tunggu guru lu nge-publish bab.
+          Belum ada bab yang dipublish di kelas ini. Tunggu guru kamu nge-publish bab.
         </p>
       </div>
     );

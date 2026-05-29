@@ -153,7 +153,7 @@ export function friendlyAttemptError(err: ApiError, action: AttemptAction): stri
     case 'soal_not_in_pool':
       return 'Soal ini tidak termasuk dalam attempt yang sedang berlangsung.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke attempt ini.';
+      return 'Kamu tidak punya akses ke attempt ini.';
     case 'not_found':
       return 'Data tidak ditemukan.';
     case 'latihan_pool_empty':

@@ -196,7 +196,7 @@ export default function SiswaNilaiPage() {
       <SiswaPageHeader
         eyebrow="Nilai saya"
         title="Rekap nilai"
-        description="Total nilai lu di semua kelas. Klik salah satu kelas buat buka breakdown bab + ulangan harian."
+        description="Total nilai kamu di semua kelas. Klik salah satu kelas buat buka breakdown bab + ulangan harian."
         actions={
           <SiswaButton
             type="button"
@@ -281,7 +281,7 @@ export default function SiswaNilaiPage() {
         <SiswaCard tone="surface" shadow="md">
           <SiswaCardBody className="p-8 text-center">
             <p className="text-sm text-siswa-text-muted">
-              Lu belum gabung kelas apapun. Gabung kelas dulu pakai kode invite
+              Kamu belum gabung kelas apapun. Gabung kelas dulu pakai kode invite
               di /siswa/gabung — nilai bakal muncul di sini begitu ada bab atau
               tugas yang dinilai.
             </p>

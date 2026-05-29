@@ -122,9 +122,9 @@ function friendlyUpdateError(err: ApiError): string {
     case 'invalid_input':
       return 'Input tidak valid. Cek nama kelas.';
     case 'version_conflict':
-      return 'Kelas ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan lu.';
+      return 'Kelas ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan kamu.';
     case 'forbidden':
-      return 'Lu tidak memiliki akses ke kelas ini.';
+      return 'Kamu tidak memiliki akses ke kelas ini.';
     case 'not_found':
       return 'Kelas tidak ditemukan (mungkin sudah dihapus).';
     default:
@@ -137,7 +137,7 @@ function friendlyArchiveError(err: ApiError): string {
     case 'already_archived':
       return 'Kelas ini sudah diarsipkan.';
     case 'forbidden':
-      return 'Lu tidak memiliki akses ke kelas ini.';
+      return 'Kamu tidak memiliki akses ke kelas ini.';
     default:
       return err.message;
   }
@@ -380,7 +380,7 @@ function ArchiveDialog({
           <DialogDescription>
             <span className="font-medium">{kelas.nama}</span> akan
             dinonaktifkan: tidak muncul di list aktif, edit dimatikan, dan
-            kode invite tetap ada untuk referensi. Lu tetap bisa lihat dengan
+            kode invite tetap ada untuk referensi. Kamu tetap bisa lihat dengan
             filter &quot;Tampilkan diarsipkan&quot;.
           </DialogDescription>
         </DialogHeader>
@@ -603,7 +603,7 @@ function SiswaTab({ kelasID }: { kelasID: string }) {
           <CardTitle className="text-base">Gagal memuat daftar siswa</CardTitle>
           <CardDescription>
             {isForbidden
-              ? 'Lu hanya bisa lihat siswa di kelas yang lu kelola.'
+              ? 'Kamu hanya bisa lihat siswa di kelas yang kamu kelola.'
               : err instanceof ApiError
                 ? err.message
                 : 'Terjadi kesalahan tidak terduga.'}
@@ -790,7 +790,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             {isNotFound
               ? 'ID kelas tidak valid atau sudah dihapus.'
               : isForbidden
-                ? 'Lu hanya bisa lihat kelas yang lu kelola.'
+                ? 'Kamu hanya bisa lihat kelas yang kamu kelola.'
                 : err instanceof ApiError
                   ? err.message
                   : 'Terjadi kesalahan tidak terduga.'}
@@ -925,7 +925,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             <CardTitle className="text-base">Pengaturan kelas</CardTitle>
             <CardDescription>
               Ubah nama dan deskripsi kelas. Perubahan dijaga lewat versi —
-              kalau ada yang ngedit barengan, lu dikasih warning untuk
+              kalau ada yang ngedit barengan, kamu dikasih warning untuk
               refresh dulu.
             </CardDescription>
           </CardHeader>

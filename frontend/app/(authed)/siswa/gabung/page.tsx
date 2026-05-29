@@ -58,13 +58,13 @@ function mapJoinError(err: unknown): string {
       case 'kode_invite_required':
         return 'Kode invite wajib diisi.';
       case 'kode_invite_not_found':
-        return 'Kode invite tidak ditemukan. Cek lagi ke guru lu.';
+        return 'Kode invite tidak ditemukan. Cek lagi ke guru kamu.';
       case 'kelas_archived':
-        return 'Kelas ini sudah diarsipkan oleh guru. Tanya guru lu kalau ini error.';
+        return 'Kelas ini sudah diarsipkan oleh guru. Tanya guru kamu kalau ini error.';
       case 'enrollment_removed':
-        return 'Lu pernah dikeluarkan dari kelas ini. Minta guru/admin untuk daftarin ulang.';
+        return 'Kamu pernah dikeluarkan dari kelas ini. Minta guru/admin untuk daftarin ulang.';
       case 'forbidden':
-        return 'Akun lu bukan siswa. Login pakai akun siswa.';
+        return 'Akun kamu bukan siswa. Login pakai akun siswa.';
       case 'too_many_requests':
         return 'Terlalu banyak percobaan. Coba lagi sebentar.';
       default:
@@ -92,12 +92,12 @@ export default function SiswaGabungKelasPage() {
       if (data.inserted) {
         toast({
           title: 'Berhasil gabung',
-          description: `Kelas "${data.kelas.nama}" sekarang ada di dashboard lu.`,
+          description: `Kelas "${data.kelas.nama}" sekarang ada di dashboard kamu.`,
         });
       } else {
         toast({
           title: 'Sudah pernah gabung',
-          description: `Lu udah terdaftar di kelas "${data.kelas.nama}". Buka dashboard.`,
+          description: `Kamu udah terdaftar di kelas "${data.kelas.nama}". Buka dashboard.`,
         });
       }
       router.replace('/siswa');
@@ -137,7 +137,7 @@ export default function SiswaGabungKelasPage() {
                 Kode Invite
               </SiswaCardTitle>
               <SiswaCardDescription>
-                Kalau belum punya, tanya wali kelas atau guru mata pelajaran lu.
+                Kalau belum punya, tanya wali kelas atau guru mata pelajaran kamu.
               </SiswaCardDescription>
             </div>
             <Sparkles className="size-5 text-siswa-text/60" strokeWidth={2.5} />
@@ -206,7 +206,7 @@ export default function SiswaGabungKelasPage() {
 
       <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-siswa-surface/50 p-4 text-sm text-siswa-text-muted">
         💡 <span className="font-semibold text-siswa-text">Tidak punya kode?</span>{' '}
-        Admin sekolah mungkin sudah meng-assign lu ke kelas tanpa kode. Cek
+        Admin sekolah mungkin sudah meng-assign kamu ke kelas tanpa kode. Cek
         dashboard dulu sebelum nanya.
       </div>
     </div>

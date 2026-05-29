@@ -89,7 +89,7 @@ function SiswaKelasNilaiContent({ kelasID }: { kelasID: string }) {
           </SiswaCardTitle>
           <SiswaCardDescription>
             {isForbidden
-              ? 'Lu tidak terdaftar aktif di kelas ini, atau kelas tidak ada.'
+              ? 'Kamu tidak terdaftar aktif di kelas ini, atau kelas tidak ada.'
               : (apiErr?.message ?? 'Terjadi kesalahan tidak terduga.')}
             {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
           </SiswaCardDescription>

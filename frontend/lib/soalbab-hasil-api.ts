@@ -73,7 +73,7 @@ export function friendlyHasilError(err: ApiError): string {
     case 'invalid_id':
       return 'ID tidak valid.';
     case 'forbidden':
-      return 'Lu tidak punya akses untuk operasi ini.';
+      return 'Kamu tidak punya akses untuk operasi ini.';
     case 'not_found':
       return 'Data hasil tidak ditemukan.';
     case 'cancel_latihan':

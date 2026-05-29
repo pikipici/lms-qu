@@ -444,7 +444,7 @@ function GuruBabDetailContent({
             {isNotFound
               ? 'ID bab tidak valid atau sudah dihapus.'
               : isForbidden
-                ? 'Lu hanya bisa lihat bab di kelas yang lu kelola.'
+                ? 'Kamu hanya bisa lihat bab di kelas yang kamu kelola.'
                 : apiErr
                   ? apiErr.message
                   : 'Terjadi kesalahan tidak terduga.'}

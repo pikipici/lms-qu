@@ -98,7 +98,7 @@ function friendlyCreateError(err: ApiError): string {
     case 'kode_invite_collision':
       return 'Server gagal generate kode invite (collision). Coba lagi.';
     case 'forbidden':
-      return 'Akun lu tidak diizinkan membuat kelas baru.';
+      return 'Akun kamu tidak diizinkan membuat kelas baru.';
     default:
       return err.message;
   }
@@ -413,7 +413,7 @@ export default function GuruKelasListPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Kelas</h1>
           <p className="text-sm text-muted-foreground">
-            Daftar kelas yang lu kelola. Buat kelas baru, salin kode invite,
+            Daftar kelas yang kamu kelola. Buat kelas baru, salin kode invite,
             atau buka detail untuk atur siswa dan materi (segera).
           </p>
         </div>
@@ -495,7 +495,7 @@ export default function GuruKelasListPage() {
           ) : items.length === 0 ? (
             <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
               {includeArchived
-                ? 'Belum ada kelas. Buat kelas pertama lu sekarang.'
+                ? 'Belum ada kelas. Buat kelas pertama kamu sekarang.'
                 : 'Belum ada kelas aktif. Centang "Tampilkan diarsipkan" atau buat kelas baru.'}
             </div>
           ) : (

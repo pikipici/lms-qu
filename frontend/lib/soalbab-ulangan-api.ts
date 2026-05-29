@@ -188,7 +188,7 @@ export function friendlyUlanganError(err: ApiError, action: UlanganAction): stri
     case 'soal_not_in_pool':
       return 'Soal ini tidak termasuk dalam attempt yang sedang berlangsung.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke attempt ini.';
+      return 'Kamu tidak punya akses ke attempt ini.';
     case 'not_found':
       return 'Data tidak ditemukan.';
     case 'ulangan_setting_missing':
@@ -198,7 +198,7 @@ export function friendlyUlanganError(err: ApiError, action: UlanganAction): stri
     case 'ulangan_pool_insufficient':
       return 'Jumlah soal ulangan kurang dari setting. Minta guru tambah soal lagi.';
     case 'batas_attempt_exceeded':
-      return 'Lu sudah mencapai batas attempt ulangan untuk bab ini.';
+      return 'Kamu sudah mencapai batas attempt ulangan untuk bab ini.';
     case 'timer_expired':
       return 'Waktu ulangan sudah habis. Refresh untuk lihat hasilnya.';
     case 'submit_after_grace':

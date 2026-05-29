@@ -285,7 +285,7 @@ export function friendlySiswaUjianError(
     case 'invalid_body':
       return err.message || 'Input tidak valid.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke ujian ini.';
+      return 'Kamu tidak punya akses ke ujian ini.';
     case 'not_found':
       return 'Ujian atau attempt tidak ditemukan.';
     case 'kelas_archived':
@@ -301,9 +301,9 @@ export function friendlySiswaUjianError(
     case 'source_pool_empty':
       return 'Pool soal kosong. Hubungi guru untuk fix konfigurasi sumber soal.';
     case 'soal_not_in_pool':
-      return 'Soal yang lu jawab tidak ada di pool attempt ini.';
+      return 'Soal yang kamu jawab tidak ada di pool attempt ini.';
     case 'hasil_not_owned':
-      return 'Attempt ini bukan milik lu.';
+      return 'Attempt ini bukan milik kamu.';
     case 'hasil_not_active':
       return 'Attempt sudah selesai atau dibatalkan.';
     case 'hasil_not_finished':

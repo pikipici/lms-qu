@@ -436,7 +436,7 @@ function LobbyPanel({
         <SiswaCardBody>
           {myItems.length === 0 ? (
             <p className="text-sm text-siswa-text-muted">
-              Begitu lu mulai ujian, riwayatnya akan tampil di sini.
+              Begitu kamu mulai ujian, riwayatnya akan tampil di sini.
             </p>
           ) : (
             <ul className="space-y-2">
@@ -494,7 +494,7 @@ function ResultPanel({
               <SiswaCardDescription>
                 {summary.already_submitted
                   ? 'Jawaban ini sudah disubmit sebelumnya — menampilkan rekap nilai.'
-                  : 'Nilai sudah keluar. Lu bisa lihat pembahasan kalau guru aktivasi.'}
+                  : 'Nilai sudah keluar. Kamu bisa lihat pembahasan kalau guru aktivasi.'}
               </SiswaCardDescription>
             </div>
           </div>
@@ -656,7 +656,7 @@ function ReviewPolicyNote({ ujian }: { ujian: Ujian }) {
   }
   return (
     <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
-      Pembahasan tersedia langsung setelah lu submit jawaban.
+      Pembahasan tersedia langsung setelah kamu submit jawaban.
     </p>
   );
 }

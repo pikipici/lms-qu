@@ -140,7 +140,7 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
             <CardTitle className="text-base">Ulangan Harian</CardTitle>
             <CardDescription>
               Ulangan cross-bab yang menarik soal dari Bank Soal pribadi
-              lu (per-guru). Bisa pilih manual atau random per filter tag.
+              kamu (per-guru). Bisa pilih manual atau random per filter tag.
             </CardDescription>
           </div>
           <Button

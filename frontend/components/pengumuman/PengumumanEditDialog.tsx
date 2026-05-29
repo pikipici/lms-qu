@@ -113,7 +113,7 @@ export function PengumumanEditDialog({
       toast({
         title: archivedNow ? 'Pengumuman diarsipkan' : 'Pengumuman diperbarui',
         description: archivedNow
-          ? `"${updated.judul}" disembunyikan dari siswa. Lu masih bisa unarchive lewat tombol di bawah.`
+          ? `"${updated.judul}" disembunyikan dari siswa. Kamu masih bisa unarchive lewat tombol di bawah.`
           : `"${updated.judul}" tersimpan (versi ${updated.version}).`,
       });
       onOpenChange(false);
@@ -202,7 +202,7 @@ export function PengumumanEditDialog({
           </DialogTitle>
           <DialogDescription>
             Versi saat ini: {pengumuman.version}. Status archive nyembunyiin
-            pengumuman dari siswa, tapi masih lu lihat di list guru.
+            pengumuman dari siswa, tapi masih kamu lihat di list guru.
           </DialogDescription>
         </DialogHeader>
 

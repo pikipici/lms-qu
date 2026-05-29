@@ -159,7 +159,7 @@ export function UlanganSection({ babID, disabled }: UlanganSectionProps) {
             <SiswaCardDescription>
               {summary.already_submitted
                 ? 'Attempt ini sudah disubmit sebelumnya. Berikut nilai yang tersimpan.'
-                : 'Sip, jawaban lu sudah dinilai. Berikut rekapnya.'}
+                : 'Sip, jawaban kamu sudah dinilai. Berikut rekapnya.'}
             </SiswaCardDescription>
           </SiswaCardHeader>
           <SiswaCardBody className="space-y-4">

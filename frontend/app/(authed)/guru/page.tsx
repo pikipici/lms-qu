@@ -93,7 +93,7 @@ export default function GuruDashboardPage() {
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <div className="space-y-1">
               <CardTitle className="text-base">Total Kelas Aktif</CardTitle>
-              <CardDescription>Kelas yang sedang lu kelola.</CardDescription>
+              <CardDescription>Kelas yang sedang kamu kelola.</CardDescription>
             </div>
             <GraduationCap className="size-5 text-muted-foreground" />
           </CardHeader>
@@ -216,7 +216,7 @@ export default function GuruDashboardPage() {
         <CardHeader>
           <CardTitle className="text-base">Kelas terbaru</CardTitle>
           <CardDescription>
-            Tiga kelas yang baru lu buat. Klik untuk masuk halaman daftar
+            Tiga kelas yang baru kamu buat. Klik untuk masuk halaman daftar
             lengkap.
           </CardDescription>
         </CardHeader>
@@ -232,7 +232,7 @@ export default function GuruDashboardPage() {
             </div>
           ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Belum ada kelas. Buat kelas pertama lu sekarang.
+              Belum ada kelas. Buat kelas pertama kamu sekarang.
             </p>
           ) : (
             <ul className="divide-y">

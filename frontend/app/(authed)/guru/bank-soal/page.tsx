@@ -30,7 +30,7 @@ export default function GuruBankSoalPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Bank Soal</h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          Bank soal pribadi lu — sumber soal untuk Ulangan Harian. Tag soal
+          Bank soal pribadi kamu — sumber soal untuk Ulangan Harian. Tag soal
           dengan mapel/tingkat/topik supaya gampang difilter atau dipilih
           random saat menyusun ulangan.
         </p>

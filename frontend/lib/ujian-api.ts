@@ -257,7 +257,7 @@ export function friendlyUjianError(
     case 'invalid_body':
     case 'invalid_input':
       return (
-        err.message || 'Input tidak valid. Periksa kembali data yang lu kirim.'
+        err.message || 'Input tidak valid. Periksa kembali data yang kamu kirim.'
       );
     case 'invalid_version':
       return 'Versi ujian tidak valid. Refresh dulu.';
@@ -270,11 +270,11 @@ export function friendlyUjianError(
     case 'source_pool_empty':
       return 'Filter random tidak menghasilkan soal. Coba longgarkan tag mapel/tingkat/topik.';
     case 'soal_not_in_bank':
-      return 'Salah satu soal yang dipilih tidak ada di Bank Soal milik lu.';
+      return 'Salah satu soal yang dipilih tidak ada di Bank Soal milik kamu.';
     case 'version_conflict':
-      return 'Ujian baru saja di-update. Form sudah di-refresh — silakan ulangi perubahan lu.';
+      return 'Ujian baru saja di-update. Form sudah di-refresh — silakan ulangi perubahan kamu.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke ujian ini.';
+      return 'Kamu tidak punya akses ke ujian ini.';
     case 'not_found':
       return 'Ujian tidak ditemukan (mungkin sudah dihapus).';
     case 'attempts_exist':

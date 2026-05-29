@@ -102,7 +102,7 @@ function GuruRekapContent({ kelasID }: { kelasID: string }) {
           </CardTitle>
           <CardDescription>
             {isForbidden
-              ? 'Lu bukan pemilik kelas ini. Hubungi admin kalau ini error.'
+              ? 'Kamu bukan pemilik kelas ini. Hubungi admin kalau ini error.'
               : isNotFound
                 ? 'Kelas mungkin di-archive atau ID tidak valid.'
                 : (apiErr?.message ?? 'Terjadi kesalahan tidak terduga.')}

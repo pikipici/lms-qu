@@ -264,7 +264,7 @@ export function friendlySoalError(err: ApiError, action: SoalAction): string {
       return 'ID soal tidak valid.';
     case 'invalid_body':
     case 'invalid_input':
-      return err.message || 'Input tidak valid. Periksa kembali data yang lu kirim.';
+      return err.message || 'Input tidak valid. Periksa kembali data yang kamu kirim.';
     case 'invalid_jawaban':
       return 'Jawaban harus salah satu dari a, b, c, d, atau e.';
     case 'invalid_mode':
@@ -272,9 +272,9 @@ export function friendlySoalError(err: ApiError, action: SoalAction): string {
     case 'invalid_version':
       return 'Versi soal tidak valid. Refresh dulu.';
     case 'version_conflict':
-      return 'Soal ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan lu.';
+      return 'Soal ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan kamu.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke soal ini.';
+      return 'Kamu tidak punya akses ke soal ini.';
     case 'not_found':
       return 'Soal tidak ditemukan (mungkin sudah dihapus).';
     case 'bab_archived':

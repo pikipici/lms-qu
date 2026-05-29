@@ -141,7 +141,7 @@ export function PengumumanReadList({
         </p>
         <p className="text-siswa-text-muted">
           {isForbidden
-            ? 'Lu tidak terdaftar aktif di kelas ini.'
+            ? 'Kamu tidak terdaftar aktif di kelas ini.'
             : apiErr?.message ?? 'Terjadi kesalahan tidak terduga.'}
           {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
         </p>

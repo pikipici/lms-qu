@@ -362,7 +362,7 @@ function EmptyKelasCard() {
     <SiswaCard tone="surface" shadow="md">
       <SiswaCardBody className="p-8 text-center">
         <p className="text-sm text-siswa-text-muted">
-          Lu belum gabung kelas mana pun. Gabung dulu pakai kode invite di
+          Kamu belum gabung kelas mana pun. Gabung dulu pakai kode invite di
           /siswa/gabung supaya bisa lihat ujian.
         </p>
         <div className="mt-4">
@@ -388,7 +388,7 @@ function EmptyUjianCard({
 }) {
   const message = (() => {
     if (totalRows === 0) {
-      return 'Belum ada ujian dipublish di kelas-kelas lu. Tunggu guru aktivasi ujian.';
+      return 'Belum ada ujian dipublish di kelas-kelas kamu. Tunggu guru aktivasi ujian.';
     }
     if (windowFilter !== 'all' || kelasFilter !== 'all') {
       return 'Tidak ada ujian yang masuk filter. Coba ubah filter status atau pilih kelas lain.';

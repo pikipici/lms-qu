@@ -395,7 +395,7 @@ export function TugasEditDialog({
           </DialogTitle>
           <DialogDescription>
             Versi saat ini: {tugas.version}. Status archive nyembunyiin tugas
-            dari siswa, tapi masih lu lihat di list guru. Lampiran dikelola
+            dari siswa, tapi masih kamu lihat di list guru. Lampiran dikelola
             terpisah di bawah.
           </DialogDescription>
         </DialogHeader>

@@ -107,7 +107,7 @@ export function BabListSection({ kelasID, archived }: BabListSectionProps) {
           <CardTitle className="text-base">Gagal memuat daftar bab</CardTitle>
           <CardDescription>
             {isForbidden
-              ? 'Lu hanya bisa lihat bab di kelas yang lu kelola.'
+              ? 'Kamu hanya bisa lihat bab di kelas yang kamu kelola.'
               : apiErr
                 ? apiErr.message
                 : 'Terjadi kesalahan tidak terduga.'}

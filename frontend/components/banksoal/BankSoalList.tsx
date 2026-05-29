@@ -193,7 +193,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
           <div>
             <CardTitle className="text-base">Bank Soal</CardTitle>
             <CardDescription>
-              Bank soal pribadi lu (per-guru). Pakai untuk menyusun Ulangan
+              Bank soal pribadi kamu (per-guru). Pakai untuk menyusun Ulangan
               Harian dengan mode manual atau random.
             </CardDescription>
           </div>

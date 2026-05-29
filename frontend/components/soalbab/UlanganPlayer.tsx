@@ -406,7 +406,7 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t-2 border-siswa-border-soft pt-4">
             <p className="text-sm text-siswa-text-muted">
               {answeredCount === att.total
-                ? 'Semua soal sudah dijawab. Submit kalau lu yakin.'
+                ? 'Semua soal sudah dijawab. Submit kalau kamu yakin.'
                 : `Masih ada ${att.total - answeredCount} soal yang belum dijawab.`}
             </p>
             <SiswaButton
@@ -474,7 +474,7 @@ export function UlanganPlayer({ hasilID, onDone, onAbort, disabled }: UlanganPla
           <DialogHeader>
             <DialogTitle>Submit ulangan?</DialogTitle>
             <DialogDescription>
-              Lu sudah menjawab <strong>{answeredCount}</strong> dari {att.total} soal.
+              Kamu sudah menjawab <strong>{answeredCount}</strong> dari {att.total} soal.
               Setelah submit, attempt ini dinilai dan tidak bisa diubah lagi.
             </DialogDescription>
           </DialogHeader>

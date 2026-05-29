@@ -336,7 +336,7 @@ export function friendlyTugasError(
       return 'ID tugas atau kelas tidak valid.';
     case 'invalid_body':
     case 'invalid_input':
-      return 'Input tidak valid. Periksa kembali data yang lu kirim.';
+      return 'Input tidak valid. Periksa kembali data yang kamu kirim.';
     case 'invalid_status':
       return 'Status tidak valid. Pilih draft, published, atau archived.';
     case 'invalid_version':
@@ -344,11 +344,11 @@ export function friendlyTugasError(
     case 'invalid_limit':
       return 'Limit harus angka positif.';
     case 'version_conflict':
-      return 'Tugas ini baru saja di-update orang lain. Form sudah di-refresh — ulangi perubahan lu.';
+      return 'Tugas ini baru saja di-update orang lain. Form sudah di-refresh — ulangi perubahan kamu.';
     case 'forbidden':
       return action === 'list' || action === 'get'
-        ? 'Lu tidak punya akses ke tugas kelas ini.'
-        : 'Lu tidak punya akses untuk mengubah tugas ini.';
+        ? 'Kamu tidak punya akses ke tugas kelas ini.'
+        : 'Kamu tidak punya akses untuk mengubah tugas ini.';
     case 'not_found':
       return action === 'create'
         ? 'Kelas tidak ditemukan (mungkin sudah dihapus).'
@@ -371,7 +371,7 @@ export function friendlyTugasError(
       return 'File belum dipilih.';
     case 'open_failed':
     case 'read_failed':
-      return 'Gagal membaca file yang lu unggah.';
+      return 'Gagal membaca file yang kamu unggah.';
     case 'r2_put_failed':
       return 'Upload ke object store gagal. Coba ulangi sebentar lagi.';
     case 'r2_unavailable':

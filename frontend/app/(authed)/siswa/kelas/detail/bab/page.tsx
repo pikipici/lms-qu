@@ -205,7 +205,7 @@ function MateriTab({
           strokeWidth={2.5}
         />
         <p className="text-sm text-siswa-text-muted">
-          Belum ada materi di bab ini. Tunggu guru lu nge-upload.
+          Belum ada materi di bab ini. Tunggu guru kamu nge-upload.
         </p>
       </div>
     );
@@ -345,7 +345,7 @@ function SiswaBabDetailContent({
             {isNotFound
               ? 'Bab ini belum dipublish atau sudah dihapus oleh guru.'
               : isForbidden
-                ? 'Lu tidak terdaftar aktif di kelas bab ini.'
+                ? 'Kamu tidak terdaftar aktif di kelas bab ini.'
                 : apiErr?.message ?? 'Terjadi kesalahan tidak terduga.'}
             {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
           </SiswaCardDescription>

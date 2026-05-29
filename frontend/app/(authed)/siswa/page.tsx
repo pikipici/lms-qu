@@ -71,7 +71,7 @@ export default function SiswaDashboardPage() {
             Halo, <SiswaHighlight>{firstName}</SiswaHighlight>!
           </>
         }
-        description="Daftar kelas yang lu ikuti. Gabung kelas baru pakai kode invite dari guru."
+        description="Daftar kelas yang kamu ikuti. Gabung kelas baru pakai kode invite dari guru."
         actions={
           <>
             <SiswaButton asChild tone="surface" size="sm">
@@ -152,8 +152,8 @@ export default function SiswaDashboardPage() {
               title="Belum ada kelas"
               description={
                 <>
-                  Lu belum gabung kelas apapun. Minta kode invite ke guru atau
-                  tunggu admin meng-assign lu ke kelas.
+                  Kamu belum gabung kelas apapun. Minta kode invite ke guru atau
+                  tunggu admin meng-assign kamu ke kelas.
                 </>
               }
               action={

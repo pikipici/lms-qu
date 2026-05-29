@@ -134,7 +134,7 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
         title: data.is_resubmit ? 'Submission ter-update' : 'Tugas terkirim',
         description: data.is_resubmit
           ? 'Versi baru sudah ke-save. Tunggu guru kasih nilai.'
-          : 'Tugas lu sudah terkirim. Tunggu guru kasih nilai.',
+          : 'Tugas kamu sudah terkirim. Tunggu guru kasih nilai.',
       });
     },
     onError: (err: unknown) => {
@@ -292,7 +292,7 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
             {sub.catatan && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
-                  Catatan lu
+                  Catatan kamu
                 </p>
                 <p className="mt-1 text-sm whitespace-pre-wrap">{sub.catatan}</p>
               </div>
@@ -300,7 +300,7 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
             {sub.attachments && sub.attachments.length > 0 && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-siswa-text-muted">
-                  Lampiran lu
+                  Lampiran kamu
                 </p>
                 <SubmissionAttachmentLinks
                   submissionID={sub.id}
@@ -366,7 +366,7 @@ export function SubmissionPanel({ tugasID, initialDeskripsi }: SubmissionPanelPr
                   <textarea
                     id="submission-catatan"
                     className="flex min-h-[120px] w-full rounded-siswa border-2 border-siswa-border bg-siswa-surface px-3 py-2 text-sm placeholder:text-siswa-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-yellow disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="Tulis jawaban / catatan lu di sini…"
+                    placeholder="Tulis jawaban / catatan kamu di sini…"
                     value={catatan}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                       setCatatan(e.target.value)

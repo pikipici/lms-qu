@@ -267,7 +267,7 @@ export function friendlyPengumumanError(
       return 'ID pengumuman atau kelas tidak valid.';
     case 'invalid_body':
     case 'invalid_input':
-      return 'Input tidak valid. Periksa kembali data yang lu kirim.';
+      return 'Input tidak valid. Periksa kembali data yang kamu kirim.';
     case 'invalid_status':
       return 'Status tidak valid. Pilih published atau archived.';
     case 'invalid_version':
@@ -275,11 +275,11 @@ export function friendlyPengumumanError(
     case 'invalid_limit':
       return 'Limit harus angka positif.';
     case 'version_conflict':
-      return 'Pengumuman ini baru saja di-update orang lain. Form sudah di-refresh — ulangi perubahan lu.';
+      return 'Pengumuman ini baru saja di-update orang lain. Form sudah di-refresh — ulangi perubahan kamu.';
     case 'forbidden':
       return action === 'list' || action === 'get'
-        ? 'Lu tidak punya akses ke pengumuman kelas ini.'
-        : 'Lu tidak punya akses untuk mengubah pengumuman ini.';
+        ? 'Kamu tidak punya akses ke pengumuman kelas ini.'
+        : 'Kamu tidak punya akses untuk mengubah pengumuman ini.';
     case 'not_found':
       return action === 'create'
         ? 'Kelas tidak ditemukan (mungkin sudah dihapus).'

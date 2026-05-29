@@ -132,7 +132,7 @@ export default function SiswaTugasPage() {
       <SiswaPageHeader
         eyebrow="Tugas saya"
         title="Riwayat tugas"
-        description="Submission lu dari semua kelas. Klik salah satu untuk buka detail tugas + lampiran."
+        description="Submission kamu dari semua kelas. Klik salah satu untuk buka detail tugas + lampiran."
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -205,7 +205,7 @@ export default function SiswaTugasPage() {
           <SiswaCardBody className="p-8 text-center">
             <p className="text-sm text-siswa-text-muted">
               {filter === 'all'
-                ? 'Lu belum pernah submit tugas. Buka kelas lu untuk lihat tugas yang tersedia.'
+                ? 'Kamu belum pernah submit tugas. Buka kelas kamu untuk lihat tugas yang tersedia.'
                 : 'Belum ada submission yang masuk filter ini.'}
             </p>
           </SiswaCardBody>

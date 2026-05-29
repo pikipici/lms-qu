@@ -304,16 +304,16 @@ export function friendlyBankSoalError(
       return 'ID soal tidak valid.';
     case 'invalid_body':
       return (
-        err.message || 'Input tidak valid. Periksa kembali data yang lu kirim.'
+        err.message || 'Input tidak valid. Periksa kembali data yang kamu kirim.'
       );
     case 'jawaban_invalid':
       return 'Jawaban menunjuk ke opsi yang kosong (teks/gambar).';
     case 'invalid_version':
       return 'Versi soal tidak valid. Refresh dulu.';
     case 'version_conflict':
-      return 'Soal ini baru saja di-update. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan lu.';
+      return 'Soal ini baru saja di-update. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan kamu.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke soal ini (hanya pemilik yang bisa edit).';
+      return 'Kamu tidak punya akses ke soal ini (hanya pemilik yang bisa edit).';
     case 'not_found':
       return 'Soal tidak ditemukan (mungkin sudah dihapus).';
     case 'payload_too_large':

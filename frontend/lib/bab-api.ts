@@ -148,17 +148,17 @@ export function friendlyBabError(err: ApiError, action: BabAction): string {
       return 'ID bab tidak valid.';
     case 'invalid_body':
     case 'invalid_input':
-      return 'Input tidak valid. Periksa kembali data yang lu kirim.';
+      return 'Input tidak valid. Periksa kembali data yang kamu kirim.';
     case 'invalid_status':
       return 'Status bab tidak valid.';
     case 'invalid_version':
       return 'Versi bab tidak valid. Refresh halaman dulu.';
     case 'version_conflict':
       return action === 'reorder'
-        ? 'Susunan bab berubah barengan orang lain. Daftar sudah di-refresh — silakan ulangi geser-geser lu.'
-        : 'Bab ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan lu.';
+        ? 'Susunan bab berubah barengan orang lain. Daftar sudah di-refresh — silakan ulangi geser-geser kamu.'
+        : 'Bab ini baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan kamu.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke bab ini.';
+      return 'Kamu tidak punya akses ke bab ini.';
     case 'not_found':
       return 'Bab tidak ditemukan (mungkin sudah dihapus).';
     case 'already_archived':

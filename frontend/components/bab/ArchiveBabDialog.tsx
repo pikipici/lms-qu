@@ -95,7 +95,7 @@ export function ArchiveBabDialog({
             </span>{' '}
             akan di-set ke status <span className="font-mono">archived</span>.
             Materi/tugas yang menempel tetap ada, tapi siswa tidak akan
-            melihatnya lagi. Lu masih bisa duplikat untuk pakai ulang isinya.
+            melihatnya lagi. Kamu masih bisa duplikat untuk pakai ulang isinya.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

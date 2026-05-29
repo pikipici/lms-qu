@@ -270,13 +270,13 @@ export function friendlySubmissionError(
     case 'invalid_id':
       return 'ID submission/tugas/attachment tidak valid.';
     case 'invalid_input':
-      return 'Input tidak valid. Periksa kembali data yang lu kirim.';
+      return 'Input tidak valid. Periksa kembali data yang kamu kirim.';
     case 'invalid_form':
       return 'Format form tidak valid. Refresh halaman lalu coba lagi.';
     case 'version_conflict':
       return 'Submission ini baru saja di-update orang lain. Refresh dulu.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke submission ini.';
+      return 'Kamu tidak punya akses ke submission ini.';
     case 'not_found':
       return action === 'submit' || action === 'resubmit'
         ? 'Tugas tidak ditemukan atau sudah tidak terbuka.'
@@ -285,7 +285,7 @@ export function friendlySubmissionError(
       return 'Deadline sudah lewat dan late submission tidak diizinkan untuk tugas ini.';
     case 'already_graded':
       return action === 'submit' || action === 'resubmit'
-        ? 'Tugas lu sudah dinilai oleh guru — tidak bisa resubmit lagi.'
+        ? 'Tugas kamu sudah dinilai oleh guru — tidak bisa resubmit lagi.'
         : 'Submission ini sudah dinilai sebelumnya.';
     case 'attachment_required':
       return 'Tugas ini wajib upload minimal 1 lampiran.';
@@ -297,7 +297,7 @@ export function friendlySubmissionError(
       return 'Format file tidak didukung. Pakai PDF, DOCX, JPG, PNG, atau ZIP.';
     case 'open_failed':
     case 'read_failed':
-      return 'Gagal membaca file yang lu unggah.';
+      return 'Gagal membaca file yang kamu unggah.';
     case 'r2_put_failed':
       return 'Upload ke object store gagal. Coba ulangi sebentar lagi.';
     case 'r2_unavailable':

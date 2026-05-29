@@ -149,7 +149,7 @@ function GuruAuditContent({ kelasID }: { kelasID: string }) {
     const msg =
       err instanceof ApiError
         ? err.status === 403
-          ? 'Bukan kelas lu — akses ditolak.'
+          ? 'Bukan kelas kamu — akses ditolak.'
           : err.status === 404
           ? 'Kelas tidak ditemukan.'
           : err.message

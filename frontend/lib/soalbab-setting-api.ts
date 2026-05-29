@@ -77,7 +77,7 @@ export function friendlySettingError(err: ApiError): string {
       return 'ID bab tidak valid.';
     case 'invalid_body':
     case 'invalid_input':
-      return err.message || 'Data setting tidak valid. Periksa kembali angka yang lu masukkan.';
+      return err.message || 'Data setting tidak valid. Periksa kembali angka yang kamu masukkan.';
     case 'invalid_waktu_buka_review':
       return 'Waktu buka review harus dalam format yang valid.';
     case 'jumlah_soal_exceeds_pool':
@@ -85,13 +85,13 @@ export function friendlySettingError(err: ApiError): string {
     case 'ulangan_pool_empty':
       return 'Belum ada soal mode ulangan di bab ini. Tambahkan soal dulu sebelum mengaktifkan setting.';
     case 'forbidden':
-      return 'Lu tidak punya akses untuk mengubah setting bab ini.';
+      return 'Kamu tidak punya akses untuk mengubah setting bab ini.';
     case 'not_found':
       return 'Bab tidak ditemukan.';
     case 'bab_archived':
       return 'Bab sudah diarsipkan; setting tidak bisa diubah.';
     case 'version_conflict':
-      return 'Setting baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan lu.';
+      return 'Setting baru saja di-update orang lain. Form sudah di-refresh dengan data terbaru — silakan ulangi perubahan kamu.';
     default:
       return err.message || 'Gagal menyimpan setting ulangan.';
   }

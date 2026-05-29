@@ -277,7 +277,7 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
           </div>
           <SiswaCardDescription>
             Latihan formative — kerjakan soal bebas, dapat feedback langsung tiap jawaban.
-            Tidak ada batas waktu, tidak ada nilai persist. Re-attempt sebanyak yang lu mau.
+            Tidak ada batas waktu, tidak ada nilai persist. Re-attempt sebanyak yang kamu mau.
           </SiswaCardDescription>
         </SiswaCardHeader>
         <SiswaCardBody>
@@ -390,7 +390,7 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t-2 border-siswa-border-soft pt-4">
             <p className="text-sm text-siswa-text-muted">
               {answeredCount === att.total
-                ? 'Semua soal sudah dijawab. Lu bisa Selesai sekarang.'
+                ? 'Semua soal sudah dijawab. Kamu bisa Selesai sekarang.'
                 : `Masih ada ${att.total - answeredCount} soal yang belum dijawab.`}
             </p>
             <SiswaButton
@@ -411,8 +411,8 @@ export function LatihanPlayer({ babID, disabled }: LatihanPlayerProps) {
           <DialogHeader>
             <DialogTitle>Selesai latihan?</DialogTitle>
             <DialogDescription>
-              Lu sudah menjawab {answeredCount} dari {att.total} soal. Setelah selesai, attempt
-              ini ditandai selesai dan lu bisa langsung mulai latihan baru kalau mau.
+              Kamu sudah menjawab {answeredCount} dari {att.total} soal. Setelah selesai, attempt
+              ini ditandai selesai dan kamu bisa langsung mulai latihan baru kalau mau.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -580,7 +580,7 @@ function LatihanResultCard({
         </div>
         <SiswaCardDescription>
           Sip, latihan ini sudah selesai. Latihan formative — nilai tidak
-          dipersist, tapi lu bisa pakai feedback ini buat refleksi.
+          dipersist, tapi kamu bisa pakai feedback ini buat refleksi.
         </SiswaCardDescription>
       </SiswaCardHeader>
       <SiswaCardBody>

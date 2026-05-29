@@ -175,7 +175,7 @@ export function PengumumanComposer({
           <DialogTitle>Pengumuman baru</DialogTitle>
           <DialogDescription>
             Scope: {scopeLabel}. Pengumuman langsung terbit (status published)
-            ke siswa enrolled. Lu bisa archive nanti kalau perlu.
+            ke siswa enrolled. Kamu bisa archive nanti kalau perlu.
           </DialogDescription>
         </DialogHeader>
 

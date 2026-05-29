@@ -214,7 +214,7 @@ export function UlanganLobby({
         <SiswaCardBody>
           {ulanganItems.length === 0 ? (
             <p className="text-sm text-siswa-text-muted">
-              Begitu lu mulai ulangan, attempt akan tampil di sini.
+              Begitu kamu mulai ulangan, attempt akan tampil di sini.
             </p>
           ) : (
             <ul className="space-y-2">
@@ -288,7 +288,7 @@ function ReviewPolicyNote({ setting }: { setting: SiswaLobbyView }) {
   }
   return (
     <p className="rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface/70 p-2 text-xs text-siswa-text-muted">
-      Pembahasan jawaban tersedia langsung setelah lu submit attempt.
+      Pembahasan jawaban tersedia langsung setelah kamu submit attempt.
     </p>
   );
 }

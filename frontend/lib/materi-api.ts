@@ -261,7 +261,7 @@ export function friendlyMateriError(
       return 'ID materi atau bab tidak valid.';
     case 'invalid_body':
     case 'invalid_input':
-      return 'Input tidak valid. Periksa kembali data yang lu kirim.';
+      return 'Input tidak valid. Periksa kembali data yang kamu kirim.';
     case 'invalid_tipe':
       return 'Tipe materi tidak valid.';
     case 'invalid_version':
@@ -273,9 +273,9 @@ export function friendlyMateriError(
     case 'tipe_immutable':
       return 'Tipe materi tidak bisa diubah. Hapus lalu buat ulang dengan tipe baru.';
     case 'version_conflict':
-      return 'Materi ini baru saja di-update orang lain. Form sudah di-refresh — ulangi perubahan lu.';
+      return 'Materi ini baru saja di-update orang lain. Form sudah di-refresh — ulangi perubahan kamu.';
     case 'forbidden':
-      return 'Lu tidak punya akses ke materi/kelas ini.';
+      return 'Kamu tidak punya akses ke materi/kelas ini.';
     case 'not_found':
       return 'Materi tidak ditemukan (mungkin sudah dihapus).';
     case 'kelas_archived':
@@ -290,7 +290,7 @@ export function friendlyMateriError(
       return 'File belum dipilih.';
     case 'open_failed':
     case 'read_failed':
-      return 'Gagal membaca file yang lu unggah.';
+      return 'Gagal membaca file yang kamu unggah.';
     case 'r2_put_failed':
       return 'Upload ke object store gagal. Coba ulangi sebentar lagi.';
     case 'r2_unavailable':
