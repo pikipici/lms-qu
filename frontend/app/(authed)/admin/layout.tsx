@@ -23,6 +23,7 @@ import {
   PanelLeftClose,
   UserCog,
   FileSpreadsheet,
+  MessageCircle,
   School,
   UserPlus,
 } from 'lucide-react';
@@ -53,6 +54,7 @@ const NAV: NavItem[] = [
   { href: '/admin/pengguna', label: 'Pengguna', Icon: Users },
   { href: '/admin/sekolah', label: 'Sekolah & Rombel', Icon: School },
   { href: '/admin/siswa-join-requests', label: 'Request Siswa', Icon: UserPlus },
+  { href: '/admin/chat', label: 'Monitor Chat', Icon: MessageCircle },
   { href: '/admin/import-csv', label: 'Import CSV', Icon: FileSpreadsheet },
   { href: '/admin/audit-log', label: 'Audit Log', Icon: ScrollText },
   { href: '/admin/login-attempts', label: 'Login Attempts', Icon: ShieldAlert },

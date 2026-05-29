@@ -10,7 +10,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Users, ScrollText, ShieldAlert, ArrowRight } from 'lucide-react';
+import { Users, ScrollText, ShieldAlert, ArrowRight, MessageCircle } from 'lucide-react';
 
 import {
   Card,
@@ -34,6 +34,12 @@ const CARDS: StatCard[] = [
     description: 'Kelola admin, guru, dan siswa.',
     href: '/admin/pengguna',
     Icon: Users,
+  },
+  {
+    label: 'Monitor Chat',
+    description: 'Pantau chat siswa dan guru lintas kelas.',
+    href: '/admin/chat',
+    Icon: MessageCircle,
   },
   {
     label: 'Audit Log',
