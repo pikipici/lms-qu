@@ -185,6 +185,8 @@ export default function SiswaDashboardPage() {
                 const sectionMeta = SECTION_META[tone];
                 const SectionIcon = sectionMeta.Icon;
                 const unread = unreadByKelas.get(it.kelas.id) ?? 0;
+                const detailHref = `/siswa/kelas/detail?id=${it.kelas.id}`;
+                const chatHref = `${detailHref}&tab=chat`;
                 return (
                   <SiswaCard
                     key={it.kelas.id}
@@ -193,12 +195,12 @@ export default function SiswaDashboardPage() {
                     interactive
                     asButton
                     onClick={() => {
-                      window.location.href = `/siswa/kelas/detail?id=${it.kelas.id}`;
+                      window.location.href = detailHref;
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        window.location.href = `/siswa/kelas/detail?id=${it.kelas.id}`;
+                        window.location.href = detailHref;
                       }
                     }}
                     className="overflow-hidden"
@@ -209,10 +211,18 @@ export default function SiswaDashboardPage() {
                       </span>
                       <div className="flex flex-col items-end gap-2">
                         {unread > 0 ? (
-                          <SiswaBadge tone="pink">
-                            <MessageCircle className="size-3" />
-                            {unread} baru
-                          </SiswaBadge>
+                          <Link
+                            href={chatHref}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border"
+                            aria-label={`Buka ${unread} pesan baru di chat kelas ${it.kelas.nama}`}
+                          >
+                            <SiswaBadge tone="pink">
+                              <MessageCircle className="size-3" />
+                              {unread} baru
+                            </SiswaBadge>
+                          </Link>
                         ) : null}
                         <SiswaBadge tone="cream">
                           {it.joined_via === 'kode' ? 'kode invite' : 'admin'}

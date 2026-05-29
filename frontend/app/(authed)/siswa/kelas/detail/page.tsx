@@ -14,7 +14,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useMutation,
   useQuery,
@@ -31,8 +31,8 @@ import {
   MessageCircle,
   RotateCcw,
   Send,
-  Sparkles,
   TrendingUp,
+  type LucideIcon,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
@@ -79,6 +79,25 @@ function formatDate(input?: string | null): string {
 
 function joinedViaLabel(via: 'kode' | 'admin'): string {
   return via === 'kode' ? 'kode invite' : 'admin';
+}
+
+type DetailTab = 'materi' | 'tugas' | 'pengumuman' | 'chat' | 'nilai';
+
+const DETAIL_TABS: {
+  key: DetailTab;
+  label: string;
+  description: string;
+  Icon: LucideIcon;
+}[] = [
+  { key: 'materi', label: 'Materi', description: 'Bab, materi, latihan, dan ulangan.', Icon: BookOpen },
+  { key: 'tugas', label: 'Tugas', description: 'Tugas kelas-wide dari guru.', Icon: ClipboardList },
+  { key: 'pengumuman', label: 'Pengumuman', description: 'Info terbaru dari guru.', Icon: Megaphone },
+  { key: 'chat', label: 'Chat', description: 'Tanya guru kelas langsung.', Icon: MessageCircle },
+  { key: 'nilai', label: 'Nilai', description: 'Rekap nilai kelas ini.', Icon: TrendingUp },
+];
+
+function isDetailTab(value: string | null): value is DetailTab {
+  return DETAIL_TABS.some((tab) => tab.key === value);
 }
 
 function BabCard({ kelasID, bab }: { kelasID: string; bab: SiswaBabItem }) {
@@ -273,7 +292,52 @@ function SiswaChatBox({ kelasID }: { kelasID: string }) {
   );
 }
 
-function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
+function DetailTabBar({
+  active,
+  onChange,
+}: {
+  active: DetailTab;
+  onChange: (tab: DetailTab) => void;
+}) {
+  return (
+    <div className="overflow-x-auto pb-1">
+      <div className="flex min-w-max gap-2 rounded-siswa siswa-border bg-siswa-surface/80 p-2 siswa-shadow-sm">
+        {DETAIL_TABS.map((tab) => {
+          const activeTab = tab.key === active;
+          const Icon = tab.Icon;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => onChange(tab.key)}
+              className={`flex items-center gap-2 rounded-siswa border-2 px-3 py-2 text-sm font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border sm:px-4 ${
+                activeTab
+                  ? 'border-siswa-border bg-siswa-primary text-siswa-text siswa-shadow-sm -translate-y-0.5'
+                  : 'border-transparent bg-transparent text-siswa-text-muted hover:border-siswa-border-soft hover:bg-white/60'
+              }`}
+            >
+              <Icon className="size-4" strokeWidth={2.5} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SiswaKelasDetailContent({ kelasID, initialTab }: { kelasID: string; initialTab: DetailTab }) {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = React.useState<DetailTab>(initialTab);
+  const setTab = React.useCallback((next: DetailTab) => {
+    setActiveTab(next);
+    router.replace(`/siswa/kelas/detail?id=${kelasID}&tab=${next}`, { scroll: false });
+  }, [kelasID, router]);
+
+  React.useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
   const enrollmentQuery = useQuery({
     queryKey: ['siswa', 'kelas', 'list'],
     queryFn: () => listMyKelas({ page: 1, pageSize: 50 }),
@@ -425,96 +489,98 @@ function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
         </div>
       </SiswaCard>
 
-      <SiswaChatBox kelasID={kelasID} />
+      <DetailTabBar active={activeTab} onChange={setTab} />
 
-      {/* Bab kelas (Materi accent — biru) */}
-      <SiswaCard tone="materi" shadow="md">
-        <SiswaCardHeader>
-          <div className="flex flex-row items-start justify-between gap-3">
-            <div className="space-y-1">
-              <SiswaCardTitle className="flex items-center gap-2">
-                <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
-                  <BookOpen className="size-4" strokeWidth={2.5} />
-                </span>
-                Bab kelas
-              </SiswaCardTitle>
-              <SiswaCardDescription>
-                Klik bab buat lihat materi, latihan, ulangan, dan tugas.
-                Progress bar nge-track materi yang udah kamu baca.
-              </SiswaCardDescription>
+      {activeTab === 'materi' ? (
+        <SiswaCard tone="materi" shadow="md">
+          <SiswaCardHeader>
+            <div className="flex flex-row items-start justify-between gap-3">
+              <div className="space-y-1">
+                <SiswaCardTitle className="flex items-center gap-2">
+                  <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                    <BookOpen className="size-4" strokeWidth={2.5} />
+                  </span>
+                  Materi kelas
+                </SiswaCardTitle>
+                <SiswaCardDescription>
+                  Klik bab buat lihat materi, latihan, ulangan, dan tugas. Progress bar nge-track materi yang udah kamu baca.
+                </SiswaCardDescription>
+              </div>
+              <SiswaButton type="button" tone="surface" size="sm" onClick={() => babQuery.refetch()} disabled={babQuery.isFetching}>
+                <RotateCcw className="size-4" />
+                Refresh
+              </SiswaButton>
             </div>
-            <SiswaButton
-              type="button"
-              tone="surface"
-              size="sm"
-              onClick={() => babQuery.refetch()}
-              disabled={babQuery.isFetching}
-            >
-              <RotateCcw className="size-4" />
-              Refresh
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <BabListBody kelasID={kelasID} query={babQuery} />
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
+
+      {activeTab === 'tugas' ? (
+        <SiswaCard tone="tugas" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <ClipboardList className="size-4" strokeWidth={2.5} />
+              </span>
+              Tugas kelas
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Tugas kelas-wide dari guru. Tugas spesifik bab tersedia di halaman bab masing-masing.
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <SiswaTugasList kelasID={kelasID} babID={null} emptyState="Belum ada tugas kelas-wide." />
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
+
+      {activeTab === 'pengumuman' ? (
+        <SiswaCard tone="umum" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <Megaphone className="size-4" strokeWidth={2.5} />
+              </span>
+              Pengumuman kelas
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Update terbaru dari guru. Pengumuman bab tersedia di halaman bab masing-masing.
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <PengumumanReadList kelasID={kelasID} babID={null} emptyState="Belum ada pengumuman dari guru." expandFirst />
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
+
+      {activeTab === 'chat' ? <SiswaChatBox kelasID={kelasID} /> : null}
+
+      {activeTab === 'nilai' ? (
+        <SiswaCard tone="nilai" shadow="md">
+          <SiswaCardHeader>
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <TrendingUp className="size-4" strokeWidth={2.5} />
+              </span>
+              Nilai kelas
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Buka halaman rekap nilai lengkap untuk kelas ini.
+            </SiswaCardDescription>
+          </SiswaCardHeader>
+          <SiswaCardBody>
+            <SiswaButton asChild tone="primary" size="sm">
+              <Link href={`/siswa/kelas/detail/nilai?id=${kelasID}`}>
+                <TrendingUp className="size-4" strokeWidth={2.5} />
+                Lihat nilai kelas ini
+              </Link>
             </SiswaButton>
-          </div>
-        </SiswaCardHeader>
-        <SiswaCardBody>
-          <BabListBody kelasID={kelasID} query={babQuery} />
-        </SiswaCardBody>
-      </SiswaCard>
-
-      {/* Tugas kelas (Tugas accent — pink) */}
-      <SiswaCard tone="tugas" shadow="md">
-        <SiswaCardHeader>
-          <div className="flex flex-row items-start justify-between gap-3">
-            <div className="space-y-1">
-              <SiswaCardTitle className="flex items-center gap-2">
-                <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
-                  <ClipboardList className="size-4" strokeWidth={2.5} />
-                </span>
-                Tugas kelas
-              </SiswaCardTitle>
-              <SiswaCardDescription>
-                Tugas kelas-wide dari guru. Tugas spesifik bab tersedia di halaman
-                bab masing-masing.
-              </SiswaCardDescription>
-            </div>
-            <Sparkles className="size-5 text-siswa-text/40" />
-          </div>
-        </SiswaCardHeader>
-        <SiswaCardBody>
-          <SiswaTugasList
-            kelasID={kelasID}
-            babID={null}
-            emptyState="Belum ada tugas kelas-wide."
-          />
-        </SiswaCardBody>
-      </SiswaCard>
-
-      {/* Pengumuman (Umum accent — krem) */}
-      <SiswaCard tone="umum" shadow="md">
-        <SiswaCardHeader>
-          <div className="flex flex-row items-start justify-between gap-3">
-            <div className="space-y-1">
-              <SiswaCardTitle className="flex items-center gap-2">
-                <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
-                  <Megaphone className="size-4" strokeWidth={2.5} />
-                </span>
-                Pengumuman kelas
-              </SiswaCardTitle>
-              <SiswaCardDescription>
-                Update terbaru dari guru. Pengumuman bab tersedia di halaman bab
-                masing-masing.
-              </SiswaCardDescription>
-            </div>
-          </div>
-        </SiswaCardHeader>
-        <SiswaCardBody>
-          <PengumumanReadList
-            kelasID={kelasID}
-            babID={null}
-            emptyState="Belum ada pengumuman dari guru."
-            expandFirst
-          />
-        </SiswaCardBody>
-      </SiswaCard>
+          </SiswaCardBody>
+        </SiswaCard>
+      ) : null}
     </div>
   );
 }
@@ -595,6 +661,8 @@ function BabListBody({
 export default function SiswaKelasDetailPage() {
   const searchParams = useSearchParams();
   const id = searchParams?.get('id') ?? '';
+  const tabParam = searchParams?.get('tab') ?? null;
+  const initialTab = isDetailTab(tabParam) ? tabParam : 'materi';
 
   if (!id) {
     return (
@@ -618,5 +686,5 @@ export default function SiswaKelasDetailPage() {
     );
   }
 
-  return <SiswaKelasDetailContent kelasID={id} />;
+  return <SiswaKelasDetailContent kelasID={id} initialTab={initialTab} />;
 }
