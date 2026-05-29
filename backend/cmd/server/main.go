@@ -31,6 +31,7 @@ import (
 	"github.com/pikip/lms/backend/internal/auth"
 	"github.com/pikip/lms/backend/internal/bab"
 	"github.com/pikip/lms/backend/internal/banksoal"
+	"github.com/pikip/lms/backend/internal/chat"
 	"github.com/pikip/lms/backend/internal/config"
 	"github.com/pikip/lms/backend/internal/db"
 	"github.com/pikip/lms/backend/internal/feed"
@@ -277,6 +278,10 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	protected.Post("/logout-all", authHandler.LogoutAll)
 	protected.Get("/sessions", authHandler.Sessions)
 
+	chatRepo := chat.NewRepo(gdb)
+	chatSvc := chat.NewService(chatRepo)
+	chatHandler := chat.NewHandler(chatSvc)
+
 	adminHandler := admin.NewHandler(authRepo, cfg)
 	adminGroup := api.Group("/admin",
 		middleware.BearerAuth(authSvc),
@@ -302,6 +307,11 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	adminGroup.Get("/siswa-join-requests", registrationHandler.ListRequests)
 	adminGroup.Post("/siswa-join-requests/:id/approve", registrationHandler.Approve)
 	adminGroup.Post("/siswa-join-requests/:id/reject", registrationHandler.Reject)
+	adminGroup.Get("/chat/conversations", chatHandler.ListAdminConversations)
+	adminGroup.Get("/chat/conversations/:conversation_id/messages", chatHandler.GetAdminMessages)
+	adminGroup.Post("/chat/conversations/:conversation_id/messages", chatHandler.SendAdminMessage)
+	adminGroup.Post("/chat/conversations/:conversation_id/read", chatHandler.MarkAdminRead)
+	adminGroup.Patch("/chat/conversations/:conversation_id/status", chatHandler.SetAdminStatus)
 
 	sekolahRepo := sekolah.NewRepo(gdb)
 	sekolahHandler := sekolah.NewHandler(sekolahRepo)
@@ -364,6 +374,11 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	kelasGroup.Post("/:id/archive", kelasHandler.Archive)
 	kelasGroup.Post("/:id/duplicate", kelasHandler.Duplicate)
 	kelasGroup.Get("/:id/enrollments", kelasHandler.ListEnrollments)
+	kelasGroup.Get("/:kelas_id/chat/conversations", chatHandler.ListGuruConversations)
+	kelasGroup.Get("/:kelas_id/chat/conversations/:conversation_id/messages", chatHandler.GetGuruMessages)
+	kelasGroup.Post("/:kelas_id/chat/conversations/:conversation_id/messages", chatHandler.SendGuruMessage)
+	kelasGroup.Post("/:kelas_id/chat/conversations/:conversation_id/read", chatHandler.MarkGuruRead)
+	kelasGroup.Patch("/:kelas_id/chat/conversations/:conversation_id/status", chatHandler.SetGuruStatus)
 
 	// Bab (Phase 3): chapter CRUD per kelas. Mounted under same /kelas group
 	// for list/create (POST /kelas/:id/bab) — but Get/Patch/Archive use the
@@ -453,6 +468,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		kelasHandler.JoinByKode,
 	)
 	siswaGroup.Get("/kelas", kelasHandler.ListMyKelas)
+	siswaGroup.Get("/kelas/:kelas_id/chat", chatHandler.GetSiswaChat)
+	siswaGroup.Post("/kelas/:kelas_id/chat/messages", chatHandler.SendSiswaMessage)
+	siswaGroup.Post("/kelas/:kelas_id/chat/read", chatHandler.MarkSiswaRead)
 
 	// Materi MarkRead (Task 3.C.4): siswa-only idempotent mark-as-read.
 	// Enrollment guard inside Service.MarkRead — no extra rate limit needed
