@@ -74,6 +74,48 @@ func (s *Service) MarkSiswaRead(ctx context.Context, kelasID, siswaID uuid.UUID)
 	return s.repo.MarkRead(ctx, conv.ID, SenderSiswa)
 }
 
+func (s *Service) GetSiswaAdminConversation(ctx context.Context, siswaID uuid.UUID, limit int) (*ConversationWithMessages, error) {
+	conv, err := s.getOrCreateSiswaAdminConversation(ctx, siswaID)
+	if err != nil {
+		return nil, err
+	}
+	msgs, err := s.repo.ListMessages(ctx, conv.ID, clampLimit(limit, defaultLimit, maxLimit))
+	if err != nil {
+		return nil, err
+	}
+	return &ConversationWithMessages{Conversation: conv, Messages: msgs}, nil
+}
+
+func (s *Service) SendSiswaAdminMessage(ctx context.Context, siswaID uuid.UUID, body string) (*Message, error) {
+	conv, err := s.getOrCreateSiswaAdminConversation(ctx, siswaID)
+	if err != nil {
+		return nil, err
+	}
+	body, err = normalizeBody(body)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.SendMessageTx(ctx, conv.ID, siswaID, SenderSiswa, body, makePreview(body))
+}
+
+func (s *Service) MarkSiswaAdminRead(ctx context.Context, siswaID uuid.UUID) error {
+	sekolahID, err := s.repo.FindFirstSiswaSekolah(ctx, siswaID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	conv, err := s.repo.FindAdminConversationBySekolahSiswa(ctx, *sekolahID, siswaID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.repo.MarkRead(ctx, conv.ID, SenderSiswa)
+}
+
 func (s *Service) ListGuruConversations(ctx context.Context, kelasID, guruID uuid.UUID, status string, unread bool, limit, offset int) (*ListResult, error) {
 	k, err := s.repo.FindKelas(ctx, kelasID)
 	if err != nil {
@@ -92,11 +134,14 @@ func (s *Service) ListGuruConversations(ctx context.Context, kelasID, guruID uui
 	return &ListResult{Data: rows, Total: total}, nil
 }
 
-func (s *Service) ListAdminConversations(ctx context.Context, kelasID uuid.UUID, status string, unread bool, limit, offset int) (*ListResult, error) {
+func (s *Service) ListAdminConversations(ctx context.Context, scope ConversationScope, kelasID uuid.UUID, status string, unread bool, limit, offset int) (*ListResult, error) {
+	if scope != ScopeKelas && scope != ScopeAdmin {
+		return nil, ErrInvalidStatus
+	}
 	if status != "" && status != string(StatusOpen) && status != string(StatusClosed) {
 		return nil, ErrInvalidStatus
 	}
-	rows, total, err := s.repo.ListAdminConversations(ctx, kelasID, status, unread, clampLimit(limit, 20, 100), max(offset, 0))
+	rows, total, err := s.repo.ListAdminConversations(ctx, scope, kelasID, status, unread, clampLimit(limit, 20, 100), max(offset, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +149,7 @@ func (s *Service) ListAdminConversations(ctx context.Context, kelasID uuid.UUID,
 }
 
 func (s *Service) GetAdminMessages(ctx context.Context, conversationID uuid.UUID, limit int) (*ConversationWithMessages, error) {
-	conv, err := s.authorizeAdminClassConversation(ctx, conversationID)
+	conv, err := s.authorizeAdminConversation(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +161,7 @@ func (s *Service) GetAdminMessages(ctx context.Context, conversationID uuid.UUID
 }
 
 func (s *Service) SendAdminMessage(ctx context.Context, adminID, conversationID uuid.UUID, body string) (*Message, error) {
-	if _, err := s.authorizeAdminClassConversation(ctx, conversationID); err != nil {
+	if _, err := s.authorizeAdminConversation(ctx, conversationID); err != nil {
 		return nil, err
 	}
 	body, err := normalizeBody(body)
@@ -127,7 +172,7 @@ func (s *Service) SendAdminMessage(ctx context.Context, adminID, conversationID 
 }
 
 func (s *Service) MarkAdminRead(ctx context.Context, conversationID uuid.UUID) error {
-	if _, err := s.authorizeAdminClassConversation(ctx, conversationID); err != nil {
+	if _, err := s.authorizeAdminConversation(ctx, conversationID); err != nil {
 		return err
 	}
 	return s.repo.MarkRead(ctx, conversationID, SenderAdmin)
@@ -137,7 +182,7 @@ func (s *Service) SetAdminStatus(ctx context.Context, conversationID uuid.UUID, 
 	if status != StatusOpen && status != StatusClosed {
 		return nil, ErrInvalidStatus
 	}
-	if _, err := s.authorizeAdminClassConversation(ctx, conversationID); err != nil {
+	if _, err := s.authorizeAdminConversation(ctx, conversationID); err != nil {
 		return nil, err
 	}
 	return s.repo.SetStatus(ctx, conversationID, status, version)
@@ -205,7 +250,7 @@ func (s *Service) getOrCreateSiswaConversation(ctx context.Context, kelasID, sis
 	}
 	conv, err := s.repo.FindConversationByKelasSiswa(ctx, kelasID, siswaID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		conv = &Conversation{Scope: ScopeKelas, KelasID: kelasID, SekolahID: k.SekolahID, SiswaID: siswaID, GuruID: k.GuruID, Status: StatusOpen}
+		conv = &Conversation{Scope: ScopeKelas, KelasID: &kelasID, SekolahID: k.SekolahID, SiswaID: siswaID, GuruID: &k.GuruID, Status: StatusOpen}
 		if createErr := s.repo.CreateConversation(ctx, conv); createErr != nil {
 			return nil, createErr
 		}
@@ -214,10 +259,29 @@ func (s *Service) getOrCreateSiswaConversation(ctx context.Context, kelasID, sis
 	if err != nil {
 		return nil, err
 	}
-	if conv.GuruID != k.GuruID || !sameUUIDPtr(conv.SekolahID, k.SekolahID) {
+	if !sameUUIDPtr(conv.GuruID, &k.GuruID) || !sameUUIDPtr(conv.SekolahID, k.SekolahID) {
 		if err := s.repo.UpdateConversationClassSnapshot(ctx, conv.ID, k.GuruID, k.SekolahID); err != nil {
 			return nil, err
 		}
+	}
+	return s.repo.GetConversation(ctx, conv.ID)
+}
+
+func (s *Service) getOrCreateSiswaAdminConversation(ctx context.Context, siswaID uuid.UUID) (*Conversation, error) {
+	sekolahID, err := s.repo.FindFirstSiswaSekolah(ctx, siswaID)
+	if err != nil {
+		return nil, err
+	}
+	conv, err := s.repo.FindAdminConversationBySekolahSiswa(ctx, *sekolahID, siswaID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		conv = &Conversation{Scope: ScopeAdmin, SekolahID: sekolahID, SiswaID: siswaID, Status: StatusOpen}
+		if createErr := s.repo.CreateConversation(ctx, conv); createErr != nil {
+			return nil, createErr
+		}
+		return s.repo.GetConversation(ctx, conv.ID)
+	}
+	if err != nil {
+		return nil, err
 	}
 	return s.repo.GetConversation(ctx, conv.ID)
 }
@@ -234,18 +298,18 @@ func (s *Service) authorizeGuruConversation(ctx context.Context, kelasID, guruID
 	if err != nil {
 		return nil, err
 	}
-	if conv.Scope != ScopeKelas || conv.KelasID != kelasID || conv.GuruID != guruID {
+	if conv.Scope != ScopeKelas || !sameUUIDPtr(conv.KelasID, &kelasID) || !sameUUIDPtr(conv.GuruID, &guruID) {
 		return nil, ErrForbidden
 	}
 	return conv, nil
 }
 
-func (s *Service) authorizeAdminClassConversation(ctx context.Context, conversationID uuid.UUID) (*Conversation, error) {
+func (s *Service) authorizeAdminConversation(ctx context.Context, conversationID uuid.UUID) (*Conversation, error) {
 	conv, err := s.repo.GetConversation(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	if conv.Scope != ScopeKelas {
+	if conv.Scope != ScopeKelas && conv.Scope != ScopeAdmin {
 		return nil, ErrForbidden
 	}
 	return conv, nil

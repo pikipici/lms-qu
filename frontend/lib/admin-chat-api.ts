@@ -2,12 +2,15 @@ import { api } from '@/lib/api';
 
 export type ChatStatus = 'open' | 'closed';
 export type ChatSenderRole = 'siswa' | 'guru' | 'admin';
+export type ChatScope = 'kelas' | 'admin';
 
 export interface ChatConversation {
   id: string;
-  kelas_id: string;
+  scope: ChatScope;
+  kelas_id?: string;
+  sekolah_id?: string;
   siswa_id: string;
-  guru_id: string;
+  guru_id?: string;
   status: ChatStatus;
   last_message_at?: string | null;
   last_message_preview: string;
@@ -49,6 +52,7 @@ interface Envelope<T> {
 export async function listAdminChatConversations(params: {
   status?: ChatStatus | 'all';
   unread?: boolean;
+  scope?: ChatScope;
   kelasID?: string;
   limit?: number;
   offset?: number;
@@ -56,6 +60,7 @@ export async function listAdminChatConversations(params: {
   const query = new URLSearchParams();
   if (params.status && params.status !== 'all') query.set('status', params.status);
   if (params.unread) query.set('unread', 'true');
+  if (params.scope) query.set('scope', params.scope);
   if (params.kelasID) query.set('kelas_id', params.kelasID);
   if (params.limit) query.set('limit', String(params.limit));
   if (params.offset) query.set('offset', String(params.offset));

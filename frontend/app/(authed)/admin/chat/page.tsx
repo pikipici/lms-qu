@@ -13,6 +13,7 @@ import {
   sendAdminChatMessage,
   setAdminChatStatus,
   type ChatConversation,
+  type ChatScope,
   type ChatStatus,
   type ChatThreadPayload,
 } from '@/lib/admin-chat-api';
@@ -44,6 +45,7 @@ export default function AdminChatPage() {
   const [selectedID, setSelectedID] = React.useState<string | null>(null);
   const [body, setBody] = React.useState('');
   const [status, setStatus] = React.useState<ChatStatus | 'all'>('all');
+  const [scope, setScope] = React.useState<ChatScope>('kelas');
   const [unreadOnly, setUnreadOnly] = React.useState(false);
   const [kelasID, setKelasID] = React.useState('');
 
@@ -54,8 +56,8 @@ export default function AdminChatPage() {
   });
 
   const listQuery = useQuery({
-    queryKey: ['admin', 'chat', 'conversations', status, unreadOnly, kelasID],
-    queryFn: () => listAdminChatConversations({ status, unread: unreadOnly, kelasID, limit: 100 }),
+    queryKey: ['admin', 'chat', 'conversations', scope, status, unreadOnly, kelasID],
+    queryFn: () => listAdminChatConversations({ scope, status, unread: unreadOnly, kelasID, limit: 100 }),
     refetchInterval: 12_000,
     staleTime: 5_000,
   });
@@ -143,6 +145,21 @@ export default function AdminChatPage() {
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
+        {(['kelas', 'admin'] as const).map((item) => (
+          <Button
+            key={item}
+            type="button"
+            variant={scope === item ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              setScope(item);
+              setKelasID('');
+              setSelectedID(null);
+            }}
+          >
+            {item === 'kelas' ? 'Chat kelas' : 'Bantuan Admin'}
+          </Button>
+        ))}
         {(['all', 'open', 'closed'] as const).map((item) => (
           <Button
             key={item}
@@ -168,20 +185,22 @@ export default function AdminChatPage() {
         >
           Belum dibaca admin
         </Button>
-        <select
-          value={kelasID}
-          onChange={(e) => {
-            setKelasID(e.target.value);
-            setSelectedID(null);
-          }}
-          className="h-9 min-w-56 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          aria-label="Filter kelas"
-        >
-          <option value="">Semua kelas</option>
-          {(kelasQuery.data?.items ?? []).map((kelas) => (
-            <option key={kelas.id} value={kelas.id}>{kelas.nama}</option>
-          ))}
-        </select>
+        {scope === 'kelas' ? (
+          <select
+            value={kelasID}
+            onChange={(e) => {
+              setKelasID(e.target.value);
+              setSelectedID(null);
+            }}
+            className="h-9 min-w-56 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            aria-label="Filter kelas"
+          >
+            <option value="">Semua kelas</option>
+            {(kelasQuery.data?.items ?? []).map((kelas) => (
+              <option key={kelas.id} value={kelas.id}>{kelas.nama}</option>
+            ))}
+          </select>
+        ) : null}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
@@ -229,7 +248,9 @@ export default function AdminChatPage() {
                       ) : null}
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {conv.kelas_nama || 'Kelas'} · Guru {conv.guru_name || '-'}
+                      {conv.scope === 'admin'
+                        ? 'Bantuan Admin'
+                        : `${conv.kelas_nama || 'Kelas'} · Guru ${conv.guru_name || '-'}`}
                     </p>
                     <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                       {conv.last_message_preview || 'Belum ada pesan.'}
@@ -254,7 +275,9 @@ export default function AdminChatPage() {
                 </CardTitle>
                 <CardDescription>
                   {activeConversation
-                    ? `${activeConversation.kelas_nama || 'Kelas'} · Guru ${activeConversation.guru_name || '-'}`
+                    ? activeConversation.scope === 'admin'
+                      ? 'Bantuan Admin'
+                      : `${activeConversation.kelas_nama || 'Kelas'} · Guru ${activeConversation.guru_name || '-'}`
                     : 'Pilih salah satu conversation di kiri.'}
                 </CardDescription>
               </div>

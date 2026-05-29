@@ -15,6 +15,7 @@ import {
   GraduationCap,
   KeyRound,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -50,6 +51,7 @@ const NAV: NavItem[] = [
   { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList, accent: 'pink' },
   { href: '/siswa/nilai', label: 'Nilai saya', Icon: TrendingUp, accent: 'lavender' },
   { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound, accent: 'green' },
+  { href: '/siswa/bantuan-admin', label: 'Bantuan Admin', Icon: LifeBuoy, accent: 'blue' },
 ];
 
 const ACCENT_BG: Record<NavItem['accent'], string> = {

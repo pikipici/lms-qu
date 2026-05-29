@@ -56,6 +56,33 @@ func (r *Repo) UpdateConversationClassSnapshot(ctx context.Context, conversation
 		}).Error
 }
 
+func (r *Repo) FindFirstSiswaSekolah(ctx context.Context, siswaID uuid.UUID) (*uuid.UUID, error) {
+	var row struct{ SekolahID uuid.UUID }
+	if err := r.db.WithContext(ctx).Table("enrollment e").
+		Select("k.sekolah_id").
+		Joins("JOIN kelas k ON k.id = e.kelas_id").
+		Where("e.siswa_id = ? AND e.status = ? AND k.sekolah_id IS NOT NULL AND k.archived_at IS NULL", siswaID, kelas.EnrollmentActive).
+		Order("e.joined_at DESC").
+		Limit(1).
+		Scan(&row).Error; err != nil {
+		return nil, err
+	}
+	if row.SekolahID == uuid.Nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &row.SekolahID, nil
+}
+
+func (r *Repo) FindAdminConversationBySekolahSiswa(ctx context.Context, sekolahID, siswaID uuid.UUID) (*Conversation, error) {
+	var c Conversation
+	if err := r.db.WithContext(ctx).
+		Where("scope = ? AND sekolah_id = ? AND siswa_id = ? AND deleted_at IS NULL", ScopeAdmin, sekolahID, siswaID).
+		First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 func (r *Repo) GetConversation(ctx context.Context, id uuid.UUID) (*Conversation, error) {
 	var c Conversation
 	if err := r.db.WithContext(ctx).
@@ -113,10 +140,10 @@ func (r *Repo) ListGuruConversations(ctx context.Context, kelasID, guruID uuid.U
 	return rows, total, nil
 }
 
-func (r *Repo) ListAdminConversations(ctx context.Context, kelasID uuid.UUID, status string, unread bool, limit, offset int) ([]Conversation, int64, error) {
+func (r *Repo) ListAdminConversations(ctx context.Context, scope ConversationScope, kelasID uuid.UUID, status string, unread bool, limit, offset int) ([]Conversation, int64, error) {
 	q := r.db.WithContext(ctx).Model(&Conversation{}).
-		Where("chat_conversations.scope = ? AND chat_conversations.deleted_at IS NULL", ScopeKelas)
-	if kelasID != uuid.Nil {
+		Where("chat_conversations.scope = ? AND chat_conversations.deleted_at IS NULL", scope)
+	if scope == ScopeKelas && kelasID != uuid.Nil {
 		q = q.Where("chat_conversations.kelas_id = ?", kelasID)
 	}
 	if status != "" {
@@ -161,8 +188,10 @@ func (r *Repo) SendMessageTx(ctx context.Context, conversationID, senderID uuid.
 		switch role {
 		case SenderSiswa:
 			updates["status"] = StatusOpen
-			updates["guru_unread_count"] = gorm.Expr("guru_unread_count + 1")
 			updates["admin_unread_count"] = gorm.Expr("admin_unread_count + 1")
+			if conv.Scope == ScopeKelas {
+				updates["guru_unread_count"] = gorm.Expr("guru_unread_count + 1")
+			}
 		case SenderGuru, SenderAdmin:
 			updates["siswa_unread_count"] = gorm.Expr("siswa_unread_count + 1")
 		default:

@@ -60,6 +60,45 @@ func (h *Handler) SendSiswaMessage(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"data": msg})
 }
 
+func (h *Handler) GetSiswaAdminChat(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return unauthorized(c)
+	}
+	res, err := h.svc.GetSiswaAdminConversation(c.UserContext(), userID, queryInt(c, "limit", defaultLimit))
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return c.JSON(fiber.Map{"data": res})
+}
+
+func (h *Handler) SendSiswaAdminMessage(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return unauthorized(c)
+	}
+	var req sendMessageReq
+	if err := c.BodyParser(&req); err != nil {
+		return badRequest(c, "invalid_json", "invalid json")
+	}
+	msg, err := h.svc.SendSiswaAdminMessage(c.UserContext(), userID, req.Body)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"data": msg})
+}
+
+func (h *Handler) MarkSiswaAdminRead(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return unauthorized(c)
+	}
+	if err := h.svc.MarkSiswaAdminRead(c.UserContext(), userID); err != nil {
+		return h.mapErr(c, err)
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 func (h *Handler) ListSiswaUnread(c *fiber.Ctx) error {
 	userID, err := middleware.UserIDFromCtx(c)
 	if err != nil {
@@ -191,7 +230,11 @@ func (h *Handler) ListAdminConversations(c *fiber.Ctx) error {
 		}
 		kelasID = id
 	}
-	res, err := h.svc.ListAdminConversations(c.UserContext(), kelasID, strings.TrimSpace(c.Query("status")), c.Query("unread") == "true", queryInt(c, "limit", 20), queryInt(c, "offset", 0))
+	scope := ScopeKelas
+	if strings.TrimSpace(c.Query("scope")) == string(ScopeAdmin) {
+		scope = ScopeAdmin
+	}
+	res, err := h.svc.ListAdminConversations(c.UserContext(), scope, kelasID, strings.TrimSpace(c.Query("status")), c.Query("unread") == "true", queryInt(c, "limit", 20), queryInt(c, "offset", 0))
 	if err != nil {
 		return h.mapErr(c, err)
 	}

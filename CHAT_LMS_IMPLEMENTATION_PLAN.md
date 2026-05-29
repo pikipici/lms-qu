@@ -33,7 +33,7 @@ Progress kasar:
 - Phase 2 Siswa Chat Guru: sekitar 85%; UI/API ada dan copy sudah dipoles, tinggal live smoke.
 - Phase 3 Guru Chat Siswa: sekitar 75%; inbox/thread/reply/close UI ada dan copy sudah dipoles, tinggal live smoke.
 - Phase 4 Admin Monitor: sekitar 70%; `/admin/chat` ada, masih perlu live smoke endpoint/filter.
-- Phase 5 Bantuan Admin v2: 0%; sengaja ditunda setelah v1 stabil.
+- Phase 5 Bantuan Admin v2: implemented; siswa punya sidebar `Bantuan Admin`, admin inbox bisa switch `Chat kelas`/`Bantuan Admin`, dan backend memakai `scope='admin'`.
 
 ## Keputusan Produk
 
@@ -490,8 +490,8 @@ Acceptance:
 
 Acceptance:
 
-- Siswa bisa chat admin tanpa masuk detail kelas.
-- Chat admin tidak bercampur dengan Chat Guru.
+- [x] Siswa bisa chat admin tanpa masuk detail kelas.
+- [x] Chat admin tidak bercampur dengan Chat Guru.
 
 ## Risks
 
