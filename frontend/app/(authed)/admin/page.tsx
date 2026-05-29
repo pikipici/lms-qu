@@ -8,7 +8,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Users, ScrollText, ShieldAlert, ArrowRight, MessageCircle } from 'lucide-react';
+import { Users, ScrollText, ShieldAlert, ArrowRight, MessageCircle, Trash2 } from 'lucide-react';
 
 import {
   Card,
@@ -38,6 +38,12 @@ const CARDS: StatCard[] = [
     description: 'Pantau chat siswa dan guru lintas kelas.',
     href: '/admin/chat',
     Icon: MessageCircle,
+  },
+  {
+    label: 'Cleanup Ujian',
+    description: 'Hapus data testing ujian beserta attempt dan jawaban.',
+    href: '/admin/ujian-cleanup',
+    Icon: Trash2,
   },
   {
     label: 'Audit Log',

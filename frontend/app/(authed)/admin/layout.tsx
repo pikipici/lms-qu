@@ -26,6 +26,7 @@ import {
   MessageCircle,
   School,
   UserPlus,
+  Trash2,
 } from 'lucide-react';
 
 import { api } from '@/lib/api';
@@ -55,6 +56,7 @@ const NAV: NavItem[] = [
   { href: '/admin/sekolah', label: 'Sekolah & Rombel', Icon: School },
   { href: '/admin/siswa-join-requests', label: 'Request Siswa', Icon: UserPlus },
   { href: '/admin/chat', label: 'Monitor Chat', Icon: MessageCircle },
+  { href: '/admin/ujian-cleanup', label: 'Cleanup Ujian', Icon: Trash2 },
   { href: '/admin/import-csv', label: 'Import CSV', Icon: FileSpreadsheet },
   { href: '/admin/audit-log', label: 'Audit Log', Icon: ScrollText },
   { href: '/admin/login-attempts', label: 'Login Attempts', Icon: ShieldAlert },
