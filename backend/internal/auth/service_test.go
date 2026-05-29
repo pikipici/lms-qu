@@ -17,38 +17,40 @@ const loginTestPassword = "S3cret!Pass"
 var fixedLoginNow = time.Date(2026, 5, 19, 10, 0, 0, 0, time.UTC)
 
 type mockRepo struct {
-	userByEmail         map[string]*User
-	userByID            map[uuid.UUID]*User
-	failedCount         int64
-	findByEmailCalls    int
-	findByIDCalls       int
-	lastFindEmail       string
-	countCalls          int
-	countEmail          string
-	countIP             *string
-	countSince          time.Time
-	incCalls            int
-	resetCalls          int
-	lockCalls           int
-	lockReasons         []string
-	issueRefreshCalls   int
-	issuedRefreshes     []*RefreshToken
-	refreshByJTI        map[uuid.UUID]*RefreshToken
-	rotateCalls         int
-	revokeCalls         int
-	revokeAllUserCalls  int
-	revokeAllReasons    []RevokedReason
-	chainRevokeCalls    int
-	chainRevokedJTIs    []uuid.UUID
-	updatePasswordCalls int
-	lastPasswordHash    string
-	listSessionsResult  []RefreshToken
-	loginAttempts       []*LoginAttempt
-	audits              []*AuditLog
-	errFindByEmail      error
-	selfRegistered      map[uuid.UUID]bool
-	selfRegisteredErr   error
-	selfRegisteredCalls int
+	userByEmail          map[string]*User
+	userByID             map[uuid.UUID]*User
+	failedCount          int64
+	findByEmailCalls     int
+	findByIDCalls        int
+	lastFindEmail        string
+	countCalls           int
+	countEmail           string
+	countIP              *string
+	countSince           time.Time
+	incCalls             int
+	resetCalls           int
+	lockCalls            int
+	lockReasons          []string
+	issueRefreshCalls    int
+	issuedRefreshes      []*RefreshToken
+	refreshByJTI         map[uuid.UUID]*RefreshToken
+	rotateCalls          int
+	revokeCalls          int
+	revokeAllUserCalls   int
+	revokeAllReasons     []RevokedReason
+	chainRevokeCalls     int
+	chainRevokedJTIs     []uuid.UUID
+	updatePasswordCalls  int
+	clearMustChangeCalls int
+	clearMustChangeErr   error
+	lastPasswordHash     string
+	listSessionsResult   []RefreshToken
+	loginAttempts        []*LoginAttempt
+	audits               []*AuditLog
+	errFindByEmail       error
+	selfRegistered       map[uuid.UUID]bool
+	selfRegisteredErr    error
+	selfRegisteredCalls  int
 }
 
 func newTestService(t *testing.T) (*Service, *mockRepo, func()) {
@@ -142,6 +144,12 @@ func TestLogin_SelfRegisteredSiswa_DoesNotForcePasswordChange(t *testing.T) {
 	}
 	if repo.selfRegisteredCalls != 1 {
 		t.Fatalf("IsSelfRegisteredSiswa calls = %d, want 1", repo.selfRegisteredCalls)
+	}
+	if repo.clearMustChangeCalls != 1 {
+		t.Fatalf("ClearMustChangePassword calls = %d, want 1", repo.clearMustChangeCalls)
+	}
+	if user.MustChangePassword {
+		t.Fatal("persisted user.MustChangePassword = true, want false")
 	}
 }
 
@@ -872,6 +880,17 @@ func (m *mockRepo) UpdateUserPassword(ctx context.Context, userID uuid.UUID, new
 	m.lastPasswordHash = newHash
 	if user, ok := m.userByID[userID]; ok {
 		user.PasswordHash = newHash
+		user.MustChangePassword = false
+	}
+	return nil
+}
+
+func (m *mockRepo) ClearMustChangePassword(ctx context.Context, userID uuid.UUID) error {
+	m.clearMustChangeCalls++
+	if m.clearMustChangeErr != nil {
+		return m.clearMustChangeErr
+	}
+	if user, ok := m.userByID[userID]; ok {
 		user.MustChangePassword = false
 	}
 	return nil

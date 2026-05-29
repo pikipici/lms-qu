@@ -238,6 +238,17 @@ func (r *Repo) UpdateUserPassword(ctx context.Context, userID uuid.UUID, newHash
 		}).Error
 }
 
+// ClearMustChangePassword clears stale force-change state without changing the password.
+func (r *Repo) ClearMustChangePassword(ctx context.Context, userID uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("id = ?", userID).
+		UpdateColumns(map[string]any{
+			"must_change_password": false,
+			"updated_at":           gorm.Expr("now()"),
+		}).Error
+}
+
 // IncFailedLogin increments a user's failed login counter.
 func (r *Repo) IncFailedLogin(ctx context.Context, userID uuid.UUID) error {
 	return r.db.WithContext(ctx).

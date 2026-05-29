@@ -37,6 +37,7 @@ type authRepo interface {
 	ClearRecentFailedAttempts(ctx context.Context, email string, since time.Time) error
 	LogAudit(ctx context.Context, entry *AuditLog) error
 	IsSelfRegisteredSiswa(ctx context.Context, userID uuid.UUID) (bool, error)
+	ClearMustChangePassword(ctx context.Context, userID uuid.UUID) error
 }
 
 // Service coordinates auth domain behavior.
@@ -157,7 +158,9 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 	_ = s.repo.ResetFailedLogin(ctx, user.ID)
 	if user.Role == Siswa && user.MustChangePassword {
 		if selfRegistered, selfRegErr := s.repo.IsSelfRegisteredSiswa(ctx, user.ID); selfRegErr == nil && selfRegistered {
-			user.MustChangePassword = false
+			if clearErr := s.repo.ClearMustChangePassword(ctx, user.ID); clearErr == nil {
+				user.MustChangePassword = false
+			}
 		}
 	}
 	// UX fix: clear the rate-limit counter on success so a user who fumbled
