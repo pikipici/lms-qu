@@ -374,6 +374,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	kelasGroup.Post("/:id/archive", kelasHandler.Archive)
 	kelasGroup.Post("/:id/duplicate", kelasHandler.Duplicate)
 	kelasGroup.Get("/:id/enrollments", kelasHandler.ListEnrollments)
+	kelasGroup.Get("/chat/unread", chatHandler.ListGuruUnread)
 	kelasGroup.Get("/:kelas_id/chat/conversations", chatHandler.ListGuruConversations)
 	kelasGroup.Get("/:kelas_id/chat/conversations/:conversation_id/messages", chatHandler.GetGuruMessages)
 	kelasGroup.Post("/:kelas_id/chat/conversations/:conversation_id/messages", chatHandler.SendGuruMessage)
@@ -468,6 +469,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 		kelasHandler.JoinByKode,
 	)
 	siswaGroup.Get("/kelas", kelasHandler.ListMyKelas)
+	siswaGroup.Get("/chat/unread", chatHandler.ListSiswaUnread)
 	siswaGroup.Get("/kelas/:kelas_id/chat", chatHandler.GetSiswaChat)
 	siswaGroup.Post("/kelas/:kelas_id/chat/messages", chatHandler.SendSiswaMessage)
 	siswaGroup.Post("/kelas/:kelas_id/chat/read", chatHandler.MarkSiswaRead)

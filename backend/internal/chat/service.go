@@ -140,6 +140,14 @@ func (s *Service) SetAdminStatus(ctx context.Context, conversationID uuid.UUID, 
 	return s.repo.SetStatus(ctx, conversationID, status, version)
 }
 
+func (s *Service) ListSiswaUnreadByKelas(ctx context.Context, siswaID uuid.UUID) ([]UnreadSummary, error) {
+	return s.repo.ListSiswaUnreadByKelas(ctx, siswaID)
+}
+
+func (s *Service) ListGuruUnreadByKelas(ctx context.Context, guruID uuid.UUID) ([]UnreadSummary, error) {
+	return s.repo.ListGuruUnreadByKelas(ctx, guruID)
+}
+
 func (s *Service) GetGuruMessages(ctx context.Context, kelasID, guruID, conversationID uuid.UUID, limit int) (*ConversationWithMessages, error) {
 	conv, err := s.authorizeGuruConversation(ctx, kelasID, guruID, conversationID)
 	if err != nil {

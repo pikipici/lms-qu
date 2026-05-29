@@ -34,6 +34,7 @@ import {
   ArchiveRestore,
   ClipboardCheck,
   ClipboardCopy,
+  MessageCircle,
   Plus,
   RotateCcw,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ import {
   createKelas,
   listKelas,
 } from '@/lib/kelas-api';
+import { listGuruChatUnread } from '@/lib/guru-chat-api';
 import { listSekolahOptions } from '@/lib/sekolah-api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -117,7 +119,7 @@ function formatDate(input?: string | null): string {
   }
 }
 
-function KelasCard({ kelas }: { kelas: Kelas }) {
+function KelasCard({ kelas, unread = 0 }: { kelas: Kelas; unread?: number }) {
   const { toast } = useToast();
   const [copied, setCopied] = React.useState(false);
 
@@ -143,17 +145,25 @@ function KelasCard({ kelas }: { kelas: Kelas }) {
       <CardHeader className="space-y-1.5 pb-3">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base leading-tight">{kelas.nama}</CardTitle>
-          {archived ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              <Archive className="size-3" />
-              Diarsipkan
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-              <ArchiveRestore className="size-3" />
-              Aktif
-            </span>
-          )}
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            {unread > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                <MessageCircle className="size-3" />
+                {unread} pesan
+              </span>
+            ) : null}
+            {archived ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                <Archive className="size-3" />
+                Diarsipkan
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <ArchiveRestore className="size-3" />
+                Aktif
+              </span>
+            )}
+          </div>
         </div>
         {kelas.deskripsi ? (
           <CardDescription className="line-clamp-2">
@@ -397,8 +407,20 @@ export default function GuruKelasListPage() {
     placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
+  const unreadQ = useQuery({
+    queryKey: ['guru', 'chat', 'unread'],
+    queryFn: listGuruChatUnread,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
 
   const items = kelasQuery.data?.items ?? [];
+  const unreadByKelas = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of unreadQ.data ?? []) map.set(row.kelas_id, row.unread);
+    return map;
+  }, [unreadQ.data]);
+
   const total = kelasQuery.data?.total ?? 0;
   const totalPages = kelasQuery.data?.total_pages ?? 0;
 
@@ -501,7 +523,7 @@ export default function GuruKelasListPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((k) => (
-                <KelasCard key={k.id} kelas={k} />
+                <KelasCard key={k.id} kelas={k} unread={unreadByKelas.get(k.id) ?? 0} />
               ))}
             </div>
           )}

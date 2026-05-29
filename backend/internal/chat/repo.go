@@ -173,6 +173,34 @@ func (r *Repo) SendMessageTx(ctx context.Context, conversationID, senderID uuid.
 	return out, err
 }
 
+type UnreadSummary struct {
+	KelasID uuid.UUID `json:"kelas_id"`
+	Unread  int       `json:"unread"`
+}
+
+func (r *Repo) ListSiswaUnreadByKelas(ctx context.Context, siswaID uuid.UUID) ([]UnreadSummary, error) {
+	var rows []UnreadSummary
+	if err := r.db.WithContext(ctx).Model(&Conversation{}).
+		Select("kelas_id, siswa_unread_count AS unread").
+		Where("siswa_id = ? AND siswa_unread_count > 0 AND deleted_at IS NULL", siswaID).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *Repo) ListGuruUnreadByKelas(ctx context.Context, guruID uuid.UUID) ([]UnreadSummary, error) {
+	var rows []UnreadSummary
+	if err := r.db.WithContext(ctx).Model(&Conversation{}).
+		Select("kelas_id, SUM(guru_unread_count) AS unread").
+		Where("guru_id = ? AND guru_unread_count > 0 AND deleted_at IS NULL", guruID).
+		Group("kelas_id").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (r *Repo) MarkRead(ctx context.Context, conversationID uuid.UUID, role SenderRole) error {
 	field := ""
 	switch role {

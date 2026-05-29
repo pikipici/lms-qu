@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
   GraduationCap,
+  MessageCircle,
   KeyRound,
   Sparkles,
   TrendingUp,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import { listMyKelas } from '@/lib/siswa-api';
+import { listSiswaChatUnread } from '@/lib/siswa-chat-api';
 import { useAuthStore } from '@/lib/auth';
 import {
   SiswaBadge,
@@ -59,8 +61,19 @@ export default function SiswaDashboardPage() {
     queryFn: () => listMyKelas({ page: 1, pageSize: 50 }),
     staleTime: 15_000,
   });
+  const unreadQ = useQuery({
+    queryKey: ['siswa', 'chat', 'unread'],
+    queryFn: listSiswaChatUnread,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
 
   const items = myKelas.data?.items ?? [];
+  const unreadByKelas = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of unreadQ.data ?? []) map.set(row.kelas_id, row.unread);
+    return map;
+  }, [unreadQ.data]);
 
   return (
     <div className="space-y-8">
@@ -171,6 +184,7 @@ export default function SiswaDashboardPage() {
                 const tone = kelasToneFromId(it.kelas.id);
                 const sectionMeta = SECTION_META[tone];
                 const SectionIcon = sectionMeta.Icon;
+                const unread = unreadByKelas.get(it.kelas.id) ?? 0;
                 return (
                   <SiswaCard
                     key={it.kelas.id}
@@ -193,9 +207,17 @@ export default function SiswaDashboardPage() {
                       <span className="grid size-10 place-items-center rounded-siswa siswa-border bg-siswa-surface">
                         <SectionIcon className="size-5" strokeWidth={2.5} />
                       </span>
-                      <SiswaBadge tone="cream">
-                        {it.joined_via === 'kode' ? 'kode invite' : 'admin'}
-                      </SiswaBadge>
+                      <div className="flex flex-col items-end gap-2">
+                        {unread > 0 ? (
+                          <SiswaBadge tone="pink">
+                            <MessageCircle className="size-3" />
+                            {unread} baru
+                          </SiswaBadge>
+                        ) : null}
+                        <SiswaBadge tone="cream">
+                          {it.joined_via === 'kode' ? 'kode invite' : 'admin'}
+                        </SiswaBadge>
+                      </div>
                     </div>
                     <div className="space-y-2 p-5">
                       <h3 className="siswa-display line-clamp-2 text-lg font-bold leading-tight">

@@ -37,8 +37,18 @@ export interface SiswaChatPayload {
   messages: ChatMessage[];
 }
 
+export interface ChatUnreadSummary {
+  kelas_id: string;
+  unread: number;
+}
+
 interface Envelope<T> {
   data: T;
+}
+
+export async function listSiswaChatUnread(): Promise<ChatUnreadSummary[]> {
+  const res = await api<Envelope<ChatUnreadSummary[]>>('/siswa/chat/unread');
+  return res.data;
 }
 
 export async function getSiswaChat(kelasID: string): Promise<SiswaChatPayload> {

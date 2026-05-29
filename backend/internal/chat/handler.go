@@ -60,6 +60,30 @@ func (h *Handler) SendSiswaMessage(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"data": msg})
 }
 
+func (h *Handler) ListSiswaUnread(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return unauthorized(c)
+	}
+	rows, err := h.svc.ListSiswaUnreadByKelas(c.UserContext(), userID)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return c.JSON(fiber.Map{"data": rows})
+}
+
+func (h *Handler) ListGuruUnread(c *fiber.Ctx) error {
+	userID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return unauthorized(c)
+	}
+	rows, err := h.svc.ListGuruUnreadByKelas(c.UserContext(), userID)
+	if err != nil {
+		return h.mapErr(c, err)
+	}
+	return c.JSON(fiber.Map{"data": rows})
+}
+
 func (h *Handler) MarkSiswaRead(c *fiber.Ctx) error {
 	kelasID, err := parseUUIDParam(c, "kelas_id")
 	if err != nil {

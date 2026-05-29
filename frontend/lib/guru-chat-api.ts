@@ -42,8 +42,18 @@ export interface ChatConversationList {
   total: number;
 }
 
+export interface ChatUnreadSummary {
+  kelas_id: string;
+  unread: number;
+}
+
 interface Envelope<T> {
   data: T;
+}
+
+export async function listGuruChatUnread(): Promise<ChatUnreadSummary[]> {
+  const res = await api<Envelope<ChatUnreadSummary[]>>('/kelas/chat/unread');
+  return res.data;
 }
 
 export async function listGuruChatConversations(
