@@ -274,7 +274,7 @@ export function RekapHasilUjianTable({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-muted/40 text-xs">
               <tr>
                 <th className="px-3 py-2 text-left">Siswa</th>

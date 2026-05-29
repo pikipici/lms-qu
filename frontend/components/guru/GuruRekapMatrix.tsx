@@ -53,19 +53,19 @@ export function GuruRekapMatrix({ data }: Props) {
 
   return (
     <div className="overflow-x-auto rounded-md border">
-      <table className="w-full border-collapse text-xs">
+      <table className="min-w-[720px] border-collapse text-xs">
         <thead className="bg-muted/40">
           {/* Top group row */}
           <tr>
             <th
               rowSpan={2}
-              className="sticky left-0 z-20 min-w-[180px] border-b bg-muted/40 px-3 py-2 text-left font-medium"
+              className="sticky left-0 z-20 min-w-[140px] border-b bg-muted/40 px-3 py-2 text-left font-medium sm:min-w-[180px]"
             >
               Siswa
             </th>
             <th
               rowSpan={2}
-              className="sticky left-[180px] z-20 border-b border-l bg-muted/40 px-3 py-2 text-right font-medium"
+              className="sticky left-[140px] z-20 border-b border-l bg-muted/40 px-3 py-2 text-right font-medium sm:left-[180px]"
             >
               Total
             </th>
@@ -122,14 +122,14 @@ export function GuruRekapMatrix({ data }: Props) {
         <tbody className="divide-y">
           {rows.map((row) => (
             <tr key={row.siswa_id} className="hover:bg-muted/20">
-              <td className="sticky left-0 z-10 min-w-[180px] bg-background px-3 py-2 font-medium">
+              <td className="sticky left-0 z-10 min-w-[140px] bg-background px-3 py-2 font-medium sm:min-w-[180px]">
                 <div className="truncate" title={row.siswa_nama}>
                   {row.siswa_nama || '—'}
                 </div>
               </td>
               <td
                 className={cn(
-                  'sticky left-[180px] z-10 border-l bg-background px-3 py-2 text-right tabular-nums',
+                  'sticky left-[140px] z-10 border-l bg-background px-3 py-2 text-right tabular-nums sm:left-[180px]',
                   nilaiClass(row.total_kelas),
                 )}
               >

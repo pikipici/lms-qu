@@ -178,7 +178,7 @@ function GuruAuditContent({ kelasID }: { kelasID: string }) {
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
           <Button asChild variant="ghost" size="sm">
             <Link href={`/guru/kelas/detail?id=${kelasID}`}>
               <ArrowLeft className="size-4" />
@@ -199,12 +199,12 @@ function GuruAuditContent({ kelasID }: { kelasID: string }) {
       </header>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
-          <div className="flex flex-1 flex-wrap items-center gap-2">
+        <CardHeader className="flex flex-col items-stretch justify-between gap-3 pb-3 sm:flex-row sm:items-center">
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <select
               value={action}
               onChange={(e) => setAction(e.target.value)}
-              className="h-9 w-[280px] rounded-md border bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm sm:w-[280px]"
             >
               <option value="">Semua action</option>
               {(actionsQ.data?.actions ?? []).map((a) => (

@@ -644,7 +644,7 @@ function SiswaTab({ kelasID }: { kelasID: string }) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-3">
+      <CardHeader className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
         <div className="space-y-1.5">
           <CardTitle className="text-base">Siswa</CardTitle>
           <CardDescription>
@@ -673,7 +673,7 @@ function SiswaTab({ kelasID }: { kelasID: string }) {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-md border">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[680px] text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Nama</th>
@@ -820,8 +820,8 @@ function ChatTab({ kelasID }: { kelasID: string }) {
   const activeConversation = threadQuery.data?.conversation ?? selected;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <Card>
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)]">
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <MessageCircle className="size-4" />
@@ -890,7 +890,7 @@ function ChatTab({ kelasID }: { kelasID: string }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -946,7 +946,7 @@ function ChatTab({ kelasID }: { kelasID: string }) {
                   return (
                     <div key={msg.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
                       <div className={cn(
-                        'max-w-[82%] rounded-lg border px-3 py-2 text-sm shadow-sm',
+                        'max-w-[92%] overflow-hidden rounded-lg border px-3 py-2 text-sm shadow-sm sm:max-w-[82%]',
                         mine ? 'bg-primary text-primary-foreground' : 'bg-background',
                       )}>
                         <div className={cn(
@@ -956,7 +956,7 @@ function ChatTab({ kelasID }: { kelasID: string }) {
                           <span>{mine ? 'Guru' : msg.sender_name || msg.sender_role}</span>
                           <span>{formatDate(msg.created_at)}</span>
                         </div>
-                        <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                        <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.body}</p>
                       </div>
                     </div>
                   );
@@ -1128,7 +1128,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             · Dibuat {formatDate(kelas.created_at)}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           <CopyKodeButton kode={kelas.kode_invite} />
           <Button
             variant="outline"
@@ -1177,7 +1177,8 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
       </header>
 
       {/* Tab nav */}
-      <div className="flex gap-1 border-b">
+      <div className="-mx-4 overflow-x-auto border-b px-4 md:mx-0 md:px-0">
+        <div className="flex min-w-max gap-1">
         {TABS.map(({ key, label, Icon }) => {
           const active = tab === key;
           return (
@@ -1197,6 +1198,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Tab content */}

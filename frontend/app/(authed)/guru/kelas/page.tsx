@@ -446,7 +446,7 @@ export default function GuruKelasListPage() {
       </header>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+        <CardHeader className="flex flex-col items-stretch justify-between gap-3 space-y-0 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <CardTitle className="text-base">Filter</CardTitle>
             <CardDescription>
@@ -457,13 +457,13 @@ export default function GuruKelasListPage() {
                   }`}
             </CardDescription>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Label htmlFor="sekolah-filter" className="sr-only">
               Filter sekolah
             </Label>
             <select
               id="sekolah-filter"
-              className="h-9 min-w-48 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:min-w-48"
               value={selectedSekolahId}
               onChange={(e) => setSelectedSekolahId(e.target.value)}
               disabled={sekolahQuery.isLoading}
@@ -491,6 +491,7 @@ export default function GuruKelasListPage() {
               size="sm"
               onClick={() => kelasQuery.refetch()}
               disabled={kelasQuery.isFetching}
+              className="w-full sm:w-auto"
             >
               <RotateCcw className="size-4" />
               Refresh

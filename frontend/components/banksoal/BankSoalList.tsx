@@ -197,7 +197,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
               Harian dengan mode manual atau random.
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <Button
               size="sm"
               variant="outline"
@@ -240,7 +240,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
             <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">
               Topik
             </span>
-            <div className="relative flex-1 min-w-[14rem] max-w-md">
+            <div className="relative min-w-0 flex-1 sm:min-w-[14rem] sm:max-w-md">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={topikInput}
@@ -330,7 +330,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
 
         {/* Pagination footer */}
         {total > 0 && (
-          <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
+          <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <span>
               Menampilkan {offset + 1}-{Math.min(offset + PAGE_SIZE, total)} dari{' '}
               {total} soal

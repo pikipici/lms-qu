@@ -134,7 +134,7 @@ export function BabListSection({ kelasID, archived }: BabListSectionProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-3">
+      <CardHeader className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
         <div className="space-y-1.5">
           <CardTitle className="text-base">Bab</CardTitle>
           <CardDescription>
@@ -145,7 +145,7 @@ export function BabListSection({ kelasID, archived }: BabListSectionProps) {
                 }. Geser untuk mengurutkan ulang; status diatur lewat menu aksi atau dialog edit.`}
           </CardDescription>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"

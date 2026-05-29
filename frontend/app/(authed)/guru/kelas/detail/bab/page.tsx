@@ -212,7 +212,7 @@ function PengaturanTab({
       <CardContent>
         <Form {...form}>
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="grid grid-cols-[5rem_1fr] gap-3">
+            <div className="grid gap-3 sm:grid-cols-[5rem_1fr]">
               <FormField
                 control={form.control}
                 name="nomor"

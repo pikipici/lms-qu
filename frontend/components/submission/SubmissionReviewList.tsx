@@ -83,7 +83,7 @@ export function SubmissionReviewList({
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <CardHeader className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
           <div className="space-y-1">
             <CardTitle className="text-base">Submission siswa</CardTitle>
             <CardDescription>
@@ -103,7 +103,7 @@ export function SubmissionReviewList({
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center gap-1 self-start rounded-md border bg-muted/40 p-0.5">
+          <div className="flex max-w-full items-center gap-1 self-start overflow-x-auto rounded-md border bg-muted/40 p-0.5">
             {STATUS_FILTERS.map((f) => {
               const active = filter === f.key;
               return (
@@ -192,7 +192,7 @@ function SubmissionRow({
   const isGraded = submission.status === 'graded';
   return (
     <li className="rounded-md border bg-background">
-      <div className="flex items-start justify-between gap-3 px-3 py-2.5">
+      <div className="flex flex-col gap-3 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <code className="truncate text-xs">

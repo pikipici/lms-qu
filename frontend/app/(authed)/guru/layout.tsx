@@ -232,7 +232,7 @@ function GuruShell({ children }: { children: React.ReactNode }) {
           />
         </aside>
 
-        <div className="flex h-screen min-w-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex h-screen min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
           <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
             <Button
               type="button"
@@ -330,8 +330,8 @@ function GuruShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </header>
 
-          <main className="flex-1 p-4 md:p-8">
-            <div className="mx-auto w-full max-w-screen-2xl">{children}</div>
+          <main className="min-w-0 flex-1 p-4 md:p-8">
+            <div className="mx-auto w-full min-w-0 max-w-screen-2xl">{children}</div>
           </main>
         </div>
       </div>
