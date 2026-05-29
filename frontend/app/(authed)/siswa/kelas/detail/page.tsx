@@ -25,8 +25,10 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  AlertCircle,
   Calendar,
   ClipboardList,
+  GraduationCap,
   Megaphone,
   MessageCircle,
   RotateCcw,
@@ -48,10 +50,17 @@ import {
   sendSiswaChatMessage,
   type SiswaChatPayload,
 } from '@/lib/siswa-chat-api';
+import {
+  listSiswaUjianByKelas,
+  listSiswaUjianHasil,
+  type SiswaUjianHasilListResult,
+  type Ujian,
+} from '@/lib/siswa-ujian-api';
 import { Button } from '@/components/ui/button';
 import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
 import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
 import { SiswaTugasList } from '@/components/submission/SiswaTugasList';
+import { UjianLobbyCard } from '@/components/siswa-ujian/UjianLobbyCard';
 import {
   SECTION_META,
   SiswaBadge,
@@ -81,7 +90,7 @@ function joinedViaLabel(via: 'kode' | 'admin'): string {
   return via === 'kode' ? 'kode invite' : 'admin';
 }
 
-type DetailTab = 'materi' | 'tugas' | 'pengumuman' | 'chat' | 'nilai';
+type DetailTab = 'materi' | 'tugas' | 'ujian' | 'pengumuman' | 'chat' | 'nilai';
 
 const DETAIL_TABS: {
   key: DetailTab;
@@ -91,6 +100,7 @@ const DETAIL_TABS: {
 }[] = [
   { key: 'materi', label: 'Materi', description: 'Bab, materi, latihan, dan ulangan.', Icon: BookOpen },
   { key: 'tugas', label: 'Tugas', description: 'Tugas kelas-wide dari guru.', Icon: ClipboardList },
+  { key: 'ujian', label: 'Ujian', description: 'Ujian khusus kelas ini.', Icon: GraduationCap },
   { key: 'pengumuman', label: 'Pengumuman', description: 'Info terbaru dari guru.', Icon: Megaphone },
   { key: 'chat', label: 'Chat', description: 'Tanya guru kelas langsung.', Icon: MessageCircle },
   { key: 'nilai', label: 'Nilai', description: 'Rekap nilai kelas ini.', Icon: TrendingUp },
@@ -292,6 +302,153 @@ function SiswaChatBox({ kelasID }: { kelasID: string }) {
   );
 }
 
+function SiswaUjianKelasTab({ kelasID, kelasName }: { kelasID: string; kelasName: string }) {
+  const ujianQuery = useQuery({
+    queryKey: ['siswa', 'ujian', 'list', kelasID],
+    queryFn: () => listSiswaUjianByKelas(kelasID, { limit: 100 }),
+    staleTime: 15_000,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && [400, 403, 404].includes(err.status)) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+  });
+
+  const hasilQuery = useQuery({
+    queryKey: ['siswa', 'ujian', 'hasil', kelasID],
+    queryFn: () => listSiswaUjianHasil(kelasID),
+    staleTime: 15_000,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && [400, 403, 404].includes(err.status)) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+  });
+
+  const isLoading = ujianQuery.isPending || hasilQuery.isPending;
+  const isError = ujianQuery.isError || hasilQuery.isError;
+  const ujianItems = React.useMemo<Ujian[]>(() => {
+    const now = Date.now();
+    return [...(ujianQuery.data?.items ?? [])].sort((a, b) => ujianSortKey(a, now) - ujianSortKey(b, now));
+  }, [ujianQuery.data?.items]);
+  const hasilAggregate = hasilQuery.data?.hasil;
+
+  return (
+    <SiswaCard tone="ulangan" shadow="md">
+      <SiswaCardHeader>
+        <div className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1">
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <GraduationCap className="size-4" strokeWidth={2.5} />
+              </span>
+              Ujian kelas
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Ujian yang dipublish guru untuk kelas ini. Mulai, lanjutkan, atau cek pembahasan dari sini.
+            </SiswaCardDescription>
+          </div>
+          <SiswaButton
+            type="button"
+            tone="surface"
+            size="sm"
+            onClick={() => {
+              void ujianQuery.refetch();
+              void hasilQuery.refetch();
+            }}
+            disabled={ujianQuery.isFetching || hasilQuery.isFetching}
+          >
+            <RotateCcw className="size-4" />
+            Refresh
+          </SiswaButton>
+        </div>
+      </SiswaCardHeader>
+      <SiswaCardBody>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[0, 1].map((i) => (
+              <div
+                key={i}
+                className="h-48 animate-pulse rounded-siswa siswa-border bg-siswa-surface/60"
+              />
+            ))}
+          </div>
+        ) : isError ? (
+          <SiswaUjianErrorState
+            error={ujianQuery.error ?? hasilQuery.error}
+            onRetry={() => {
+              void ujianQuery.refetch();
+              void hasilQuery.refetch();
+            }}
+            fetching={ujianQuery.isFetching || hasilQuery.isFetching}
+          />
+        ) : ujianItems.length === 0 ? (
+          <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-siswa-surface/60 p-8 text-center">
+            <GraduationCap className="mx-auto mb-2 size-8 text-siswa-text-muted" strokeWidth={2.5} />
+            <p className="text-sm text-siswa-text-muted">
+              Belum ada ujian yang dipublish di kelas ini. Nanti kalau guru sudah publish, muncul di tab ini.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {ujianItems.map((ujian) => (
+              <UjianLobbyCard
+                key={ujian.id}
+                ujian={ujian}
+                kelasName={kelasName}
+                hasilAggregate={hasilAggregate as SiswaUjianHasilListResult | undefined}
+              />
+            ))}
+          </div>
+        )}
+
+        {isError && ujianItems.length > 0 ? (
+          <p className="mt-3 flex items-center gap-2 text-xs text-siswa-text-muted">
+            <AlertCircle className="size-3.5 text-siswa-warning" />
+            Sebagian data ujian gagal di-fetch. Coba refresh kalau status attempt belum update.
+          </p>
+        ) : null}
+      </SiswaCardBody>
+    </SiswaCard>
+  );
+}
+
+function SiswaUjianErrorState({
+  error,
+  onRetry,
+  fetching,
+}: {
+  error: Error | null;
+  onRetry: () => void;
+  fetching: boolean;
+}) {
+  const apiErr = error instanceof ApiError ? error : null;
+  return (
+    <div className="space-y-3 rounded-siswa border-2 border-siswa-danger bg-siswa-surface p-4 text-sm">
+      <p className="font-bold">Gagal memuat ujian</p>
+      <p className="text-siswa-text-muted">
+        {apiErr?.message ?? error?.message ?? 'Terjadi kesalahan tidak terduga.'}
+        {apiErr?.requestId ? ` (req: ${apiErr.requestId})` : ''}
+      </p>
+      <SiswaButton type="button" tone="surface" size="sm" onClick={onRetry} disabled={fetching}>
+        <RotateCcw className="size-4" />
+        Coba lagi
+      </SiswaButton>
+    </div>
+  );
+}
+
+function ujianSortKey(ujian: Ujian, now: number): number {
+  const startMs = ujian.waktu_mulai ? new Date(ujian.waktu_mulai).getTime() : null;
+  const endMs = ujian.waktu_selesai ? new Date(ujian.waktu_selesai).getTime() : null;
+  if (startMs && now < startMs) return 100_000_000 + (startMs - now);
+  if (endMs && now > endMs) return 1_000_000_000 + (now - endMs);
+  if (endMs) return endMs - now;
+  return 50_000_000;
+}
+
 function DetailTabBar({
   active,
   onChange,
@@ -310,7 +467,7 @@ function DetailTabBar({
               key={tab.key}
               type="button"
               onClick={() => onChange(tab.key)}
-              className={`flex min-w-0 items-center justify-center gap-2 rounded-siswa border-2 px-2 py-2 text-xs font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border sm:px-4 sm:text-sm ${tab.key === 'nilai' ? 'col-span-2 sm:col-span-1' : ''} ${
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-siswa border-2 px-2 py-2 text-xs font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border sm:px-4 sm:text-sm ${
                 activeTab
                   ? 'border-siswa-border bg-siswa-primary text-siswa-text siswa-shadow-sm -translate-y-0.5'
                   : 'border-siswa-border bg-siswa-surface text-siswa-text hover:-translate-y-0.5 hover:bg-siswa-cream/80'
@@ -535,6 +692,10 @@ function SiswaKelasDetailContent({ kelasID, initialTab }: { kelasID: string; ini
             <SiswaTugasList kelasID={kelasID} babID={null} emptyState="Belum ada tugas kelas-wide." />
           </SiswaCardBody>
         </SiswaCard>
+      ) : null}
+
+      {activeTab === 'ujian' ? (
+        <SiswaUjianKelasTab kelasID={kelasID} kelasName={kelas.nama} />
       ) : null}
 
       {activeTab === 'pengumuman' ? (

@@ -48,7 +48,6 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/siswa', label: 'Dashboard', Icon: LayoutDashboard, accent: 'yellow' },
   { href: '/siswa/tugas', label: 'Tugas saya', Icon: ClipboardList, accent: 'pink' },
-  { href: '/siswa/ujian', label: 'Ujian saya', Icon: GraduationCap, accent: 'yellow' },
   { href: '/siswa/nilai', label: 'Nilai saya', Icon: TrendingUp, accent: 'lavender' },
   { href: '/siswa/gabung', label: 'Gabung Kelas', Icon: KeyRound, accent: 'green' },
 ];
