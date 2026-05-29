@@ -78,8 +78,8 @@ export default function GuruDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
+      <header className="min-w-0 space-y-1">
+        <h1 className="break-words text-2xl font-semibold tracking-tight">
           Halo, {userName}!
         </h1>
         <p className="text-sm text-muted-foreground">
@@ -239,7 +239,7 @@ export default function GuruDashboardPage() {
               {items.map((k) => (
                 <li
                   key={k.id}
-                  className="flex items-center justify-between gap-3 py-3"
+                  className="flex min-w-0 items-center justify-between gap-3 py-3"
                 >
                   <div className="min-w-0 space-y-0.5">
                     <p className="truncate text-sm font-medium">{k.nama}</p>
@@ -248,7 +248,7 @@ export default function GuruDashboardPage() {
                       {' · '}{k.jumlah_murid ?? 0} murid
                     </p>
                   </div>
-                  <Button asChild variant="ghost" size="sm">
+                  <Button asChild variant="ghost" size="sm" className="shrink-0">
                     <Link href={`/guru/kelas/detail?id=${k.id}`}>Detail</Link>
                   </Button>
                 </li>

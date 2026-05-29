@@ -137,12 +137,12 @@ function EventRow({ ev }: { ev: FeedEvent }) {
     <li>
       <Link
         href={eventLink(ev)}
-        className="flex items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40"
+        className="flex min-w-0 items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
       >
         <Icon className={cn('mt-0.5 size-4 shrink-0', iconClass)} />
         <div className="min-w-0 flex-1 text-sm">
-          <p className="text-foreground">{body}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="break-words text-foreground">{body}</p>
+          <p className="break-words text-xs text-muted-foreground">
             <span className="text-foreground/80">{ev.kelas_nama}</span>
             {' · '}
             {formatRelative(ev.at)}
@@ -235,12 +235,13 @@ export function GuruFeedList({ pollMs = 30_000, pageSize = 20 }: Props) {
           {events.length} aktivitas{' '}
           {q.isFetching && <span className="ml-1">· memuat…</span>}
         </p>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {q.hasNextPage && (
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => q.fetchNextPage()}
               disabled={q.isFetchingNextPage}
             >
@@ -251,6 +252,7 @@ export function GuruFeedList({ pollMs = 30_000, pageSize = 20 }: Props) {
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => q.refetch()}
             disabled={q.isFetching}
           >

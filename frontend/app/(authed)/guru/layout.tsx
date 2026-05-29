@@ -98,6 +98,15 @@ function GuruShell({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem('lms:guru-sidebar-width', String(sidebarWidth));
   }, [sidebarWidth]);
 
+  React.useEffect(() => {
+    if (!sidebarOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [sidebarOpen]);
+
   const startResize = React.useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -168,8 +177,8 @@ function GuruShell({ children }: { children: React.ReactNode }) {
       .join('') || '??';
 
   return (
-    <div className="h-screen overflow-hidden bg-muted/30">
-      <div className="flex h-screen w-full overflow-hidden">
+    <div className="h-svh overflow-hidden bg-muted/30 md:h-screen">
+      <div className="flex h-svh w-full overflow-hidden md:h-screen">
         {/* Sidebar */}
         <aside
           className="sticky top-0 hidden h-screen shrink-0 border-r bg-background transition-[width] md:flex md:flex-col relative"
@@ -232,8 +241,8 @@ function GuruShell({ children }: { children: React.ReactNode }) {
           />
         </aside>
 
-        <div className="flex h-screen min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
+        <div className="flex h-svh min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto md:h-screen">
+          <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-3 backdrop-blur sm:px-4 md:px-6">
             <Button
               type="button"
               variant="ghost"
@@ -253,7 +262,7 @@ function GuruShell({ children }: { children: React.ReactNode }) {
                   aria-label="Tutup menu navigasi"
                   onClick={() => setSidebarOpen(false)}
                 />
-                <aside className="absolute left-0 top-0 flex h-dvh w-72 max-w-[85vw] flex-col border-r bg-background shadow-xl">
+                <aside className="absolute left-0 top-0 flex h-dvh w-72 max-w-[88vw] flex-col border-r bg-background shadow-xl">
                   <div className="flex h-14 items-center justify-between border-b px-4">
                     <span className="text-sm font-semibold tracking-tight">Menu</span>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setSidebarOpen(false)}>
@@ -290,7 +299,7 @@ function GuruShell({ children }: { children: React.ReactNode }) {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" className="min-w-0 gap-2">
                   <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                     {initials}
                   </span>
@@ -330,7 +339,7 @@ function GuruShell({ children }: { children: React.ReactNode }) {
             </DropdownMenu>
           </header>
 
-          <main className="min-w-0 flex-1 p-4 md:p-8">
+          <main className="min-w-0 flex-1 p-3 sm:p-4 md:p-8">
             <div className="mx-auto w-full min-w-0 max-w-screen-2xl">{children}</div>
           </main>
         </div>

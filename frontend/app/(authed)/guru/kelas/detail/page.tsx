@@ -1097,8 +1097,8 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
           <Button asChild variant="ghost" size="sm" className="-ml-3">
             <Link href="/guru/kelas">
               <ArrowLeft className="size-4" />
@@ -1106,7 +1106,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
               {kelas.nama}
             </h1>
             {archived ? (
@@ -1120,7 +1120,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
               </span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="break-words text-sm text-muted-foreground">
             Kode invite{' '}
             <span className="font-mono font-semibold tracking-wider text-foreground">
               {kelas.kode_invite}
@@ -1128,7 +1128,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
             · Dibuat {formatDate(kelas.created_at)}
           </p>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
           <CopyKodeButton kode={kelas.kode_invite} />
           <Button
             variant="outline"
@@ -1177,7 +1177,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
       </header>
 
       {/* Tab nav */}
-      <div className="-mx-4 overflow-x-auto border-b px-4 md:mx-0 md:px-0">
+      <div className="-mx-3 overflow-x-auto border-b px-3 sm:-mx-4 sm:px-4 md:mx-0 md:px-0">
         <div className="flex min-w-max gap-1">
         {TABS.map(({ key, label, Icon }) => {
           const active = tab === key;
@@ -1187,7 +1187,7 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
               type="button"
               onClick={() => setTab(key)}
               className={cn(
-                'flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors',
+                'flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors',
                 active
                   ? 'border-primary font-medium text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground',

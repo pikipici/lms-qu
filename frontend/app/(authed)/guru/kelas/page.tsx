@@ -143,8 +143,8 @@ function KelasCard({ kelas, unread = 0 }: { kelas: Kelas; unread?: number }) {
   return (
     <Card className={cn('flex flex-col', archived && 'opacity-70')}>
       <CardHeader className="space-y-1.5 pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base leading-tight">{kelas.nama}</CardTitle>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <CardTitle className="min-w-0 break-words text-base leading-tight">{kelas.nama}</CardTitle>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
             {unread > 0 ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -201,14 +201,14 @@ function KelasCard({ kelas, unread = 0 }: { kelas: Kelas; unread?: number }) {
               )}
             </Button>
           </div>
-          <p className="font-mono text-lg font-semibold tracking-wider">
+          <p className="break-all font-mono text-lg font-semibold tracking-wider">
             {kelas.kode_invite}
           </p>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+        <dl className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-x-3 gap-y-1.5 text-xs">
           <dt className="text-muted-foreground">Sekolah</dt>
-          <dd className="text-right font-medium">
+          <dd className="break-words text-right font-medium">
             {kelas.sekolah_nama || 'Tanpa sekolah'}
           </dd>
           <dt className="text-muted-foreground">Jumlah murid</dt>
@@ -431,15 +431,15 @@ export default function GuruKelasListPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Kelas</h1>
           <p className="text-sm text-muted-foreground">
             Daftar kelas yang kamu kelola. Buat kelas baru, salin kode invite,
             atau buka detail untuk atur siswa dan materi (segera).
           </p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => setCreateOpen(true)}>
           <Plus className="size-4" />
           Buat kelas baru
         </Button>
