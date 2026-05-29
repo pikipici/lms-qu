@@ -15,7 +15,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,7 +28,9 @@ import {
   Calendar,
   ClipboardList,
   Megaphone,
+  MessageCircle,
   RotateCcw,
+  Send,
   Sparkles,
   TrendingUp,
 } from 'lucide-react';
@@ -35,6 +42,12 @@ import {
   type SiswaBabItem,
   type SiswaBabListResponse,
 } from '@/lib/siswa-bab-api';
+import {
+  getSiswaChat,
+  markSiswaChatRead,
+  sendSiswaChatMessage,
+  type SiswaChatPayload,
+} from '@/lib/siswa-chat-api';
 import { Button } from '@/components/ui/button';
 import { SiswaBabProgressBar } from '@/components/siswa/SiswaBabProgressBar';
 import { PengumumanReadList } from '@/components/pengumuman/PengumumanReadList';
@@ -103,6 +116,160 @@ function BabCard({ kelasID, bab }: { kelasID: string; bab: SiswaBabItem }) {
         />
       </div>
     </Link>
+  );
+}
+
+function SiswaChatBox({ kelasID }: { kelasID: string }) {
+  const queryClient = useQueryClient();
+  const [body, setBody] = React.useState('');
+  const chatQuery = useQuery({
+    queryKey: ['siswa', 'kelas', 'chat', kelasID],
+    queryFn: () => getSiswaChat(kelasID),
+    refetchInterval: 12_000,
+    staleTime: 5_000,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && [400, 403, 404].includes(err.status)) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+  });
+
+  React.useEffect(() => {
+    if (chatQuery.data?.conversation.siswa_unread_count) {
+      void markSiswaChatRead(kelasID).then(() => {
+        queryClient.setQueryData<SiswaChatPayload>(
+          ['siswa', 'kelas', 'chat', kelasID],
+          (old) => old
+            ? {
+                ...old,
+                conversation: { ...old.conversation, siswa_unread_count: 0 },
+              }
+            : old,
+        );
+      }).catch(() => undefined);
+    }
+  }, [chatQuery.data?.conversation.siswa_unread_count, kelasID, queryClient]);
+
+  const sendMutation = useMutation({
+    mutationFn: (text: string) => sendSiswaChatMessage(kelasID, text),
+    onSuccess: () => {
+      setBody('');
+      void queryClient.invalidateQueries({
+        queryKey: ['siswa', 'kelas', 'chat', kelasID],
+      });
+    },
+  });
+
+  const messages = chatQuery.data?.messages ?? [];
+  const disabled = sendMutation.isPending || body.trim().length === 0;
+
+  return (
+    <SiswaCard tone="umum" shadow="md">
+      <SiswaCardHeader>
+        <div className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1">
+            <SiswaCardTitle className="flex items-center gap-2">
+              <span className="grid size-9 place-items-center rounded-siswa siswa-border bg-siswa-surface">
+                <MessageCircle className="size-4" strokeWidth={2.5} />
+              </span>
+              Chat guru
+            </SiswaCardTitle>
+            <SiswaCardDescription>
+              Tanya materi, tugas, atau ulangan di kelas ini. Chat ini kebaca guru
+              dan admin sekolah.
+            </SiswaCardDescription>
+          </div>
+          <SiswaButton
+            type="button"
+            tone="surface"
+            size="sm"
+            onClick={() => chatQuery.refetch()}
+            disabled={chatQuery.isFetching}
+          >
+            <RotateCcw className="size-4" />
+            Refresh
+          </SiswaButton>
+        </div>
+      </SiswaCardHeader>
+      <SiswaCardBody className="space-y-4">
+        {chatQuery.isError ? (
+          <div className="rounded-siswa border-2 border-siswa-danger bg-siswa-surface p-4 text-sm">
+            <p className="font-bold">Gagal memuat chat</p>
+            <p className="text-siswa-text-muted">
+              {chatQuery.error instanceof ApiError
+                ? chatQuery.error.message
+                : 'Terjadi kesalahan tidak terduga.'}
+            </p>
+          </div>
+        ) : (
+          <div className="max-h-[420px] space-y-3 overflow-y-auto rounded-siswa siswa-border bg-siswa-surface/70 p-3">
+            {chatQuery.isPending ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-14 animate-pulse rounded-siswa bg-siswa-text/10" />
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="rounded-siswa border-2 border-dashed border-siswa-border-soft bg-white/50 p-6 text-center text-sm text-siswa-text-muted">
+                Belum ada pesan. Mulai tanya guru kamu di sini.
+              </div>
+            ) : (
+              messages.map((msg) => {
+                const mine = msg.sender_role === 'siswa';
+                return (
+                  <div key={msg.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[82%] rounded-siswa siswa-border px-3 py-2 text-sm siswa-shadow-sm ${
+                        mine ? 'bg-siswa-primary text-siswa-text' : 'bg-white text-siswa-text'
+                      }`}
+                    >
+                      <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-siswa-text-muted">
+                        <span>{mine ? 'Kamu' : msg.sender_name || msg.sender_role}</span>
+                        <span>{formatDate(msg.created_at)}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = body.trim();
+            if (text) sendMutation.mutate(text);
+          }}
+        >
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            maxLength={4000}
+            rows={3}
+            placeholder="Tulis pesan ke guru..."
+            className="min-h-24 w-full rounded-siswa siswa-border bg-siswa-surface px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-siswa-border-soft"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-siswa-text-muted">{body.trim().length}/4000 karakter</p>
+            <SiswaButton type="submit" tone="primary" size="sm" disabled={disabled}>
+              <Send className="size-4" />
+              {sendMutation.isPending ? 'Mengirim...' : 'Kirim pesan'}
+            </SiswaButton>
+          </div>
+          {sendMutation.isError ? (
+            <p className="text-sm font-semibold text-siswa-danger">
+              {sendMutation.error instanceof ApiError
+                ? sendMutation.error.message
+                : 'Pesan gagal dikirim.'}
+            </p>
+          ) : null}
+        </form>
+      </SiswaCardBody>
+    </SiswaCard>
   );
 }
 
@@ -257,6 +424,8 @@ function SiswaKelasDetailContent({ kelasID }: { kelasID: string }) {
           </div>
         </div>
       </SiswaCard>
+
+      <SiswaChatBox kelasID={kelasID} />
 
       {/* Bab kelas (Materi accent — biru) */}
       <SiswaCard tone="materi" shadow="md">
