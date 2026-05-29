@@ -14,10 +14,17 @@ import type { Kelas } from '@/lib/kelas-api';
 
 export type JoinedVia = 'kode' | 'admin';
 
+export interface MyKelasGuru {
+  id: string;
+  nama: string;
+  email: string;
+}
+
 export interface MyKelasItem {
   kelas: Kelas;
   joined_at: string;
   joined_via: JoinedVia;
+  guru?: MyKelasGuru;
 }
 
 export interface MyKelasListResponse {

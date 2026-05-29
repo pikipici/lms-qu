@@ -167,11 +167,21 @@ func (s *Service) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInp
 		if k.ArchivedAt != nil {
 			continue
 		}
-		items = append(items, MyKelasItem{
+		item := MyKelasItem{
 			Kelas:     *k,
 			JoinedAt:  e.JoinedAt,
 			JoinedVia: e.JoinedVia,
-		})
+		}
+		if s.users != nil {
+			if guru, uerr := s.users.FindUserByID(ctx, k.GuruID); uerr == nil && guru != nil {
+				item.Guru = &MyKelasGuru{
+					ID:    guru.ID,
+					Nama:  guru.Name,
+					Email: guru.Email,
+				}
+			}
+		}
+		items = append(items, item)
 		activeCount++
 	}
 	// Hide removed enrollments and archived kelas from the siswa dashboard total.
@@ -180,10 +190,17 @@ func (s *Service) ListMyKelas(ctx context.Context, siswaID uuid.UUID, in ListInp
 }
 
 // MyKelasItem is one row in the siswa dashboard list.
+type MyKelasGuru struct {
+	ID    uuid.UUID `json:"id"`
+	Nama  string    `json:"nama"`
+	Email string    `json:"email"`
+}
+
 type MyKelasItem struct {
-	Kelas     Kelas     `json:"kelas"`
-	JoinedAt  time.Time `json:"joined_at"`
-	JoinedVia JoinedVia `json:"joined_via"`
+	Kelas     Kelas        `json:"kelas"`
+	JoinedAt  time.Time    `json:"joined_at"`
+	JoinedVia JoinedVia    `json:"joined_via"`
+	Guru      *MyKelasGuru `json:"guru,omitempty"`
 }
 
 // MyKelasResult bundles the list + total for the siswa dashboard endpoint.

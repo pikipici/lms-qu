@@ -34,6 +34,7 @@ import {
   RotateCcw,
   Send,
   TrendingUp,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -621,10 +622,16 @@ function SiswaKelasDetailContent({ kelasID, initialTab }: { kelasID: string; ini
             <h1 className="siswa-display text-2xl font-bold leading-tight sm:text-3xl">
               {kelas.nama}
             </h1>
-            <p className="flex items-center gap-1.5 text-xs text-siswa-text-muted">
-              <Calendar className="size-3" />
-              Bergabung {formatDate(enrollment.joined_at)}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-siswa-text-muted">
+              <p className="flex items-center gap-1.5">
+                <Calendar className="size-3" />
+                Bergabung {formatDate(enrollment.joined_at)}
+              </p>
+              <p className="flex items-center gap-1.5 font-semibold text-siswa-text">
+                <UserRound className="size-3" />
+                Guru: {enrollment.guru?.nama || 'Belum tersedia'}
+              </p>
+            </div>
           </div>
         </div>
         <div className="space-y-3 px-6 py-5">
