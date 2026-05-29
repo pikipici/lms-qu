@@ -300,8 +300,8 @@ function DetailTabBar({
   onChange: (tab: DetailTab) => void;
 }) {
   return (
-    <div className="overflow-x-auto pb-1">
-      <div className="flex min-w-max gap-2 rounded-siswa siswa-border bg-siswa-surface/80 p-2 siswa-shadow-sm">
+    <div>
+      <div className="grid grid-cols-2 gap-2 rounded-siswa siswa-border bg-siswa-surface/80 p-2 siswa-shadow-sm sm:flex">
         {DETAIL_TABS.map((tab) => {
           const activeTab = tab.key === active;
           const Icon = tab.Icon;
@@ -310,7 +310,7 @@ function DetailTabBar({
               key={tab.key}
               type="button"
               onClick={() => onChange(tab.key)}
-              className={`flex items-center gap-2 rounded-siswa border-2 px-3 py-2 text-sm font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border sm:px-4 ${
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-siswa border-2 px-2 py-2 text-xs font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border sm:px-4 sm:text-sm ${tab.key === 'nilai' ? 'col-span-2 sm:col-span-1' : ''} ${
                 activeTab
                   ? 'border-siswa-border bg-siswa-primary text-siswa-text siswa-shadow-sm -translate-y-0.5'
                   : 'border-transparent bg-transparent text-siswa-text-muted hover:border-siswa-border-soft hover:bg-white/60'
