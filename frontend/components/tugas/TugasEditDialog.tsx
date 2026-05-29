@@ -387,8 +387,8 @@ export function TugasEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92svh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-4 py-4 sm:px-6">
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="size-5 text-muted-foreground" aria-hidden />
             Edit tugas
@@ -400,6 +400,7 @@ export function TugasEditDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="tugas-edit-judul">Judul</Label>
@@ -433,7 +434,7 @@ export function TugasEditDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="tugas-edit-deadline">Deadline</Label>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 id="tugas-edit-deadline"
                 type="datetime-local"
@@ -446,6 +447,7 @@ export function TugasEditDialog({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() => setDeadlineLocal('')}
                   disabled={isPending}
                 >
@@ -459,7 +461,7 @@ export function TugasEditDialog({
           </div>
 
           <div className="space-y-2 rounded-md border p-3">
-            <label className="flex items-center gap-2">
+            <label className="flex items-start gap-2">
               <input
                 type="checkbox"
                 className="size-4 rounded border-input"
@@ -470,7 +472,7 @@ export function TugasEditDialog({
               <span className="text-sm">Izinkan submit telat</span>
             </label>
             {izinkanLate && (
-              <div className="ml-6 space-y-1.5">
+              <div className="space-y-1.5 sm:ml-6">
                 <Label htmlFor="tugas-edit-penalty">Penalty (% dari nilai)</Label>
                 <Input
                   id="tugas-edit-penalty"
@@ -484,7 +486,7 @@ export function TugasEditDialog({
                     if (penaltyError) setPenaltyError(null);
                   }}
                   disabled={isPending}
-                  className="max-w-[120px]"
+                  className="w-full sm:max-w-[120px]"
                   aria-invalid={!!penaltyError}
                 />
                 {penaltyError && (
@@ -494,7 +496,7 @@ export function TugasEditDialog({
             )}
           </div>
 
-          <label className="flex items-center gap-2">
+          <label className="flex items-start gap-2">
             <input
               type="checkbox"
               className="size-4 rounded border-input"
@@ -519,7 +521,7 @@ export function TugasEditDialog({
                 setBobot(Number.isFinite(n) ? Math.max(0, n) : 0);
               }}
               disabled={isPending}
-              className="max-w-[140px]"
+              className="w-full sm:max-w-[140px]"
             />
             <p className="text-xs text-muted-foreground">
               Nilai tugas di bab ini dirata-rata sesuai bobot masing-masing.
@@ -556,16 +558,17 @@ export function TugasEditDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
               Tutup
             </Button>
-            <Button type="submit" disabled={submitDisabled}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={submitDisabled}>
               {isPending ? 'Menyimpan…' : 'Simpan'}
             </Button>
           </DialogFooter>
@@ -585,7 +588,7 @@ export function TugasEditDialog({
             </div>
             <label
               className={cn(
-                'inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm transition-colors hover:bg-muted/40',
+                'inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm transition-colors hover:bg-muted/40 sm:w-auto',
                 (attachmentLimitReached || isUploading) &&
                   'pointer-events-none opacity-60',
               )}
@@ -639,9 +642,9 @@ export function TugasEditDialog({
               {attachments.map((att) => (
                 <li
                   key={att.id}
-                  className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2"
+                  className="flex flex-col gap-2 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2 self-stretch sm:self-auto">
                     <FileText className="size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
                       <p
@@ -655,11 +658,12 @@ export function TugasEditDialog({
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex w-full shrink-0 items-center gap-1 sm:w-auto">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="flex-1 sm:flex-none"
                       onClick={() => openAttachmentURL(att)}
                       aria-label={`Buka ${att.original_filename}`}
                     >
@@ -690,6 +694,7 @@ export function TugasEditDialog({
               ))}
             </ul>
           )}
+        </div>
         </div>
       </DialogContent>
     </Dialog>

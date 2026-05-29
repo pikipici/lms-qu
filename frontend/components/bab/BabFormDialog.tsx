@@ -219,14 +219,14 @@ export function BabFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[92svh] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="grid grid-cols-[5rem_1fr] gap-3">
+            <div className="grid gap-3 sm:grid-cols-[5rem_1fr]">
               <FormField
                 control={form.control}
                 name="nomor"
@@ -320,10 +320,11 @@ export function BabFormDialog({
                 Bab ini sudah diarsipkan. Edit dinonaktifkan.
               </p>
             )}
-            <DialogFooter>
+            <DialogFooter className="gap-2">
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto"
                 onClick={() => onOpenChange(false)}
                 disabled={isPending}
               >
@@ -331,6 +332,7 @@ export function BabFormDialog({
               </Button>
               <Button
                 type="submit"
+                className="w-full sm:w-auto"
                 disabled={
                   isPending ||
                   archived ||

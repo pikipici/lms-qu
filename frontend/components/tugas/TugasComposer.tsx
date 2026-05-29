@@ -198,8 +198,8 @@ export function TugasComposer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92svh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-4 py-4 sm:px-6">
           <DialogTitle>Tugas baru</DialogTitle>
           <DialogDescription>
             Scope: {scopeLabel}. Default tersimpan sebagai draft — siswa belum
@@ -208,7 +208,8 @@ export function TugasComposer({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="space-y-1.5">
             <Label htmlFor="tugas-judul">Judul</Label>
             <Input
@@ -255,7 +256,7 @@ export function TugasComposer({
           </div>
 
           <div className="space-y-2 rounded-md border p-3">
-            <label className="flex items-center gap-2">
+            <label className="flex items-start gap-2">
               <input
                 type="checkbox"
                 className="size-4 rounded border-input"
@@ -266,7 +267,7 @@ export function TugasComposer({
               <span className="text-sm">Izinkan submit telat</span>
             </label>
             {izinkanLate && (
-              <div className="ml-6 space-y-1.5">
+              <div className="space-y-1.5 sm:ml-6">
                 <Label htmlFor="tugas-penalty">Penalty (% dari nilai)</Label>
                 <Input
                   id="tugas-penalty"
@@ -280,7 +281,7 @@ export function TugasComposer({
                     if (penaltyError) setPenaltyError(null);
                   }}
                   disabled={isPending}
-                  className="max-w-[120px]"
+                  className="w-full sm:max-w-[120px]"
                   aria-invalid={!!penaltyError}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -297,7 +298,7 @@ export function TugasComposer({
             </p>
           </div>
 
-          <label className="flex items-center gap-2">
+          <label className="flex items-start gap-2">
             <input
               type="checkbox"
               className="size-4 rounded border-input"
@@ -322,14 +323,14 @@ export function TugasComposer({
                 setBobot(Number.isFinite(n) ? Math.max(0, n) : 0);
               }}
               disabled={isPending}
-              className="max-w-[140px]"
+              className="w-full sm:max-w-[140px]"
             />
             <p className="text-xs text-muted-foreground">
               Dipakai untuk rata-rata nilai tugas di bab ini. Default 100; 0 = tidak ikut bobot.
             </p>
           </div>
 
-          <label className="flex items-center gap-2">
+          <label className="flex items-start gap-2">
             <input
               type="checkbox"
               className="size-4 rounded border-input"
@@ -342,16 +343,19 @@ export function TugasComposer({
             </span>
           </label>
 
-          <DialogFooter>
+          </div>
+
+          <DialogFooter className="gap-2 border-t px-4 py-4 sm:px-6">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
               Batal
             </Button>
-            <Button type="submit" disabled={submitDisabled}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={submitDisabled}>
               {isPending ? 'Menyimpan…' : 'Simpan'}
             </Button>
           </DialogFooter>

@@ -160,7 +160,7 @@ export function UjianSourceConfigPanel({
           Pilih cara sumber soal di-isi: pilih manual dari Bank Soal atau
           biarkan sistem acak dari filter tag.
         </p>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {MODE_OPTIONS.map((m) => {
             const active = mode === m.value;
             return (
@@ -170,7 +170,7 @@ export function UjianSourceConfigPanel({
                 onClick={() => setMode(m.value)}
                 disabled={disabled}
                 className={cn(
-                  'flex items-start gap-2 rounded-md border p-3 text-left transition-colors',
+                  'flex min-w-0 items-start gap-2 rounded-md border p-3 text-left transition-colors',
                   active
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-foreground/40',
@@ -178,9 +178,9 @@ export function UjianSourceConfigPanel({
                 )}
               >
                 <m.Icon className="mt-0.5 size-4 text-muted-foreground" />
-                <div className="space-y-0.5">
+                <div className="min-w-0 space-y-0.5">
                   <div className="text-sm font-medium">{m.label}</div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="break-words text-xs text-muted-foreground">
                     {m.hint}
                   </div>
                 </div>
@@ -220,8 +220,8 @@ export function UjianSourceConfigPanel({
         />
       )}
 
-      <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
-        <div className="text-xs text-muted-foreground">
+      <div className="flex flex-col gap-2 rounded-md border bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 break-words text-xs text-muted-foreground">
           {previewData ? (
             <>
               Pool: <span className="font-semibold text-foreground">
@@ -251,6 +251,7 @@ export function UjianSourceConfigPanel({
           size="sm"
           variant="outline"
           type="button"
+          className="w-full sm:w-auto"
           onClick={() => {
             if (!value) return;
             previewMutation.mutate(value);
@@ -347,9 +348,9 @@ function ManualSourcePanel({
   return (
     <div className="space-y-2">
       {/* Filter */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,10rem)_auto] lg:items-center">
         <select
-          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
           value={mapelFilter}
           onChange={(e) => setMapelFilter(e.target.value)}
           disabled={disabled || masterLoading}
@@ -362,7 +363,7 @@ function ManualSourcePanel({
           ))}
         </select>
         <select
-          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
           value={tingkatFilter}
           onChange={(e) => setTingkatFilter(e.target.value)}
           disabled={disabled || masterLoading}
@@ -379,21 +380,21 @@ function ManualSourcePanel({
           value={topikQuery}
           onChange={(e) => setTopikQuery(e.target.value)}
           disabled={disabled || masterLoading}
-          className="h-8 max-w-[10rem] text-xs"
+          className="h-8 w-full text-xs"
         />
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground lg:ml-auto lg:whitespace-nowrap">
           {selectedIDs.length} dipilih · {filtered.length} terlihat
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Button
           size="sm"
           variant="outline"
           type="button"
           onClick={selectAllVisible}
           disabled={disabled || filtered.length === 0}
-          className="h-7 text-xs"
+          className="h-8 w-full text-xs"
         >
           Pilih semua terlihat
         </Button>
@@ -403,7 +404,7 @@ function ManualSourcePanel({
           type="button"
           onClick={clearAll}
           disabled={disabled || selectedIDs.length === 0}
-          className="h-7 text-xs"
+          className="h-8 w-full text-xs"
         >
           Kosongkan
         </Button>
@@ -426,7 +427,7 @@ function ManualSourcePanel({
             {filtered.map((s) => {
               const checked = selectedSet.has(s.id);
               return (
-                <li key={s.id} className="flex items-start gap-2 p-2">
+                <li key={s.id} className="flex min-w-0 items-start gap-2 p-2">
                   <input
                     type="checkbox"
                     checked={checked}
@@ -435,14 +436,14 @@ function ManualSourcePanel({
                     className="mt-1 size-4"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-1.5 break-words text-[10px] uppercase tracking-wide text-muted-foreground">
                       {s.mapel && <span>Mapel: {s.mapel}</span>}
                       {s.tingkat && <span>· Tingkat: {s.tingkat}</span>}
                       {s.topik && <span>· Topik: {s.topik}</span>}
                       <span>· Jawaban: {s.jawaban.toUpperCase()}</span>
                       <span>· Poin: {s.poin}</span>
                     </div>
-                    <p className="line-clamp-2 text-xs">
+                    <p className="line-clamp-2 break-words text-xs">
                       {s.pertanyaan.trim() || '(soal hanya gambar)'}
                     </p>
                   </div>
@@ -497,7 +498,7 @@ function RandomSourcePanel({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="space-y-1">
           <Label className="text-xs">Mapel</Label>
           <select
@@ -559,7 +560,7 @@ function RandomSourcePanel({
           value={value.jumlah_soal}
           onChange={(e) => setJumlah(Number(e.target.value))}
           disabled={disabled}
-          className="h-8 max-w-[10rem] text-xs"
+          className="h-8 w-full text-xs sm:max-w-[10rem]"
         />
         <p className="text-xs text-muted-foreground">
           Sistem akan mengacak {value.jumlah_soal} soal dari pool yang

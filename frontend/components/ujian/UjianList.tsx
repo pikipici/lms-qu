@@ -163,8 +163,8 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <CardTitle className="text-base">Ulangan Harian</CardTitle>
             <CardDescription>
               Ulangan cross-bab yang menarik soal dari Bank Soal pribadi
@@ -174,6 +174,7 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
           <Button
             size="sm"
             type="button"
+            className="w-full sm:w-auto"
             onClick={() => setCreateOpen(true)}
             disabled={disabled}
           >
@@ -303,7 +304,7 @@ function UjianRow({
 
   return (
     <li className="rounded-md border bg-background">
-      <div className="flex items-start gap-2 p-3">
+      <div className="flex min-w-0 items-start gap-2 p-3">
         <button
           type="button"
           onClick={onToggle}
@@ -318,7 +319,7 @@ function UjianRow({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">{ujian.judul}</h3>
+            <h3 className="min-w-0 break-words text-sm font-semibold">{ujian.judul}</h3>
             <StatusBadge status={ujian.status} />
             {sourceMode && <SourceBadge mode={sourceMode} />}
             {jumlahSoal && (
@@ -326,16 +327,16 @@ function UjianRow({
                 {jumlahSoal}
               </span>
             )}
-            <span className="text-xs text-muted-foreground">
-              · Durasi {ujian.durasi_menit}m · Bobot {ujian.bobot ?? 100} · v{ujian.version}
-            </span>
+              <span className="text-xs text-muted-foreground">
+                · Durasi {ujian.durasi_menit}m · Bobot {ujian.bobot ?? 100} · v{ujian.version}
+              </span>
           </div>
           {ujian.deskripsi && (
             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
               {ujian.deskripsi}
             </p>
           )}
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 break-words text-xs text-muted-foreground">
             {formatTimingRange(ujian.waktu_mulai, ujian.waktu_selesai)} ·
             Review{' '}
             {ujian.izinkan_review_setelah_submit ? (

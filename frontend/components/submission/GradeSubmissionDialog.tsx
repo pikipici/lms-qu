@@ -143,8 +143,8 @@ export function GradeSubmissionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92svh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="border-b px-4 py-4 sm:px-6">
           <DialogTitle>
             {isGraded ? 'Nilai tersimpan' : 'Beri nilai submission'}
           </DialogTitle>
@@ -163,7 +163,7 @@ export function GradeSubmissionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
           {submission.catatan && (
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">
@@ -257,10 +257,11 @@ export function GradeSubmissionDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 border-t px-4 py-4 sm:px-6">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
             disabled={gradeMu.isPending}
           >
@@ -269,6 +270,7 @@ export function GradeSubmissionDialog({
           {!isGraded && (
             <Button
               type="button"
+              className="w-full sm:w-auto"
               onClick={onSubmit}
               disabled={!nilaiValid || gradeMu.isPending}
             >
@@ -317,9 +319,9 @@ function SubmissionAttachmentLinks({
       {attachments.map((att) => (
         <li
           key={att.id}
-          className="flex items-center justify-between gap-2 rounded-md border bg-card p-2"
+          className="flex flex-col gap-2 rounded-md border bg-card p-2 sm:flex-row sm:items-center sm:justify-between"
         >
-          <span className="flex min-w-0 items-center gap-2 truncate">
+          <span className="flex min-w-0 items-center gap-2 self-stretch truncate sm:self-auto">
             <FileText className="size-4 shrink-0" />
             <span className="truncate text-sm">{att.original_filename}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -330,6 +332,7 @@ function SubmissionAttachmentLinks({
             type="button"
             variant="ghost"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => onDownload(att.id)}
             disabled={downloadingID === att.id}
           >

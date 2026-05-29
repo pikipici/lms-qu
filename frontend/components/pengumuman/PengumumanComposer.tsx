@@ -170,8 +170,8 @@ export function PengumumanComposer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92svh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-4 py-4 sm:px-6">
           <DialogTitle>Pengumuman baru</DialogTitle>
           <DialogDescription>
             Scope: {scopeLabel}. Pengumuman langsung terbit (status published)
@@ -179,7 +179,8 @@ export function PengumumanComposer({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="space-y-1.5">
             <Label htmlFor="pengumuman-judul">Judul</Label>
             <Input
@@ -229,9 +230,9 @@ export function PengumumanComposer({
             {attachments.length > 0 ? (
               <ul className="space-y-1 rounded-md border bg-muted/20 p-2 text-xs">
                 {attachments.map((file, index) => (
-                  <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
+                  <li key={`${file.name}-${index}`} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <span className="truncate">{file.name} • {(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))} disabled={isPending}>Hapus</Button>
+                    <Button type="button" variant="ghost" size="sm" className="w-full sm:w-auto" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))} disabled={isPending}>Hapus</Button>
                   </li>
                 ))}
               </ul>
@@ -239,16 +240,19 @@ export function PengumumanComposer({
             <p className="text-xs text-muted-foreground">Bisa pilih beberapa file. Maks {MAX_PENGUMUMAN_ATTACHMENT_BYTES / 1024 / 1024} MB per file.</p>
           </div>
 
-          <DialogFooter>
+          </div>
+
+          <DialogFooter className="gap-2 border-t px-4 py-4 sm:px-6">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
               Batal
             </Button>
-            <Button type="submit" disabled={submitDisabled}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={submitDisabled}>
               {isPending ? 'Mempublish…' : 'Publish'}
             </Button>
           </DialogFooter>

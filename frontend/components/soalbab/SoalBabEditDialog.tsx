@@ -223,8 +223,8 @@ export function SoalBabEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92svh] w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b px-4 py-4 sm:px-6">
           <DialogTitle>{isEdit ? 'Edit soal' : 'Soal baru'}</DialogTitle>
           <DialogDescription>
             {isEdit
@@ -238,8 +238,9 @@ export function SoalBabEditDialog({
             e.preventDefault();
             mutation.mutate();
           }}
-          className="space-y-5"
+          className="flex min-h-0 flex-1 flex-col"
         >
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-6">
           {/* Pertanyaan */}
           <div className="space-y-1.5">
             <Label htmlFor="pertanyaan">Pertanyaan</Label>
@@ -359,16 +360,19 @@ export function SoalBabEditDialog({
             </div>
           )}
 
-          <DialogFooter className="gap-2">
+          </div>
+
+          <DialogFooter className="gap-2 border-t px-4 py-4 sm:px-6">
             <Button
               type="button"
               variant="ghost"
+              className="w-full sm:w-auto"
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
               Tutup
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={mutation.isPending}>
               {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
               {isEdit ? 'Simpan perubahan' : 'Buat soal'}
             </Button>

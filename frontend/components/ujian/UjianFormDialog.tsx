@@ -261,16 +261,18 @@ export function UjianFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="flex max-h-[92svh] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:w-full">
         <DialogHeader>
-          <DialogTitle>
+          <div className="space-y-1.5 border-b px-4 py-4 sm:px-6">
+          <DialogTitle className="text-left">
             {isEdit ? 'Edit Ulangan Harian' : 'Ulangan Harian baru'}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-left">
             {isEdit
               ? 'Ubah judul/deskripsi/timing/sumber soal. Versi ujian akan naik.'
               : 'Buat ulangan baru untuk kelas ini. Mulai dari draft, lalu set sumber soal lalu publish ke siswa.'}
           </DialogDescription>
+          </div>
         </DialogHeader>
 
         <form
@@ -278,8 +280,9 @@ export function UjianFormDialog({
             e.preventDefault();
             mutation.mutate();
           }}
-          className="space-y-5"
+          className="flex min-h-0 flex-1 flex-col"
         >
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-6">
           {/* Judul + deskripsi */}
           <div className="space-y-1.5">
             <Label htmlFor="judul">Judul</Label>
@@ -314,7 +317,7 @@ export function UjianFormDialog({
           </div>
 
           {/* Durasi + bobot + status */}
-          <div className="grid grid-cols-1 sm:grid-cols-[10rem_10rem_1fr] gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[10rem_10rem_1fr]">
             <div className="space-y-1.5">
               <Label htmlFor="durasi">Durasi (menit)</Label>
               <Input
@@ -385,7 +388,7 @@ export function UjianFormDialog({
           </div>
 
           {/* Timing */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="waktuMulai">Waktu mulai</Label>
               <Input
@@ -422,7 +425,7 @@ export function UjianFormDialog({
 
           {/* Attempt limit */}
           <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2">
               <input
                 id="attemptUnlimited"
                 type="checkbox"
@@ -436,11 +439,11 @@ export function UjianFormDialog({
                 disabled={mutation.isPending}
                 className="size-4"
               />
-              <Label htmlFor="attemptUnlimited" className="cursor-pointer">
+              <Label htmlFor="attemptUnlimited" className="cursor-pointer leading-5">
                 Attempts tidak dibatasi
               </Label>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-[12rem_1fr] gap-3 items-start">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[12rem_1fr]">
               <div className="space-y-1.5">
                 <Label htmlFor="batasAttempt">Batas attempts</Label>
                 <Input
@@ -472,7 +475,7 @@ export function UjianFormDialog({
 
           {/* Review gating */}
           <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2">
               <input
                 id="izinkanReview"
                 type="checkbox"
@@ -486,7 +489,7 @@ export function UjianFormDialog({
                 disabled={mutation.isPending}
                 className="size-4"
               />
-              <Label htmlFor="izinkanReview" className="cursor-pointer">
+              <Label htmlFor="izinkanReview" className="cursor-pointer leading-5">
                 Izinkan siswa review jawaban setelah submit
               </Label>
             </div>
@@ -542,16 +545,19 @@ export function UjianFormDialog({
             )}
           </div>
 
-          <DialogFooter className="gap-2">
+          </div>
+
+          <DialogFooter className="gap-2 border-t bg-background px-4 py-3 sm:px-6">
             <Button
               type="button"
               variant="ghost"
+              className="w-full sm:w-auto"
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
               Tutup
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={mutation.isPending}>
               {mutation.isPending && (
                 <Loader2 className="size-4 animate-spin" />
               )}
