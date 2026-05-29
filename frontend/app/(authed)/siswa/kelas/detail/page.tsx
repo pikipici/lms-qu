@@ -313,7 +313,7 @@ function DetailTabBar({
               className={`flex min-w-0 items-center justify-center gap-2 rounded-siswa border-2 px-2 py-2 text-xs font-bold transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-siswa-border sm:px-4 sm:text-sm ${tab.key === 'nilai' ? 'col-span-2 sm:col-span-1' : ''} ${
                 activeTab
                   ? 'border-siswa-border bg-siswa-primary text-siswa-text siswa-shadow-sm -translate-y-0.5'
-                  : 'border-transparent bg-transparent text-siswa-text-muted hover:border-siswa-border-soft hover:bg-white/60'
+                  : 'border-siswa-border bg-siswa-surface text-siswa-text hover:-translate-y-0.5 hover:bg-siswa-cream/80'
               }`}
             >
               <Icon className="size-4" strokeWidth={2.5} />
