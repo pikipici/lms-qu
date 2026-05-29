@@ -144,6 +144,29 @@ export interface CancelUjianHasilResult {
   cancelled_at: string;
 }
 
+export interface UjianSusulan {
+  id: string;
+  ujian_id: string;
+  siswa_id: string;
+  waktu_mulai?: string | null;
+  waktu_selesai: string;
+  durasi_menit?: number | null;
+  max_attempt: number;
+  reason: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateUjianSusulanInput {
+  siswa_id: string;
+  waktu_mulai?: string | null;
+  waktu_selesai: string;
+  durasi_menit?: number | null;
+  max_attempt?: number;
+  reason?: string;
+}
+
 // ---------- Functions ----------
 
 export async function listUjianByKelas(
@@ -253,6 +276,32 @@ export async function cancelUjianHasil(
   );
 }
 
+export async function listUjianSusulan(
+  ujianID: string,
+): Promise<{ items: UjianSusulan[]; total: number }> {
+  return api<{ items: UjianSusulan[]; total: number }>(`/ujian/${ujianID}/susulan`);
+}
+
+export async function createUjianSusulan(
+  ujianID: string,
+  input: CreateUjianSusulanInput,
+): Promise<{ susulan: UjianSusulan }> {
+  return api<{ susulan: UjianSusulan }>(`/ujian/${ujianID}/susulan`, {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export async function deleteUjianSusulan(
+  ujianID: string,
+  siswaID: string,
+): Promise<{ deleted: boolean; ujian_id: string; siswa_id: string }> {
+  return api<{ deleted: boolean; ujian_id: string; siswa_id: string }>(
+    `/ujian/${ujianID}/susulan/${siswaID}`,
+    { method: 'DELETE' },
+  );
+}
+
 // ---------- Friendly error mapper ----------
 
 export type UjianAction =
@@ -260,6 +309,7 @@ export type UjianAction =
   | 'update'
   | 'delete'
   | 'force_delete_testing'
+  | 'susulan'
   | 'duplicate'
   | 'preview'
   | 'cancel'
@@ -321,6 +371,8 @@ export function friendlyUjianError(
           return err.message || 'Gagal menghapus ujian.';
         case 'force_delete_testing':
           return err.message || 'Gagal menghapus data testing ujian.';
+        case 'susulan':
+          return err.message || 'Gagal menyimpan susulan ujian.';
         case 'duplicate':
           return err.message || 'Gagal menduplikasi ujian.';
         case 'preview':

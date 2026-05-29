@@ -203,6 +203,7 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
               <UjianRow
                 key={u.id}
                 ujian={u}
+                kelasID={kelasID}
                 expanded={expandedID === u.id}
                 onToggle={() =>
                   setExpandedID((prev) => (prev === u.id ? null : u.id))
@@ -269,6 +270,7 @@ export function UjianList({ kelasID, disabled }: UjianListProps) {
 
 function UjianRow({
   ujian,
+  kelasID,
   expanded,
   onToggle,
   onEdit,
@@ -279,6 +281,7 @@ function UjianRow({
   disabled,
 }: {
   ujian: Ujian;
+  kelasID: string;
   expanded: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -395,7 +398,7 @@ function UjianRow({
             <ClipboardCheck className="size-3.5" />
             Rekap hasil siswa
           </div>
-          <RekapHasilUjianTable ujianID={ujian.id} disabled={disabled} />
+          <RekapHasilUjianTable ujianID={ujian.id} kelasID={kelasID} disabled={disabled} />
         </div>
       )}
     </li>

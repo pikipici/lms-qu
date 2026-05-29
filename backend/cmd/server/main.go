@@ -764,6 +764,9 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	// Static prefixes BEFORE /:id supaya tidak conflict dengan UUID matcher.
 	ujianStaffGroup.Post("/:id/duplicate", ujianHandler.Duplicate)
 	ujianStaffGroup.Post("/:id/source/preview", ujianHandler.PreviewSource)
+	ujianStaffGroup.Get("/:id/susulan", ujianHandler.ListSusulan)
+	ujianStaffGroup.Post("/:id/susulan", ujianHandler.CreateSusulan)
+	ujianStaffGroup.Delete("/:id/susulan/:siswa_id", ujianHandler.DeleteSusulan)
 	ujianStaffGroup.Patch("/:id", ujianHandler.Update)
 	ujianStaffGroup.Delete("/:id", ujianHandler.Delete)
 	ujianStaffGroup.Post("/:id/force-delete-testing", ujianHandler.ForceDeleteTesting)

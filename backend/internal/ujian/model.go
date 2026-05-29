@@ -143,6 +143,25 @@ type UjianSoal struct {
 // TableName binds the struct to the ujian_soal table.
 func (UjianSoal) TableName() string { return "ujian_soal" }
 
+// UjianAccessOverride opens a susulan window for one siswa without changing
+// the main ujian schedule for everyone else.
+type UjianAccessOverride struct {
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UjianID      uuid.UUID  `gorm:"type:uuid;not null;index;column:ujian_id" json:"ujian_id"`
+	SiswaID      uuid.UUID  `gorm:"type:uuid;not null;index;column:siswa_id" json:"siswa_id"`
+	WaktuMulai   *time.Time `gorm:"column:waktu_mulai" json:"waktu_mulai,omitempty"`
+	WaktuSelesai time.Time  `gorm:"not null;column:waktu_selesai" json:"waktu_selesai"`
+	DurasiMenit  *int16     `gorm:"column:durasi_menit" json:"durasi_menit,omitempty"`
+	MaxAttempt   int16      `gorm:"not null;default:1;column:max_attempt" json:"max_attempt"`
+	Reason       string     `gorm:"not null;default:''" json:"reason"`
+	CreatedBy    uuid.UUID  `gorm:"type:uuid;not null;column:created_by" json:"created_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// TableName binds the struct to the ujian_access_override table.
+func (UjianAccessOverride) TableName() string { return "ujian_access_override" }
+
 // HasilUjian represents a single attempt instance per (Ujian, Siswa).
 // Partial unique (ujian_id, siswa_id) WHERE deleted_at IS NULL — remedial
 // reset soft-deletes attempt, baru attempt valid.

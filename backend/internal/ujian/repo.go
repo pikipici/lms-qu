@@ -251,6 +251,39 @@ func (r *Repo) ListUjianSoalIDs(ctx context.Context, ujianID uuid.UUID) ([]uuid.
 }
 
 // ---------------------------------------------------------------------------
+// UjianAccessOverride persistence
+// ---------------------------------------------------------------------------
+
+func (r *Repo) UpsertAccessOverride(ctx context.Context, o *UjianAccessOverride) error {
+	return r.db.WithContext(ctx).Save(o).Error
+}
+
+func (r *Repo) FindAccessOverride(ctx context.Context, ujianID, siswaID uuid.UUID) (*UjianAccessOverride, error) {
+	var o UjianAccessOverride
+	if err := r.db.WithContext(ctx).Where("ujian_id = ? AND siswa_id = ?", ujianID, siswaID).First(&o).Error; err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
+func (r *Repo) ListAccessOverrides(ctx context.Context, ujianID uuid.UUID) ([]UjianAccessOverride, error) {
+	var rows []UjianAccessOverride
+	err := r.db.WithContext(ctx).Where("ujian_id = ?", ujianID).Order("created_at DESC, id DESC").Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repo) DeleteAccessOverride(ctx context.Context, ujianID, siswaID uuid.UUID) error {
+	res := r.db.WithContext(ctx).Where("ujian_id = ? AND siswa_id = ?", ujianID, siswaID).Delete(&UjianAccessOverride{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // HasilUjian persistence
 // ---------------------------------------------------------------------------
 

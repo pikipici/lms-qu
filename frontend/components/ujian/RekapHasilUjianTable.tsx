@@ -12,29 +12,38 @@
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, RotateCcw } from 'lucide-react';
+import { Clock, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import {
   type SiswaRekap,
+  type UjianSusulan,
   cancelUjianHasil,
+  createUjianSusulan,
+  deleteUjianSusulan,
   friendlyUjianError,
   getRekapHasilUjian,
+  listUjianSusulan,
 } from '@/lib/ujian-api';
+import { type EnrollmentItem, listKelasEnrollments } from '@/lib/kelas-api';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 import { CancelUjianAttemptDialog } from './CancelUjianAttemptDialog';
 
 export interface RekapHasilUjianTableProps {
   ujianID: string;
+  kelasID: string;
   /** Disable cancel actions kalau ujian/kelas archived. */
   disabled?: boolean;
 }
 
 export function RekapHasilUjianTable({
   ujianID,
+  kelasID,
   disabled,
 }: RekapHasilUjianTableProps) {
   const { toast } = useToast();
@@ -53,6 +62,23 @@ export function RekapHasilUjianTable({
   const [cancelTarget, setCancelTarget] = React.useState<SiswaRekap | null>(
     null,
   );
+  const [susulanSiswaID, setSusulanSiswaID] = React.useState('');
+  const [susulanMulai, setSusulanMulai] = React.useState('');
+  const [susulanSelesai, setSusulanSelesai] = React.useState('');
+  const [susulanDurasi, setSusulanDurasi] = React.useState('');
+  const [susulanReason, setSusulanReason] = React.useState('');
+
+  const enrollmentQuery = useQuery({
+    queryKey: ['guru', 'kelas', kelasID, 'enrollments', 'ujian-susulan'],
+    queryFn: () => listKelasEnrollments(kelasID, { page: 1, pageSize: 200 }),
+    staleTime: 30_000,
+  });
+
+  const susulanQuery = useQuery({
+    queryKey: ['guru', 'ujian', ujianID, 'susulan'],
+    queryFn: () => listUjianSusulan(ujianID),
+    staleTime: 10_000,
+  });
 
   const cancelMutation = useMutation({
     mutationFn: (hasilID: string) => cancelUjianHasil(hasilID),
@@ -79,6 +105,46 @@ export function RekapHasilUjianTable({
     },
   });
 
+  const createSusulanMutation = useMutation({
+    mutationFn: () => {
+      if (!susulanSiswaID || !susulanSelesai) {
+        throw new Error('Pilih siswa dan waktu selesai susulan.');
+      }
+      const durasi = susulanDurasi ? Number(susulanDurasi) : undefined;
+      return createUjianSusulan(ujianID, {
+        siswa_id: susulanSiswaID,
+        waktu_mulai: susulanMulai ? new Date(susulanMulai).toISOString() : null,
+        waktu_selesai: new Date(susulanSelesai).toISOString(),
+        durasi_menit: durasi,
+        max_attempt: 1,
+        reason: susulanReason,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['guru', 'ujian', ujianID, 'susulan'] });
+      toast({ title: 'Susulan dibuka', description: 'Siswa terpilih bisa start di window susulan.' });
+      setSusulanReason('');
+    },
+    onError: (err) => {
+      const apiErr = err instanceof ApiError ? err : null;
+      const message = apiErr ? friendlyUjianError(apiErr, 'susulan') : err instanceof Error ? err.message : 'Gagal menyimpan susulan.';
+      toast({ title: 'Gagal buat susulan', description: message, variant: 'destructive' });
+    },
+  });
+
+  const deleteSusulanMutation = useMutation({
+    mutationFn: (siswaID: string) => deleteUjianSusulan(ujianID, siswaID),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['guru', 'ujian', ujianID, 'susulan'] });
+      toast({ title: 'Susulan dicabut' });
+    },
+    onError: (err) => {
+      const apiErr = err instanceof ApiError ? err : null;
+      const message = apiErr ? friendlyUjianError(apiErr, 'susulan') : 'Gagal mencabut susulan.';
+      toast({ title: 'Gagal cabut susulan', description: message, variant: 'destructive' });
+    },
+  });
+
   if (rekapQuery.isPending) {
     return (
       <div className="flex items-center justify-center py-8 text-muted-foreground">
@@ -99,6 +165,8 @@ export function RekapHasilUjianTable({
 
   const rekap = rekapQuery.data!.rekap;
   const items = rekap.items;
+  const enrollments = enrollmentQuery.data?.items ?? [];
+  const susulanItems = susulanQuery.data?.items ?? [];
 
   return (
     <div className="space-y-2">
@@ -116,6 +184,89 @@ export function RekapHasilUjianTable({
           </span>
         </span>
       </div>
+
+      <section className="rounded-md border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+        <div className="mb-3 flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
+          <Clock className="size-4" />
+          Susulan per siswa
+        </div>
+        <div className="grid gap-3 md:grid-cols-5">
+          <label className="space-y-1 md:col-span-2">
+            <Label>Siswa</Label>
+            <select
+              value={susulanSiswaID}
+              onChange={(e) => setSusulanSiswaID(e.target.value)}
+              disabled={disabled || enrollmentQuery.isPending}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Pilih siswa...</option>
+              {enrollments.map((enrollment) => (
+                <option key={enrollment.siswa_id} value={enrollment.siswa_id}>
+                  {enrollment.nama || enrollment.email || enrollment.siswa_id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <Label>Mulai</Label>
+            <Input
+              type="datetime-local"
+              value={susulanMulai}
+              onChange={(e) => setSusulanMulai(e.target.value)}
+              disabled={disabled}
+            />
+          </label>
+          <label className="space-y-1">
+            <Label>Selesai</Label>
+            <Input
+              type="datetime-local"
+              value={susulanSelesai}
+              onChange={(e) => setSusulanSelesai(e.target.value)}
+              disabled={disabled}
+            />
+          </label>
+          <label className="space-y-1">
+            <Label>Durasi menit</Label>
+            <Input
+              type="number"
+              min={1}
+              value={susulanDurasi}
+              onChange={(e) => setSusulanDurasi(e.target.value)}
+              placeholder="default"
+              disabled={disabled}
+            />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-col gap-2 md:flex-row">
+          <Input
+            value={susulanReason}
+            onChange={(e) => setSusulanReason(e.target.value)}
+            placeholder="Catatan alasan susulan (opsional)"
+            disabled={disabled}
+          />
+          <Button
+            type="button"
+            onClick={() => createSusulanMutation.mutate()}
+            disabled={disabled || createSusulanMutation.isPending}
+          >
+            {createSusulanMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+            Buka susulan
+          </Button>
+        </div>
+        {susulanItems.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {susulanItems.map((item) => (
+              <SusulanPill
+                key={item.id}
+                item={item}
+                siswa={enrollments.find((e) => e.siswa_id === item.siswa_id)}
+                disabled={disabled || deleteSusulanMutation.isPending}
+                onDelete={() => deleteSusulanMutation.mutate(item.siswa_id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {items.length === 0 ? (
         <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -158,6 +309,51 @@ export function RekapHasilUjianTable({
         onConfirm={(hasilID) => cancelMutation.mutate(hasilID)}
         pending={cancelMutation.isPending}
       />
+    </div>
+  );
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function SusulanPill({
+  item,
+  siswa,
+  disabled,
+  onDelete,
+}: {
+  item: UjianSusulan;
+  siswa?: EnrollmentItem;
+  disabled?: boolean;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border bg-background/80 p-2 text-xs md:flex-row md:items-center md:justify-between">
+      <div>
+        <div className="font-medium text-foreground">
+          {siswa?.nama || siswa?.email || item.siswa_id}
+        </div>
+        <div className="text-muted-foreground">
+          {item.waktu_mulai ? `${formatDateTime(item.waktu_mulai)} - ` : ''}
+          {formatDateTime(item.waktu_selesai)}
+          {item.durasi_menit ? ` · durasi ${item.durasi_menit} menit` : ''}
+        </div>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-7 self-start text-xs text-destructive md:self-auto"
+        disabled={disabled}
+        onClick={onDelete}
+      >
+        <Trash2 className="size-3.5" />
+        Cabut
+      </Button>
     </div>
   );
 }

@@ -37,6 +37,9 @@ type ujianService interface {
 	Update(ctx context.Context, id, callerID uuid.UUID, callerRole string, in UpdateInput, ip, userAgent string) (*Ujian, error)
 	Delete(ctx context.Context, id, callerID uuid.UUID, callerRole string, expectedVersion int, ip, userAgent string) (*Ujian, error)
 	ForceDeleteTesting(ctx context.Context, id, callerID uuid.UUID, callerRole string, ip, userAgent string) (*Ujian, int64, int64, error)
+	CreateSusulan(ctx context.Context, ujianID, callerID uuid.UUID, callerRole string, in SusulanInput, ip, userAgent string) (*UjianAccessOverride, error)
+	ListSusulan(ctx context.Context, ujianID, callerID uuid.UUID, callerRole string) ([]UjianAccessOverride, error)
+	DeleteSusulan(ctx context.Context, ujianID, siswaID, callerID uuid.UUID, callerRole string, ip, userAgent string) error
 	Duplicate(ctx context.Context, srcID, callerID uuid.UUID, callerRole string, in DuplicateInput, ip, userAgent string) (*Ujian, error)
 	PreviewSource(ctx context.Context, ujianID, callerID uuid.UUID, callerRole string, in SourceInput) (*SourcePreview, error)
 }
@@ -474,6 +477,100 @@ func (h *Handler) ForceDeleteTesting(c *fiber.Ctx) error {
 		"hasil_deleted":   hasilDeleted,
 		"jawaban_deleted": jawabanDeleted,
 	})
+}
+
+type susulanRequest struct {
+	SiswaID      string  `json:"siswa_id"`
+	WaktuMulai   *string `json:"waktu_mulai,omitempty"`
+	WaktuSelesai string  `json:"waktu_selesai"`
+	DurasiMenit  *int16  `json:"durasi_menit,omitempty"`
+	MaxAttempt   int16   `json:"max_attempt,omitempty"`
+	Reason       string  `json:"reason,omitempty"`
+}
+
+// CreateSusulan handles POST /api/v1/ujian/:id/susulan.
+func (h *Handler) CreateSusulan(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid ujian id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+
+	var req susulanRequest
+	if err := c.BodyParser(&req); err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+	siswaID, err := uuid.Parse(strings.TrimSpace(req.SiswaID))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid siswa id", "invalid_id")
+	}
+	mulaiAt, err := parseOptionalRFC3339(req.WaktuMulai)
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "waktu_mulai must be RFC3339", "invalid_body")
+	}
+	if strings.TrimSpace(req.WaktuSelesai) == "" {
+		return errResp(c, fiber.StatusBadRequest, "waktu_selesai is required", "invalid_body")
+	}
+	selesaiRaw := strings.TrimSpace(req.WaktuSelesai)
+	selesaiAt, err := parseOptionalRFC3339(&selesaiRaw)
+	if err != nil || selesaiAt == nil {
+		return errResp(c, fiber.StatusBadRequest, "waktu_selesai must be RFC3339", "invalid_body")
+	}
+	o, err := h.svc.CreateSusulan(c.UserContext(), id, callerID, role, SusulanInput{
+		SiswaID:      siswaID,
+		WaktuMulai:   mulaiAt,
+		WaktuSelesai: *selesaiAt,
+		DurasiMenit:  req.DurasiMenit,
+		MaxAttempt:   req.MaxAttempt,
+		Reason:       req.Reason,
+	}, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"susulan": o})
+}
+
+// ListSusulan handles GET /api/v1/ujian/:id/susulan.
+func (h *Handler) ListSusulan(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid ujian id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+	items, err := h.svc.ListSusulan(c.UserContext(), id, callerID, role)
+	if err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"items": items, "total": len(items)})
+}
+
+// DeleteSusulan handles DELETE /api/v1/ujian/:id/susulan/:siswa_id.
+func (h *Handler) DeleteSusulan(c *fiber.Ctx) error {
+	id, err := uuid.Parse(strings.TrimSpace(c.Params("id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid ujian id", "invalid_id")
+	}
+	siswaID, err := uuid.Parse(strings.TrimSpace(c.Params("siswa_id")))
+	if err != nil {
+		return errResp(c, fiber.StatusBadRequest, "invalid siswa id", "invalid_id")
+	}
+	callerID, err := middleware.UserIDFromCtx(c)
+	if err != nil {
+		return errResp(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	role, _ := c.Locals(middleware.LocalsUserRole).(string)
+	if err := h.svc.DeleteSusulan(c.UserContext(), id, siswaID, callerID, role, c.IP(), string(c.Request().Header.UserAgent())); err != nil {
+		return mapServiceErr(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"deleted": true, "ujian_id": id, "siswa_id": siswaID})
 }
 
 // ---------------------------------------------------------------------------

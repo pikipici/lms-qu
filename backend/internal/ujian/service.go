@@ -72,6 +72,9 @@ type repoAPI interface {
 	HasActiveAttempts(ctx context.Context, ujianID uuid.UUID) (bool, error)
 	CountHasilByUjian(ctx context.Context, ujianID uuid.UUID) (int64, error)
 	ForceDeleteUjianTesting(ctx context.Context, ujianID uuid.UUID) (int64, int64, error)
+	UpsertAccessOverride(ctx context.Context, o *UjianAccessOverride) error
+	ListAccessOverrides(ctx context.Context, ujianID uuid.UUID) ([]UjianAccessOverride, error)
+	DeleteAccessOverride(ctx context.Context, ujianID, siswaID uuid.UUID) error
 	SetUjianSoalIDs(ctx context.Context, ujianID uuid.UUID, soalIDs []uuid.UUID) error
 	ListUjianSoalIDs(ctx context.Context, ujianID uuid.UUID) ([]uuid.UUID, error)
 }
@@ -608,6 +611,112 @@ func (s *Service) ForceDeleteTesting(ctx context.Context, id, callerID uuid.UUID
 		"jawaban_deleted": jawabanDeleted,
 	})
 	return existing, hasilDeleted, jawabanDeleted, nil
+}
+
+// SusulanInput opens a per-siswa override window for a published ujian.
+type SusulanInput struct {
+	SiswaID      uuid.UUID
+	WaktuMulai   *time.Time
+	WaktuSelesai time.Time
+	DurasiMenit  *int16
+	MaxAttempt   int16
+	Reason       string
+}
+
+func (s *Service) CreateSusulan(ctx context.Context, ujianID, callerID uuid.UUID, callerRole string, in SusulanInput, ip, userAgent string) (*UjianAccessOverride, error) {
+	u, err := s.repo.FindUjianByID(ctx, ujianID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ujian susulan find: %w", err)
+	}
+	k, err := s.findKelasOrForbidden(ctx, u.KelasID, callerID, callerRole)
+	if err != nil {
+		return nil, err
+	}
+	if k.ArchivedAt != nil {
+		return nil, ErrKelasArchived
+	}
+	if in.SiswaID == uuid.Nil {
+		return nil, fmt.Errorf("%w: siswa_id is required", ErrInvalidInput)
+	}
+	if in.WaktuSelesai.IsZero() {
+		return nil, fmt.Errorf("%w: waktu_selesai is required", ErrInvalidInput)
+	}
+	if in.WaktuMulai != nil && in.WaktuSelesai.Before(*in.WaktuMulai) {
+		return nil, fmt.Errorf("%w: waktu_selesai before waktu_mulai", ErrInvalidInput)
+	}
+	if in.DurasiMenit != nil && (*in.DurasiMenit < MinDurasiMenit || *in.DurasiMenit > MaxDurasiMenit) {
+		return nil, fmt.Errorf("%w: durasi_menit must be between %d and %d", ErrInvalidInput, MinDurasiMenit, MaxDurasiMenit)
+	}
+	maxAttempt := in.MaxAttempt
+	if maxAttempt == 0 {
+		maxAttempt = 1
+	}
+	if maxAttempt < MinBatasAttempt || maxAttempt > MaxBatasAttempt {
+		return nil, fmt.Errorf("%w: max_attempt must be between %d and %d", ErrInvalidInput, MinBatasAttempt, MaxBatasAttempt)
+	}
+	reason := strings.TrimSpace(in.Reason)
+	if len(reason) > MaxDeskripsiBytes {
+		return nil, fmt.Errorf("%w: reason too long", ErrInvalidInput)
+	}
+	o := &UjianAccessOverride{
+		UjianID:      ujianID,
+		SiswaID:      in.SiswaID,
+		WaktuMulai:   in.WaktuMulai,
+		WaktuSelesai: in.WaktuSelesai,
+		DurasiMenit:  in.DurasiMenit,
+		MaxAttempt:   maxAttempt,
+		Reason:       reason,
+		CreatedBy:    callerID,
+	}
+	if err := s.repo.UpsertAccessOverride(ctx, o); err != nil {
+		return nil, fmt.Errorf("ujian susulan save: %w", err)
+	}
+	s.logAudit(ctx, "ujian_susulan_created", &callerID, callerRole, &ujianID, &u.KelasID, ip, userAgent, map[string]any{
+		"ujian_id":        ujianID.String(),
+		"siswa_id":        in.SiswaID.String(),
+		"waktu_selesai":   in.WaktuSelesai.UTC().Format(time.RFC3339Nano),
+		"max_attempt":     maxAttempt,
+		"durasi_override": in.DurasiMenit != nil,
+	})
+	return o, nil
+}
+
+func (s *Service) ListSusulan(ctx context.Context, ujianID, callerID uuid.UUID, callerRole string) ([]UjianAccessOverride, error) {
+	u, err := s.repo.FindUjianByID(ctx, ujianID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ujian susulan find: %w", err)
+	}
+	if _, err := s.findKelasOrForbidden(ctx, u.KelasID, callerID, callerRole); err != nil {
+		return nil, err
+	}
+	return s.repo.ListAccessOverrides(ctx, ujianID)
+}
+
+func (s *Service) DeleteSusulan(ctx context.Context, ujianID, siswaID, callerID uuid.UUID, callerRole string, ip, userAgent string) error {
+	u, err := s.repo.FindUjianByID(ctx, ujianID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("ujian susulan find: %w", err)
+	}
+	if _, err := s.findKelasOrForbidden(ctx, u.KelasID, callerID, callerRole); err != nil {
+		return err
+	}
+	if err := s.repo.DeleteAccessOverride(ctx, ujianID, siswaID); err != nil {
+		return mapRepoErr(err)
+	}
+	s.logAudit(ctx, "ujian_susulan_deleted", &callerID, callerRole, &ujianID, &u.KelasID, ip, userAgent, map[string]any{
+		"ujian_id": ujianID.String(),
+		"siswa_id": siswaID.String(),
+	})
+	return nil
 }
 
 // ---------------------------------------------------------------------------

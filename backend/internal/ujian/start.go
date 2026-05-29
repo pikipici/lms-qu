@@ -79,6 +79,7 @@ type flowRepoAPI interface {
 	UpsertJawaban(ctx context.Context, j *JawabanUjian) error
 	ListJawabanByHasil(ctx context.Context, hasilID uuid.UUID) ([]JawabanUjian, error)
 	AppendEvent(ctx context.Context, e *EventUjian) error
+	FindAccessOverride(ctx context.Context, ujianID, siswaID uuid.UUID) (*UjianAccessOverride, error)
 }
 
 // enrollmentLookup verifies siswa enrolment di kelas ujian.
@@ -140,13 +141,29 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		return nil, err
 	}
 
-	// Schedule window guard (optional fields).
+	// Schedule window guard (optional fields). A per-siswa susulan override
+	// can open a separate window without changing the main ujian schedule.
 	now := s.now()
-	if u.WaktuMulai != nil && now.Before(*u.WaktuMulai) {
-		return nil, ErrUjianWindowNotOpen
+	override, err := s.repo.FindAccessOverride(ctx, ujianID, siswaID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		override = nil
+	} else if err != nil {
+		return nil, fmt.Errorf("ujian start override: %w", err)
 	}
-	if u.WaktuSelesai != nil && now.After(*u.WaktuSelesai) {
-		return nil, ErrUjianWindowClosed
+	if override != nil {
+		if override.WaktuMulai != nil && now.Before(*override.WaktuMulai) {
+			return nil, ErrUjianWindowNotOpen
+		}
+		if now.After(override.WaktuSelesai) {
+			return nil, ErrUjianWindowClosed
+		}
+	} else {
+		if u.WaktuMulai != nil && now.Before(*u.WaktuMulai) {
+			return nil, ErrUjianWindowNotOpen
+		}
+		if u.WaktuSelesai != nil && now.After(*u.WaktuSelesai) {
+			return nil, ErrUjianWindowClosed
+		}
 	}
 
 	// Source must be configured before siswa can start.
@@ -221,10 +238,15 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		return nil, fmt.Errorf("ujian start count: %w", err)
 	}
 	batasAttempt := u.BatasAttempt
+	attemptUnlimited := u.AttemptUnlimited
+	if override != nil {
+		batasAttempt = override.MaxAttempt
+		attemptUnlimited = false
+	}
 	if batasAttempt == 0 {
 		batasAttempt = 1
 	}
-	if !u.AttemptUnlimited && n >= int64(batasAttempt) {
+	if !attemptUnlimited && n >= int64(batasAttempt) {
 		tx.Rollback()
 		return nil, ErrUjianAlreadyAttempted
 	}
@@ -272,7 +294,11 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		tx.Rollback()
 		return nil, fmt.Errorf("ujian start encode: %w", err)
 	}
-	deadline := mulaiAt.Add(time.Duration(u.DurasiMenit) * time.Minute)
+	durasiMenit := u.DurasiMenit
+	if override != nil && override.DurasiMenit != nil {
+		durasiMenit = *override.DurasiMenit
+	}
+	deadline := mulaiAt.Add(time.Duration(durasiMenit) * time.Minute)
 	hasil := &HasilUjian{
 		UjianID:     u.ID,
 		SiswaID:     siswaID,
@@ -293,7 +319,7 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 			"ujian_id":     u.ID.String(),
 			"source_mode":  string(srcMode),
 			"jumlah_soal":  len(pickedIDs),
-			"durasi_menit": u.DurasiMenit,
+			"durasi_menit": durasiMenit,
 		}),
 	}).Error; err != nil {
 		tx.Rollback()
@@ -309,7 +335,7 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		"ujian_id":     u.ID.String(),
 		"source_mode":  string(srcMode),
 		"jumlah_soal":  len(pickedIDs),
-		"durasi_menit": u.DurasiMenit,
+		"durasi_menit": durasiMenit,
 		"deadline_at":  deadline.UTC().Format(time.RFC3339Nano),
 	})
 
@@ -320,7 +346,7 @@ func (s *FlowService) Start(ctx context.Context, ujianID, siswaID uuid.UUID, ip,
 		Total:       len(pickedIDs),
 		MulaiAt:     mulaiAt,
 		DeadlineAt:  deadline,
-		DurasiDetik: int(u.DurasiMenit) * 60,
+		DurasiDetik: int(durasiMenit) * 60,
 		AttemptNo:   hasil.AttemptNo,
 		Resume:      false,
 	}, nil
