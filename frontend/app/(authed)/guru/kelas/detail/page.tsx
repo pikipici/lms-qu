@@ -45,7 +45,9 @@ import {
   GraduationCap,
   History,
   Megaphone,
+  MessageCircle,
   RotateCcw,
+  Send,
   ScrollText,
   Settings,
   Users,
@@ -62,6 +64,15 @@ import {
   listKelasEnrollments,
   updateKelas,
 } from '@/lib/kelas-api';
+import {
+  getGuruChatMessages,
+  listGuruChatConversations,
+  markGuruChatRead,
+  sendGuruChatMessage,
+  setGuruChatStatus,
+  type ChatConversation,
+  type ChatThreadPayload,
+} from '@/lib/guru-chat-api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -733,9 +744,280 @@ function SiswaTab({ kelasID }: { kelasID: string }) {
   );
 }
 
+function ChatTab({ kelasID }: { kelasID: string }) {
+  const queryClient = useQueryClient();
+  const [selectedID, setSelectedID] = React.useState<string | null>(null);
+  const [body, setBody] = React.useState('');
+
+  const listQuery = useQuery({
+    queryKey: ['guru', 'kelas', 'chat', kelasID, 'conversations'],
+    queryFn: () => listGuruChatConversations(kelasID),
+    refetchInterval: 12_000,
+    staleTime: 5_000,
+  });
+
+  const conversations = React.useMemo(
+    () => listQuery.data?.data ?? [],
+    [listQuery.data?.data],
+  );
+  const selected = React.useMemo(
+    () => conversations.find((it) => it.id === selectedID) ?? conversations[0],
+    [conversations, selectedID],
+  );
+
+  React.useEffect(() => {
+    if (!selectedID && conversations[0]?.id) setSelectedID(conversations[0].id);
+  }, [conversations, selectedID]);
+
+  const threadQuery = useQuery({
+    queryKey: ['guru', 'kelas', 'chat', kelasID, 'conversation', selected?.id],
+    queryFn: () => getGuruChatMessages(kelasID, selected!.id),
+    enabled: Boolean(selected?.id),
+    refetchInterval: 8_000,
+    staleTime: 3_000,
+  });
+
+  React.useEffect(() => {
+    if (selected?.id && selected.guru_unread_count > 0) {
+      void markGuruChatRead(kelasID, selected.id).then(() => {
+        queryClient.setQueryData<ChatThreadPayload>(
+          ['guru', 'kelas', 'chat', kelasID, 'conversation', selected.id],
+          (old) => old
+            ? {
+                ...old,
+                conversation: { ...old.conversation, guru_unread_count: 0 },
+              }
+            : old,
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ['guru', 'kelas', 'chat', kelasID, 'conversations'],
+        });
+      }).catch(() => undefined);
+    }
+  }, [kelasID, queryClient, selected?.guru_unread_count, selected?.id]);
+
+  const sendMutation = useMutation({
+    mutationFn: (text: string) => sendGuruChatMessage(kelasID, selected!.id, text),
+    onSuccess: () => {
+      setBody('');
+      void queryClient.invalidateQueries({
+        queryKey: ['guru', 'kelas', 'chat', kelasID],
+      });
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (input: { conversation: ChatConversation; status: 'open' | 'closed' }) =>
+      setGuruChatStatus(kelasID, input.conversation.id, input.status, input.conversation.version),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['guru', 'kelas', 'chat', kelasID],
+      });
+    },
+  });
+
+  const messages = threadQuery.data?.messages ?? [];
+  const activeConversation = threadQuery.data?.conversation ?? selected;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageCircle className="size-4" />
+            Inbox chat
+          </CardTitle>
+          <CardDescription>
+            Percakapan siswa di kelas ini. Dibuat otomatis saat siswa mulai chat.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => listQuery.refetch()}
+            disabled={listQuery.isFetching}
+          >
+            <RotateCcw className="size-4" />
+            Refresh
+          </Button>
+
+          {listQuery.isPending ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-20 animate-pulse rounded-md bg-muted" />
+              ))}
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+              Belum ada chat dari siswa.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {conversations.map((conv) => {
+                const active = conv.id === activeConversation?.id;
+                return (
+                  <button
+                    key={conv.id}
+                    type="button"
+                    onClick={() => setSelectedID(conv.id)}
+                    className={cn(
+                      'w-full rounded-md border p-3 text-left text-sm transition-colors hover:bg-muted/60',
+                      active ? 'border-primary bg-muted' : 'bg-card',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate font-medium">{conv.siswa_name || 'Siswa'}</p>
+                      {conv.guru_unread_count > 0 ? (
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                          {conv.guru_unread_count}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {conv.last_message_preview || 'Belum ada pesan.'}
+                    </p>
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>{conv.status === 'closed' ? 'Ditutup' : 'Terbuka'}</span>
+                      <span>{formatDate(conv.last_message_at)}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">
+                {activeConversation?.siswa_name || 'Pilih chat'}
+              </CardTitle>
+              <CardDescription>
+                {activeConversation
+                  ? `Status: ${activeConversation.status === 'closed' ? 'ditutup' : 'terbuka'}`
+                  : 'Pilih salah satu percakapan di kiri.'}
+              </CardDescription>
+            </div>
+            {activeConversation ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={statusMutation.isPending}
+                onClick={() => statusMutation.mutate({
+                  conversation: activeConversation,
+                  status: activeConversation.status === 'closed' ? 'open' : 'closed',
+                })}
+              >
+                {activeConversation.status === 'closed' ? 'Buka lagi' : 'Tutup chat'}
+              </Button>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!activeConversation ? (
+            <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
+              Belum ada percakapan aktif.
+            </div>
+          ) : threadQuery.isError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
+              Gagal memuat pesan.
+            </div>
+          ) : (
+            <div className="max-h-[520px] space-y-3 overflow-y-auto rounded-md border bg-muted/30 p-3">
+              {threadQuery.isPending ? (
+                <div className="space-y-2">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="h-14 animate-pulse rounded-md bg-muted" />
+                  ))}
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="rounded-md border border-dashed bg-background p-6 text-center text-sm text-muted-foreground">
+                  Belum ada pesan.
+                </div>
+              ) : (
+                messages.map((msg) => {
+                  const mine = msg.sender_role === 'guru';
+                  return (
+                    <div key={msg.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                      <div className={cn(
+                        'max-w-[82%] rounded-lg border px-3 py-2 text-sm shadow-sm',
+                        mine ? 'bg-primary text-primary-foreground' : 'bg-background',
+                      )}>
+                        <div className={cn(
+                          'mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide',
+                          mine ? 'text-primary-foreground/70' : 'text-muted-foreground',
+                        )}>
+                          <span>{mine ? 'Guru' : msg.sender_name || msg.sender_role}</span>
+                          <span>{formatDate(msg.created_at)}</span>
+                        </div>
+                        <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {activeConversation ? (
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const text = body.trim();
+                if (text) sendMutation.mutate(text);
+              }}
+            >
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                maxLength={4000}
+                rows={3}
+                placeholder="Balas pesan siswa..."
+                className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">{body.trim().length}/4000 karakter</p>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={sendMutation.isPending || body.trim().length === 0}
+                >
+                  <Send className="size-4" />
+                  {sendMutation.isPending ? 'Mengirim...' : 'Kirim balasan'}
+                </Button>
+              </div>
+              {sendMutation.isError ? (
+                <p className="text-sm text-destructive">
+                  {sendMutation.error instanceof ApiError
+                    ? sendMutation.error.message
+                    : 'Pesan gagal dikirim.'}
+                </p>
+              ) : null}
+            </form>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ---------- Page ----------
 
-type TabKey = 'bab' | 'pengaturan' | 'siswa' | 'pengumuman' | 'tugas' | 'ujian';
+type TabKey =
+  | 'bab'
+  | 'pengaturan'
+  | 'siswa'
+  | 'pengumuman'
+  | 'tugas'
+  | 'ujian'
+  | 'chat';
 
 const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'bab', label: 'Bab', Icon: BookOpen },
@@ -744,6 +1026,7 @@ const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?
   { key: 'tugas', label: 'Tugas', Icon: ClipboardList },
   { key: 'ujian', label: 'Ulangan', Icon: GraduationCap },
   { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
+  { key: 'chat', label: 'Chat', Icon: MessageCircle },
 ];
 
 function isTabKey(value: string | null): value is TabKey {
@@ -958,6 +1241,8 @@ function GuruKelasDetailContent({ id, initialTab }: { id: string; initialTab?: T
           disabled={archived}
         />
       )}
+
+      {tab === 'chat' && <ChatTab kelasID={kelas.id} />}
 
       <ArchiveDialog
         open={archiveOpen}
