@@ -1,11 +1,9 @@
 'use client';
 
 /**
- * /admin — dashboard placeholder.
+ * /admin - dashboard shortcuts.
  *
- * Stat cards rendered as skeletons until backend admin/stats endpoint
- * is wired in a later task. The shell + role guard live in the parent
- * (authed)/admin/layout.tsx.
+ * The shell + role guard live in the parent (authed)/admin/layout.tsx.
  */
 
 import * as React from 'react';
@@ -61,8 +59,7 @@ export default function AdminDashboardPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Ringkasan dan jalan pintas pengelolaan sistem. Statistik real
-          akan tersambung di task berikutnya.
+          Jalan pintas pengelolaan sistem untuk admin.
         </p>
       </header>
 
@@ -77,7 +74,7 @@ export default function AdminDashboardPage() {
               <Icon className="size-5 text-muted-foreground" />
             </CardHeader>
             <CardContent className="mt-auto flex items-end justify-between gap-2">
-              <div className="h-7 w-16 animate-pulse rounded bg-muted" />
+              <span className="text-sm text-muted-foreground">Siap dibuka</span>
               <Button asChild variant="ghost" size="sm">
                 <Link href={href}>
                   Buka
@@ -91,10 +88,10 @@ export default function AdminDashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sedang dalam pengembangan</CardTitle>
+          <CardTitle className="text-base">Panel admin</CardTitle>
           <CardDescription>
-            Halaman manajemen pengguna, audit log, dan login attempts akan
-            terisi mulai Task 1.H.2.
+            Gunakan kartu di atas untuk membuka manajemen pengguna, monitor chat,
+            audit log, dan riwayat login.
           </CardDescription>
         </CardHeader>
       </Card>
