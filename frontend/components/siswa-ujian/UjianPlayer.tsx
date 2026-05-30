@@ -342,13 +342,58 @@ export function UjianPlayer({
     );
   }
 
-  const answeredCount = att.items.filter((it) => !!it.jawaban_siswa).length;
-  const safeActiveIndex = Math.min(activeIndex, Math.max(att.items.length - 1, 0));
-  const currentItem = att.items[safeActiveIndex];
+  const items = att.items;
+  const totalQuestions = att.total;
+  const answeredCount = items.filter((it) => !!it.jawaban_siswa).length;
+  const firstUnansweredIndex = items.findIndex((it) => !it.jawaban_siswa);
+  const allAnswered = items.length > 0 && firstUnansweredIndex === -1;
+  const safeActiveIndex = Math.min(activeIndex, Math.max(items.length - 1, 0));
+  const currentItem = items[safeActiveIndex];
   const isFirstQuestion = safeActiveIndex === 0;
-  const isLastQuestion = safeActiveIndex === att.items.length - 1;
   const timerWarn = deadline && remaining > 0 && remaining < 5 * 60 * 1000;
   const timerCritical = deadline && remaining > 0 && remaining < 60 * 1000;
+
+  function openManualSubmitConfirm() {
+    if (disabled || submitMu.isPending) return;
+    if (!allAnswered) {
+      const targetIndex = firstUnansweredIndex >= 0 ? firstUnansweredIndex : safeActiveIndex;
+      setActiveIndex(targetIndex);
+      toast({
+        title: 'Masih ada soal kosong',
+        description: `Lengkapi soal nomor ${targetIndex + 1} sebelum submit ujian.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setConfirmSubmit(true);
+  }
+
+  function handleManualSubmit() {
+    if (!allAnswered) {
+      openManualSubmitConfirm();
+      return;
+    }
+    submitMu.mutate();
+  }
+
+  function handlePrimaryNavigation() {
+    if (disabled) return;
+    if (submitMu.isPending) return;
+    if (allAnswered) {
+      openManualSubmitConfirm();
+      return;
+    }
+    const nextUnansweredIndex = items.findIndex(
+      (it, idx) => idx > safeActiveIndex && !it.jawaban_siswa,
+    );
+    if (nextUnansweredIndex >= 0) {
+      setActiveIndex(nextUnansweredIndex);
+      return;
+    }
+    if (firstUnansweredIndex >= 0) {
+      setActiveIndex(firstUnansweredIndex);
+    }
+  }
 
   return (
     <>
@@ -357,7 +402,7 @@ export function UjianPlayer({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <SiswaCardTitle>
-                Ulangan Harian — {att.total} soal
+                Ulangan Harian — {totalQuestions} soal
               </SiswaCardTitle>
               <SiswaCardDescription>
                 Jawab semua soal lalu klik Submit. Tidak ada feedback per soal —
@@ -377,7 +422,7 @@ export function UjianPlayer({
                 {deadline ? formatRemaining(remaining) : '—'}
               </div>
               <span className="font-semibold text-siswa-text-muted">
-                {answeredCount}/{att.total} terjawab
+                {answeredCount}/{totalQuestions} terjawab
               </span>
             </div>
           </div>
@@ -423,43 +468,41 @@ export function UjianPlayer({
               type="button"
               tone="primary"
               size="sm"
-              onClick={() => setActiveIndex((idx) => Math.min(idx + 1, att.items.length - 1))}
-              disabled={isLastQuestion || submitMu.isPending}
+              onClick={handlePrimaryNavigation}
+              disabled={disabled || submitMu.isPending}
             >
-              Lanjut
-              <ChevronRight className="size-4" strokeWidth={2.5} />
+              {allAnswered ? (
+                <>
+                  {submitMu.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" strokeWidth={2.5} />
+                  )}
+                  Submit ujian
+                </>
+              ) : (
+                <>
+                  Lanjut
+                  <ChevronRight className="size-4" strokeWidth={2.5} />
+                </>
+              )}
             </SiswaButton>
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t-2 border-siswa-border-soft pt-4">
             <p className="text-sm text-siswa-text-muted">
               {answeredCount === att.total
                 ? 'Semua soal sudah dijawab. Submit kalau kamu yakin.'
-                : `Masih ada ${att.total - answeredCount} soal yang belum dijawab.`}
+                : `Masih ada ${totalQuestions - answeredCount} soal yang belum dijawab.`}
             </p>
-            <div className="flex flex-wrap gap-2">
-              <SiswaButton
-                type="button"
-                tone="ghost"
-                size="sm"
-                onClick={onAbort}
-                disabled={submitMu.isPending}
-              >
-                Keluar
-              </SiswaButton>
-              <SiswaButton
-                type="button"
-                tone="primary"
-                onClick={() => setConfirmSubmit(true)}
-                disabled={disabled || submitMu.isPending}
-              >
-                {submitMu.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Send className="size-4" strokeWidth={2.5} />
-                )}
-                Submit ujian
-              </SiswaButton>
-            </div>
+            <SiswaButton
+              type="button"
+              tone="ghost"
+              size="sm"
+              onClick={onAbort}
+              disabled={submitMu.isPending}
+            >
+              Keluar
+            </SiswaButton>
           </div>
         </SiswaCardBody>
       </SiswaCard>
@@ -473,7 +516,7 @@ export function UjianPlayer({
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-5 gap-2 sm:grid-cols-8">
-            {att.items.map((item, idx) => {
+            {items.map((item, idx) => {
               const answered = !!item.jawaban_siswa;
               const active = idx === safeActiveIndex;
               return (
@@ -512,7 +555,7 @@ export function UjianPlayer({
           <DialogHeader>
             <DialogTitle>Submit ujian?</DialogTitle>
             <DialogDescription>
-              Kamu sudah menjawab <strong>{answeredCount}</strong> dari {att.total}{' '}
+              Kamu sudah menjawab <strong>{answeredCount}</strong> dari {totalQuestions}{' '}
               soal. Setelah submit, jawaban ini dinilai dan tidak bisa diubah
               lagi.
             </DialogDescription>
@@ -528,8 +571,8 @@ export function UjianPlayer({
             </Button>
             <Button
               type="button"
-              onClick={() => submitMu.mutate()}
-              disabled={submitMu.isPending}
+              onClick={handleManualSubmit}
+              disabled={submitMu.isPending || !allAnswered}
             >
               {submitMu.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
