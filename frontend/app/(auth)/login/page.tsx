@@ -17,6 +17,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
+import { ArrowRight, BookOpenCheck, GraduationCap, ShieldCheck } from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore, type AuthUser, type Role } from '@/lib/auth';
@@ -139,83 +140,139 @@ export default function LoginPage() {
   const onSubmit = (values: LoginInput) => mutation.mutate(values);
 
   return (
-    <main className="container flex min-h-screen flex-col items-center justify-center py-16">
-      <div className="w-full max-w-sm space-y-6">
-        <Card>
-          <CardHeader className="space-y-2 text-center">
-            <CardTitle className="text-2xl">Masuk</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
-                noValidate
-              >
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email / Username</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="text"
-                          autoComplete="username"
-                          placeholder="nama@sekolah.id atau budi01"
-                          disabled={mutation.isPending}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--muted)/0.55))]">
+      <div className="container flex min-h-screen items-center justify-center px-4 py-8 sm:py-12">
+        <div className="grid w-full max-w-5xl items-center gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
+          <section className="hidden space-y-6 lg:block">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur">
+              <BookOpenCheck className="size-4 text-primary" />
+              LMS sekolah untuk guru dan murid
+            </div>
+            <div className="space-y-4">
+              <h1 className="max-w-xl text-4xl font-bold tracking-tight text-foreground xl:text-5xl">
+                Masuk kelas, kerjakan tugas, dan ikuti ujian dari satu tempat.
+              </h1>
+              <p className="max-w-lg text-base leading-7 text-muted-foreground">
+                Gunakan akun yang sudah dibuat atau daftar sebagai siswa kalau sekolahmu membuka pendaftaran mandiri.
+              </p>
+            </div>
+            <div className="grid max-w-xl gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border bg-background/80 p-4 shadow-sm backdrop-blur">
+                <GraduationCap className="mb-3 size-5 text-primary" />
+                <p className="text-sm font-semibold">Siswa</p>
+                <p className="mt-1 text-xs text-muted-foreground">Gabung kelas dan kerjakan ujian.</p>
+              </div>
+              <div className="rounded-2xl border bg-background/80 p-4 shadow-sm backdrop-blur">
+                <BookOpenCheck className="mb-3 size-5 text-primary" />
+                <p className="text-sm font-semibold">Guru</p>
+                <p className="mt-1 text-xs text-muted-foreground">Kelola kelas, tugas, dan nilai.</p>
+              </div>
+              <div className="rounded-2xl border bg-background/80 p-4 shadow-sm backdrop-blur">
+                <ShieldCheck className="mb-3 size-5 text-primary" />
+                <p className="text-sm font-semibold">Admin</p>
+                <p className="mt-1 text-xs text-muted-foreground">Pantau data dan akses sekolah.</p>
+              </div>
+            </div>
+          </section>
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="password"
-                          autoComplete="current-password"
-                          disabled={mutation.isPending}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+          <div className="mx-auto w-full max-w-md space-y-4">
+            <div className="text-center lg:hidden">
+              <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+                <BookOpenCheck className="size-6" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">LMS Sekolah</p>
+            </div>
 
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={mutation.isPending}
+            <Card className="border-2 shadow-xl shadow-primary/10">
+              <CardHeader className="space-y-2 text-center">
+                <CardTitle className="text-2xl sm:text-3xl">Masuk ke akun</CardTitle>
+                <CardDescription>
+                  Pakai email atau username yang terdaftar di LMS.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...form}>
+                  <form
+                    onSubmit={form.handleSubmit(onSubmit)}
+                    className="space-y-4"
+                    noValidate
+                  >
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email / Username</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="text"
+                              autoComplete="username"
+                              placeholder="nama@sekolah.id atau budi01"
+                              disabled={mutation.isPending}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              autoComplete="current-password"
+                              disabled={mutation.isPending}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex justify-end">
+                      <Link
+                        href="/lupa-password"
+                        className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        Lupa password?
+                      </Link>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="h-11 w-full gap-2 font-semibold"
+                      disabled={mutation.isPending}
+                    >
+                      {mutation.isPending ? 'Memproses…' : 'Masuk'}
+                      {!mutation.isPending ? <ArrowRight className="size-4" /> : null}
+                    </Button>
+                  </form>
+                </Form>
+              </CardContent>
+              <CardFooter className="flex-col gap-3 border-t bg-muted/35 px-6 py-5 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Belum punya akun siswa?
+                </p>
+                <Link
+                  href="/register"
+                  className="inline-flex items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
                 >
-                  {mutation.isPending ? 'Memproses…' : 'Masuk'}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-          <CardFooter className="flex-col gap-2">
-            <Link
-              href="/register"
-              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-            >
-              Belum punya akun siswa? Daftar di sini
-            </Link>
-            <Link
-              href="/lupa-password"
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            >
-              Lupa password?
-            </Link>
-          </CardFooter>
-        </Card>
+                  Daftar sebagai siswa
+                </Link>
+              </CardFooter>
+            </Card>
+            <p className="px-2 text-center text-xs text-muted-foreground">
+              Akun guru dan admin dibuat oleh pihak sekolah.
+            </p>
+          </div>
+        </div>
       </div>
     </main>
   );
