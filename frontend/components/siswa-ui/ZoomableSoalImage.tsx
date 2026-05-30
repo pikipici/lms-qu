@@ -48,7 +48,7 @@ export function ZoomableSoalImage({ url, alt, className }: ZoomableSoalImageProp
           alt={alt}
           onError={() => setErrored(true)}
           className={cn(
-            'max-h-64 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface object-contain transition-transform group-hover:-translate-y-0.5',
+            'h-auto max-h-64 max-w-full rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface object-contain transition-transform group-hover:-translate-y-0.5',
             className,
           )}
         />

@@ -432,7 +432,7 @@ export function UjianPlayer({
             </div>
           ) : null}
         </SiswaCardHeader>
-        <SiswaCardBody className="pt-2 sm:pt-3">
+        <SiswaCardBody className="min-w-0 pt-2 sm:pt-3">
           {currentItem ? (
             <SoalCard
               key={currentItem.soal_id}
@@ -605,9 +605,9 @@ function SoalCard({
 }: SoalCardProps) {
   const pertanyaanImg = imageURLForSlot(item, 'pertanyaan');
   return (
-    <article className="rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <p className="siswa-display text-sm font-bold uppercase tracking-wide text-siswa-text-muted">
+    <article className="min-w-0 overflow-hidden rounded-siswa siswa-border bg-siswa-surface p-4 siswa-shadow-sm">
+      <div className="mb-3 flex min-w-0 items-start justify-between gap-2">
+        <p className="min-w-0 break-words siswa-display text-sm font-bold uppercase tracking-wide text-siswa-text-muted [overflow-wrap:anywhere]">
           Soal {index + 1}{' '}
           <span className="font-semibold normal-case tracking-normal text-siswa-text">
             — {item.poin} poin
@@ -615,9 +615,11 @@ function SoalCard({
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         {item.pertanyaan ? (
-          <p className="whitespace-pre-wrap text-sm">{item.pertanyaan}</p>
+          <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">
+            {item.pertanyaan}
+          </p>
         ) : (
           <p className="text-sm italic text-siswa-text-muted">
             (soal hanya gambar)
@@ -628,16 +630,16 @@ function SoalCard({
         ) : null}
       </div>
 
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 min-w-0 space-y-2">
         {OPSI_LIST.map(({ key, label }) => {
           const text = opsiText(item, key);
           const slotImg = imageURLForSlot(item, `opsi_${key}`);
           const checked = item.jawaban_siswa === key;
           return (
-            <li key={key}>
+            <li key={key} className="min-w-0">
               <label
                 className={cn(
-                  'flex gap-3 rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3 transition-colors',
+                  'flex min-w-0 gap-3 overflow-hidden rounded-siswa border-2 border-siswa-border-soft bg-siswa-surface p-3 transition-colors',
                   disabled
                     ? 'cursor-not-allowed opacity-70'
                     : 'cursor-pointer hover:bg-siswa-cream/40',
@@ -651,17 +653,19 @@ function SoalCard({
                   checked={checked}
                   onChange={() => onChoose(key)}
                   disabled={disabled}
-                  className="mt-1 size-4"
+                  className="mt-1 size-4 shrink-0"
                 />
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  <div className="flex items-center gap-2">
+                  <div className="grid min-w-0 grid-cols-[auto_1fr] gap-2">
                     <span className="font-mono text-sm font-bold uppercase">
                       {label}.
                     </span>
                     {text ? (
-                      <span className="whitespace-pre-wrap text-sm">{text}</span>
+                      <span className="min-w-0 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">
+                        {text}
+                      </span>
                     ) : (
-                      <span className="text-xs italic text-siswa-text-muted">
+                      <span className="min-w-0 text-xs italic text-siswa-text-muted">
                         (tanpa teks)
                       </span>
                     )}
@@ -689,5 +693,9 @@ function SoalCard({
 }
 
 function SlotImage({ url, alt }: { url: string; alt: string }) {
-  return <ZoomableSoalImage url={url} alt={alt} />;
+  return (
+    <div className="min-w-0 max-w-full overflow-hidden">
+      <ZoomableSoalImage url={url} alt={alt} />
+    </div>
+  );
 }
