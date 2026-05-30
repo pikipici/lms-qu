@@ -237,13 +237,18 @@ func TestRepoIntegration_LoginAttemptsAndAuditFilters(t *testing.T) {
 
 	ip := "127.0.0.1"
 	reason := "bad_password"
+	rateLimitedReason := "rate_limited"
 	oldAttempt := &LoginAttempt{Email: "audit@example.test", IP: &ip, Success: false, Reason: &reason, At: time.Now().Add(-30 * time.Minute).UTC()}
 	recentAttempt := &LoginAttempt{Email: "audit@example.test", IP: &ip, Success: false, Reason: &reason, At: time.Now().Add(-time.Minute).UTC()}
+	rateLimitedAttempt := &LoginAttempt{Email: "audit@example.test", IP: &ip, Success: false, Reason: &rateLimitedReason, At: time.Now().Add(-time.Minute).UTC()}
 	if err := repo.LogLoginAttempt(ctx, oldAttempt); err != nil {
 		t.Fatalf("log old attempt: %v", err)
 	}
 	if err := repo.LogLoginAttempt(ctx, recentAttempt); err != nil {
 		t.Fatalf("log recent attempt: %v", err)
+	}
+	if err := repo.LogLoginAttempt(ctx, rateLimitedAttempt); err != nil {
+		t.Fatalf("log rate-limited attempt: %v", err)
 	}
 
 	since := time.Now().Add(-15 * time.Minute).UTC()

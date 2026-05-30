@@ -412,11 +412,13 @@ func (r *Repo) ListLoginAttempts(ctx context.Context, f LoginAttemptFilter, limi
 }
 
 // CountRecentFailedAttempts counts recent failed attempts by email or IP.
+// Attempts that were already rate-limited are excluded so repeated retries
+// during a lockout do not keep extending the 15-minute window.
 func (r *Repo) CountRecentFailedAttempts(ctx context.Context, email string, ip *string, since time.Time) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&LoginAttempt{}).
-		Where("(email = ? OR ip = ?) AND success = ? AND at >= ?", email, ip, false, since).
+		Where("(email = ? OR ip = ?) AND success = ? AND at >= ? AND (reason IS NULL OR reason <> ?)", email, ip, false, since, "rate_limited").
 		Count(&count).Error
 	return count, err
 }
