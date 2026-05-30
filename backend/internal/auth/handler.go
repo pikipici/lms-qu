@@ -240,27 +240,42 @@ func (h *Handler) ChangePassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// LoginRateLimit returns a coarse per-IP-and-email limiter for /auth/login.
-func LoginRateLimit(perWindow int) fiber.Handler {
-	if perWindow <= 0 {
-		perWindow = 5
+// LoginRateLimit returns a tight per-email limiter for /auth/login.
+func LoginRateLimit(perEmailWindow int) fiber.Handler {
+	if perEmailWindow <= 0 {
+		perEmailWindow = 10
 	}
 
-	return limiter.New(limiter.Config{
-		Max:        perWindow,
-		Expiration: 15 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			var req struct {
-				Email string `json:"email"`
-			}
-			_ = json.Unmarshal(c.Body(), &req)
+	return loginLimiter(perEmailWindow, func(c *fiber.Ctx) string {
+		var req struct {
+			Email string `json:"email"`
+		}
+		_ = json.Unmarshal(c.Body(), &req)
 
-			email := strings.ToLower(strings.TrimSpace(req.Email))
-			if email == "" {
-				email = "(empty)"
-			}
-			return c.IP() + "|" + email
-		},
+		email := strings.ToLower(strings.TrimSpace(req.Email))
+		if email == "" {
+			email = "(empty)"
+		}
+		return "email|" + email
+	})
+}
+
+// LoginIPRateLimit returns a looser per-IP limiter for shared networks, labs,
+// and SSH tunnels without letting one typo-prone user block everyone else.
+func LoginIPRateLimit(perIPWindow int) fiber.Handler {
+	if perIPWindow <= 0 {
+		perIPWindow = 100
+	}
+	return loginLimiter(perIPWindow, func(c *fiber.Ctx) string {
+		return "ip|" + c.IP()
+	})
+}
+
+func loginLimiter(max int, keyGenerator func(*fiber.Ctx) string) fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:          max,
+		Expiration:   15 * time.Minute,
+		KeyGenerator: keyGenerator,
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 				"error":      "too many login attempts; try again later",

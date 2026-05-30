@@ -243,6 +243,7 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 
 	authGroup := api.Group("/auth")
 	authGroup.Post("/login",
+		auth.LoginIPRateLimit(cfg.RateLimit.LoginIPPer15Min),
 		auth.LoginRateLimit(cfg.RateLimit.LoginPer15Min),
 		authHandler.Login,
 	)

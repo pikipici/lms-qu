@@ -41,7 +41,7 @@ func TestLoadUsesDefaultsWithRequiredEnv(t *testing.T) {
 	if cfg.Storage.R2.PresignTTLSec != 900 {
 		t.Fatalf("R2 presign default = %d, want 900", cfg.Storage.R2.PresignTTLSec)
 	}
-	if cfg.RateLimit.GlobalPerMin != 120 || cfg.RateLimit.LoginPer15Min != 10 || cfg.RateLimit.UploadPerMin != 30 {
+	if cfg.RateLimit.GlobalPerMin != 120 || cfg.RateLimit.LoginPer15Min != 10 || cfg.RateLimit.LoginIPPer15Min != 100 || cfg.RateLimit.UploadPerMin != 30 {
 		t.Fatalf("rate limit defaults = %+v", cfg.RateLimit)
 	}
 	if cfg.FrontendDir != "./frontend/out" || cfg.AutoMigrate {
@@ -71,6 +71,7 @@ func TestLoadParsesOverrides(t *testing.T) {
 	t.Setenv("R2_PRESIGN_TTL_SECONDS", "123")
 	t.Setenv("RATE_LIMIT_GLOBAL_PER_MIN", "121")
 	t.Setenv("RATE_LIMIT_LOGIN_PER_15MIN", "6")
+	t.Setenv("RATE_LIMIT_LOGIN_IP_PER_15MIN", "60")
 	t.Setenv("RATE_LIMIT_REFRESH_PER_MIN", "7")
 	t.Setenv("RATE_LIMIT_KELAS_JOIN_PER_MIN", "8")
 	t.Setenv("RATE_LIMIT_UPLOAD_PER_MIN", "9")
@@ -101,7 +102,7 @@ func TestLoadParsesOverrides(t *testing.T) {
 	if cfg.Storage.R2.AccountID != "acct" || cfg.Storage.R2.AccessKeyID != "access" || cfg.Storage.R2.SecretAccessKey != "secret" || cfg.Storage.R2.Bucket != "bucket" || cfg.Storage.R2.PresignTTLSec != 123 {
 		t.Fatalf("r2 overrides = %+v", cfg.Storage.R2)
 	}
-	if cfg.RateLimit.GlobalPerMin != 121 || cfg.RateLimit.LoginPer15Min != 6 || cfg.RateLimit.RefreshPerMin != 7 || cfg.RateLimit.KelasJoinPerMin != 8 || cfg.RateLimit.UploadPerMin != 9 {
+	if cfg.RateLimit.GlobalPerMin != 121 || cfg.RateLimit.LoginPer15Min != 6 || cfg.RateLimit.LoginIPPer15Min != 60 || cfg.RateLimit.RefreshPerMin != 7 || cfg.RateLimit.KelasJoinPerMin != 8 || cfg.RateLimit.UploadPerMin != 9 {
 		t.Fatalf("rate limit overrides = %+v", cfg.RateLimit)
 	}
 	if len(cfg.CORS.AllowedOrigins) != 2 || cfg.CORS.AllowedOrigins[1] != " https://two.example" {

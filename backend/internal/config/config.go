@@ -38,8 +38,8 @@ type Config struct {
 	RateLimit RateLimitConfig
 	CORS      CORSConfig
 
-	FrontendDir  string
-	AutoMigrate  bool
+	FrontendDir string
+	AutoMigrate bool
 
 	// Optional seed-admin parameters (only used by cmd/seed-admin).
 	SeedAdminEmail    string
@@ -86,11 +86,12 @@ type R2Config struct {
 }
 
 type RateLimitConfig struct {
-	GlobalPerMin     int
-	LoginPer15Min    int
-	RefreshPerMin    int
-	KelasJoinPerMin  int
-	UploadPerMin     int
+	GlobalPerMin    int
+	LoginPer15Min   int
+	LoginIPPer15Min int
+	RefreshPerMin   int
+	KelasJoinPerMin int
+	UploadPerMin    int
 }
 
 type CORSConfig struct {
@@ -153,6 +154,7 @@ func Load() (*Config, error) {
 	cfg.RateLimit = RateLimitConfig{
 		GlobalPerMin:    getInt("RATE_LIMIT_GLOBAL_PER_MIN", 120),
 		LoginPer15Min:   getInt("RATE_LIMIT_LOGIN_PER_15MIN", 10),
+		LoginIPPer15Min: getInt("RATE_LIMIT_LOGIN_IP_PER_15MIN", 100),
 		RefreshPerMin:   getInt("RATE_LIMIT_REFRESH_PER_MIN", 10),
 		KelasJoinPerMin: getInt("RATE_LIMIT_KELAS_JOIN_PER_MIN", 10),
 		UploadPerMin:    getInt("RATE_LIMIT_UPLOAD_PER_MIN", 30),
