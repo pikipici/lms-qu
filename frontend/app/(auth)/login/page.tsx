@@ -17,7 +17,14 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
-import { ArrowRight, BookOpenCheck, GraduationCap, ShieldCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpenCheck,
+  Eye,
+  EyeOff,
+  GraduationCap,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore, type AuthUser, type Role } from '@/lib/auth';
@@ -86,6 +93,7 @@ export default function LoginPage() {
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -224,12 +232,33 @@ export default function LoginPage() {
                         <FormItem>
                           <FormLabel>Password</FormLabel>
                           <FormControl>
-                            <Input
-                              type="password"
-                              autoComplete="current-password"
-                              disabled={mutation.isPending}
-                              {...field}
-                            />
+                            <div className="relative">
+                              <Input
+                                type={showPassword ? 'text' : 'password'}
+                                autoComplete="current-password"
+                                disabled={mutation.isPending}
+                                className="pr-11"
+                                {...field}
+                              />
+                              <button
+                                type="button"
+                                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => setShowPassword((value) => !value)}
+                                disabled={mutation.isPending}
+                                aria-label={
+                                  showPassword
+                                    ? 'Sembunyikan password'
+                                    : 'Lihat password'
+                                }
+                                aria-pressed={showPassword}
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="size-4" />
+                                ) : (
+                                  <Eye className="size-4" />
+                                )}
+                              </button>
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
