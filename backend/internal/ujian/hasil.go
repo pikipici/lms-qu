@@ -66,6 +66,7 @@ type HasilRepoAPI interface {
 	FindUjianByID(ctx context.Context, id uuid.UUID) (*Ujian, error)
 	ListHasilBySiswaAllKelas(ctx context.Context, kelasID, siswaID uuid.UUID) ([]HasilUjian, error)
 	ListHasilByUjian(ctx context.Context, ujianID uuid.UUID) ([]HasilUjian, error)
+	ListActiveRombelBySiswa(ctx context.Context, siswaIDs []uuid.UUID, sekolahID *uuid.UUID) ([]RombelLookupRow, error)
 	ListJawabanByHasil(ctx context.Context, hasilID uuid.UUID) ([]JawabanUjian, error)
 	UpdateHasilStatus(ctx context.Context, hasilID uuid.UUID, status HasilStatus, selesaiAt *time.Time, deletedAt *time.Time) error
 	AppendEvent(ctx context.Context, e *EventUjian) error
@@ -437,6 +438,8 @@ type SiswaRekap struct {
 	SiswaID         uuid.UUID  `json:"siswa_id"`
 	SiswaName       string     `json:"siswa_name"`
 	SiswaEmail      string     `json:"siswa_email"`
+	RombelID        *uuid.UUID `json:"rombel_id,omitempty"`
+	RombelNama      string     `json:"rombel_nama,omitempty"`
 	AttemptCount    int        `json:"attempt_count"` // excl. dibatalkan
 	CancelledCount  int        `json:"cancelled_count"`
 	NilaiTerbaik    *float64   `json:"nilai_terbaik,omitempty"`
@@ -525,6 +528,15 @@ func (s *HasilService) Rekap(ctx context.Context, ujianID, callerID uuid.UUID, c
 		}
 	}
 
+	rombelBySiswa := make(map[uuid.UUID]RombelLookupRow)
+	rombelRows, err := s.repo.ListActiveRombelBySiswa(ctx, siswaOrder, k.SekolahID)
+	if err != nil {
+		return nil, fmt.Errorf("ujian rekap rombel lookup: %w", err)
+	}
+	for _, rr := range rombelRows {
+		rombelBySiswa[rr.SiswaID] = rr
+	}
+
 	out := &RekapResult{UjianID: ujianID, Items: make([]SiswaRekap, 0, len(siswaOrder))}
 	for _, sid := range siswaOrder {
 		a := bySiswa[sid]
@@ -548,6 +560,11 @@ func (s *HasilService) Rekap(ctx context.Context, ujianID, callerID uuid.UUID, c
 				row.SiswaName = u.Name
 				row.SiswaEmail = u.Email
 			}
+		}
+		if rr, ok := rombelBySiswa[sid]; ok {
+			id := rr.RombelID
+			row.RombelID = &id
+			row.RombelNama = rr.RombelNama
 		}
 		out.Items = append(out.Items, row)
 	}

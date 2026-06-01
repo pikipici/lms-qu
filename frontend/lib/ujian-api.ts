@@ -119,6 +119,8 @@ export interface SiswaRekap {
   siswa_id: string;
   siswa_name: string;
   siswa_email: string;
+  rombel_id?: string | null;
+  rombel_nama?: string;
   attempt_count: number;
   cancelled_count: number;
   nilai_terbaik?: number | null;

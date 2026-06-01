@@ -51,6 +51,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 export interface RekapHasilTableProps {
@@ -94,6 +96,8 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [confirmTarget, setConfirmTarget] = React.useState<SiswaRekap | null>(null);
+  const [search, setSearch] = React.useState('');
+  const [rombelFilter, setRombelFilter] = React.useState('__all__');
 
   const rekapQuery = useQuery({
     queryKey: ['guru', 'bab', 'hasil-rekap', babID],
@@ -168,6 +172,29 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
   }
 
   const rekap = rekapQuery.data;
+  const normalizedSearch = search.trim().toLowerCase();
+  const rombelOptions = Array.from(
+    new Map(
+      rekap.items
+        .filter((item) => item.rombel_id && item.rombel_nama)
+        .map((item) => [
+          item.rombel_id!,
+          { id: item.rombel_id!, nama: item.rombel_nama! },
+        ]),
+    ).values(),
+  ).sort((a, b) => a.nama.localeCompare(b.nama, 'id-ID'));
+  const filteredItems = rekap.items.filter((item) => {
+    const matchesRombel =
+      rombelFilter === '__all__'
+        ? true
+        : rombelFilter === '__none__'
+          ? !item.rombel_id
+          : item.rombel_id === rombelFilter;
+    const haystack = `${item.siswa_name} ${item.siswa_email}`.toLowerCase();
+    const matchesSearch = normalizedSearch ? haystack.includes(normalizedSearch) : true;
+    return matchesRombel && matchesSearch;
+  });
+  const hasFilter = normalizedSearch.length > 0 || rombelFilter !== '__all__';
 
   return (
     <>
@@ -202,6 +229,11 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
               Rata-rata kelas:{' '}
               <strong className="text-foreground">{fmtNilai(rekap.rata_rata)}</strong>
             </span>
+            {hasFilter && (
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                Ditampilkan: <strong className="text-foreground">{filteredItems.length}</strong>
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -210,22 +242,68 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
               Belum ada siswa yang mengerjakan ulangan di bab ini.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium">Siswa</th>
-                    <th className="py-2 pr-3 font-medium">Attempt</th>
-                    <th className="py-2 pr-3 font-medium">Reset</th>
-                    <th className="py-2 pr-3 font-medium">Nilai terbaik</th>
-                    <th className="py-2 pr-3 font-medium">Nilai terakhir</th>
-                    <th className="py-2 pr-3 font-medium">Status terakhir</th>
-                    <th className="py-2 pr-3 font-medium">Mulai terakhir</th>
-                    <th className="py-2 pr-3 font-medium text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rekap.items.map((row) => {
+            <div className="space-y-3">
+              <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
+                <label className="space-y-1">
+                  <Label>Cari siswa</Label>
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Nama atau email siswa"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <Label>Rombel</Label>
+                  <select
+                    value={rombelFilter}
+                    onChange={(event) => setRombelFilter(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="__all__">Semua rombel</option>
+                    {rombelOptions.map((rombel) => (
+                      <option key={rombel.id} value={rombel.id}>
+                        {rombel.nama}
+                      </option>
+                    ))}
+                    <option value="__none__">Tanpa rombel</option>
+                  </select>
+                </label>
+                {hasFilter && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSearch('');
+                      setRombelFilter('__all__');
+                    }}
+                  >
+                    Reset filter
+                  </Button>
+                )}
+              </div>
+
+              {filteredItems.length === 0 ? (
+                <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Tidak ada hasil yang cocok dengan filter.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[960px] text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th className="py-2 pr-3 font-medium">Siswa</th>
+                        <th className="py-2 pr-3 font-medium">Rombel</th>
+                        <th className="py-2 pr-3 font-medium">Attempt</th>
+                        <th className="py-2 pr-3 font-medium">Reset</th>
+                        <th className="py-2 pr-3 font-medium">Nilai terbaik</th>
+                        <th className="py-2 pr-3 font-medium">Nilai terakhir</th>
+                        <th className="py-2 pr-3 font-medium">Status terakhir</th>
+                        <th className="py-2 pr-3 font-medium">Mulai terakhir</th>
+                        <th className="py-2 pr-3 font-medium text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredItems.map((row) => {
                     const sl = statusLabel(row.status_terakhir);
                     const canCancel = Boolean(
                       row.hasil_terakhir_id &&
@@ -237,6 +315,9 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
                         <td className="py-2 pr-3">
                           <div className="font-medium">{row.siswa_name || row.siswa_id}</div>
                           <div className="text-xs text-muted-foreground">{row.siswa_email || '—'}</div>
+                        </td>
+                        <td className="py-2 pr-3 text-xs text-muted-foreground">
+                          {row.rombel_nama || 'Tanpa rombel'}
                         </td>
                         <td className="py-2 pr-3">{row.attempt_count}</td>
                         <td className="py-2 pr-3">
@@ -280,9 +361,11 @@ export function RekapHasilTable({ babID, disabled }: RekapHasilTableProps) {
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
-              </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

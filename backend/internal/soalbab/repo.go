@@ -437,6 +437,34 @@ func (r *Repo) ListHasilByBab(ctx context.Context, babID uuid.UUID, f HasilListF
 	return rows, nil
 }
 
+// RombelLookupRow is active rombel metadata for one siswa.
+type RombelLookupRow struct {
+	SiswaID    uuid.UUID `gorm:"column:siswa_id"`
+	RombelID   uuid.UUID `gorm:"column:rombel_id"`
+	RombelNama string    `gorm:"column:rombel_nama"`
+}
+
+// ListActiveRombelBySiswa returns at most one active rombel per siswa, scoped
+// to the kelas school when available. If stale data creates multiple active
+// memberships, the newest membership wins deterministically.
+func (r *Repo) ListActiveRombelBySiswa(ctx context.Context, siswaIDs []uuid.UUID, sekolahID *uuid.UUID) ([]RombelLookupRow, error) {
+	if len(siswaIDs) == 0 {
+		return nil, nil
+	}
+
+	q := r.db.WithContext(ctx).Table("rombel_memberships rm").
+		Select("DISTINCT ON (rm.siswa_id) rm.siswa_id, r.id AS rombel_id, r.nama AS rombel_nama").
+		Joins("JOIN rombels r ON r.id = rm.rombel_id").
+		Where("rm.siswa_id IN ? AND rm.status = ? AND r.archived_at IS NULL", siswaIDs, "active")
+	if sekolahID != nil {
+		q = q.Where("r.sekolah_id = ?", *sekolahID)
+	}
+
+	var rows []RombelLookupRow
+	err := q.Order("rm.siswa_id, rm.joined_at DESC, r.nama ASC").Scan(&rows).Error
+	return rows, err
+}
+
 // ListHasilBySiswaBab returns all attempts (Latihan + Ulangan, semua status)
 // for a (siswa, bab) ordered by mulai_at DESC. Used by siswa-side list +
 // resume hint endpoint (Task 5.E.1).

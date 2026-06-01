@@ -67,6 +67,8 @@ export function RekapHasilUjianTable({
   const [susulanSelesai, setSusulanSelesai] = React.useState('');
   const [susulanDurasi, setSusulanDurasi] = React.useState('');
   const [susulanReason, setSusulanReason] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [rombelFilter, setRombelFilter] = React.useState('__all__');
 
   const enrollmentQuery = useQuery({
     queryKey: ['guru', 'kelas', kelasID, 'enrollments', 'ujian-susulan'],
@@ -167,6 +169,29 @@ export function RekapHasilUjianTable({
   const items = rekap.items;
   const enrollments = enrollmentQuery.data?.items ?? [];
   const susulanItems = susulanQuery.data?.items ?? [];
+  const normalizedSearch = search.trim().toLowerCase();
+  const rombelOptions = Array.from(
+    new Map(
+      items
+        .filter((item) => item.rombel_id && item.rombel_nama)
+        .map((item) => [
+          item.rombel_id!,
+          { id: item.rombel_id!, nama: item.rombel_nama! },
+        ]),
+    ).values(),
+  ).sort((a, b) => a.nama.localeCompare(b.nama, 'id-ID'));
+  const filteredItems = items.filter((item) => {
+    const matchesRombel =
+      rombelFilter === '__all__'
+        ? true
+        : rombelFilter === '__none__'
+          ? !item.rombel_id
+          : item.rombel_id === rombelFilter;
+    const haystack = `${item.siswa_name} ${item.siswa_email}`.toLowerCase();
+    const matchesSearch = normalizedSearch ? haystack.includes(normalizedSearch) : true;
+    return matchesRombel && matchesSearch;
+  });
+  const hasFilter = normalizedSearch.length > 0 || rombelFilter !== '__all__';
 
   return (
     <div className="space-y-2">
@@ -183,6 +208,12 @@ export function RekapHasilUjianTable({
               : '—'}
           </span>
         </span>
+        {hasFilter && (
+          <span>
+            Ditampilkan:{' '}
+            <span className="font-semibold text-foreground">{filteredItems.length}</span>
+          </span>
+        )}
       </div>
 
       <section className="rounded-md border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
@@ -273,30 +304,78 @@ export function RekapHasilUjianTable({
           Belum ada siswa yang attempt ujian ini.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead className="bg-muted/40 text-xs">
-              <tr>
-                <th className="px-3 py-2 text-left">Siswa</th>
-                <th className="px-3 py-2 text-right">Attempt</th>
-                <th className="px-3 py-2 text-right">Cancel</th>
-                <th className="px-3 py-2 text-right">Terbaik</th>
-                <th className="px-3 py-2 text-right">Terakhir</th>
-                <th className="px-3 py-2 text-left">Status terakhir</th>
-                <th className="px-3 py-2 text-right" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {items.map((s) => (
-                <RekapRow
-                  key={s.siswa_id}
-                  siswa={s}
-                  onCancel={() => setCancelTarget(s)}
-                  disabled={disabled || cancelMutation.isPending}
-                />
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
+            <label className="space-y-1">
+              <Label>Cari siswa</Label>
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nama atau email siswa"
+              />
+            </label>
+            <label className="space-y-1">
+              <Label>Rombel</Label>
+              <select
+                value={rombelFilter}
+                onChange={(event) => setRombelFilter(event.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="__all__">Semua rombel</option>
+                {rombelOptions.map((rombel) => (
+                  <option key={rombel.id} value={rombel.id}>
+                    {rombel.nama}
+                  </option>
+                ))}
+                <option value="__none__">Tanpa rombel</option>
+              </select>
+            </label>
+            {hasFilter && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSearch('');
+                  setRombelFilter('__all__');
+                }}
+              >
+                Reset filter
+              </Button>
+            )}
+          </div>
+
+          {filteredItems.length === 0 ? (
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              Tidak ada hasil yang cocok dengan filter.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[860px] text-sm">
+                <thead className="bg-muted/40 text-xs">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Siswa</th>
+                    <th className="px-3 py-2 text-left">Rombel</th>
+                    <th className="px-3 py-2 text-right">Attempt</th>
+                    <th className="px-3 py-2 text-right">Cancel</th>
+                    <th className="px-3 py-2 text-right">Terbaik</th>
+                    <th className="px-3 py-2 text-right">Terakhir</th>
+                    <th className="px-3 py-2 text-left">Status terakhir</th>
+                    <th className="px-3 py-2 text-right" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredItems.map((s) => (
+                    <RekapRow
+                      key={s.siswa_id}
+                      siswa={s}
+                      onCancel={() => setCancelTarget(s)}
+                      disabled={disabled || cancelMutation.isPending}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -378,6 +457,9 @@ function RekapRow({
       <td className="px-3 py-2">
         <div className="font-medium">{siswa.siswa_name || siswa.siswa_id}</div>
         <div className="text-xs text-muted-foreground">{siswa.siswa_email}</div>
+      </td>
+      <td className="px-3 py-2 text-xs text-muted-foreground">
+        {siswa.rombel_nama || 'Tanpa rombel'}
       </td>
       <td className="px-3 py-2 text-right tabular-nums">
         {siswa.attempt_count}

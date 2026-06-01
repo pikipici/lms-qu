@@ -5,7 +5,8 @@
 //   - GET  /api/v1/siswa/hasil-soal-bab/:id/review
 //     Review jawaban siswa setelah submit. Gated locked #81:
 //     mode=ulangan + status=selesai + setting.IzinkanReviewSetelahSubmit
-//     + (setting.WaktuBukaReview NULL OR <= now). Latihan attempt
+//
+//   - (setting.WaktuBukaReview NULL OR <= now). Latihan attempt
 //     (mode=latihan) selalu boleh review (formative, no gating).
 //
 //   - GET  /api/v1/siswa/bab/:id/hasil
@@ -65,6 +66,7 @@ type HasilRepoAPI interface {
 	FindHasilByID(ctx context.Context, id uuid.UUID) (*HasilSoalBab, error)
 	ListHasilBySiswaBab(ctx context.Context, siswaID, babID uuid.UUID) ([]HasilSoalBab, error)
 	ListHasilByBab(ctx context.Context, babID uuid.UUID, f HasilListFilter) ([]HasilSoalBab, error)
+	ListActiveRombelBySiswa(ctx context.Context, siswaIDs []uuid.UUID, sekolahID *uuid.UUID) ([]RombelLookupRow, error)
 	ListJawabanByHasil(ctx context.Context, hasilID uuid.UUID) ([]JawabanBab, error)
 	ListSoalByIDs(ctx context.Context, ids []uuid.UUID) ([]SoalBab, error)
 	UpdateHasilStatus(ctx context.Context, hasilID uuid.UUID, status HasilStatus, selesaiAt *time.Time, nilaiTotal *float64, benar, total *int16) error
@@ -102,19 +104,19 @@ func NewHasilService(repo HasilRepoAPI, b babLookup, k kelasLookup, enr enrollme
 
 // ReviewItem represents one soal + jawaban siswa di review payload.
 type ReviewItem struct {
-	SoalID         uuid.UUID `json:"soal_id"`
-	Pertanyaan     string    `json:"pertanyaan"`
-	OpsiA          string    `json:"opsi_a"`
-	OpsiB          string    `json:"opsi_b"`
-	OpsiC          string    `json:"opsi_c"`
-	OpsiD          string    `json:"opsi_d"`
-	OpsiE          string    `json:"opsi_e"`
-	JawabanBenar   Jawaban   `json:"jawaban_benar"`
-	JawabanSiswa   *string   `json:"jawaban_siswa,omitempty"`
-	IsBenar        *bool     `json:"is_benar,omitempty"`
-	PoinDapat      int16     `json:"poin_dapat"`
-	PoinMaksimal   int16     `json:"poin_maksimal"`
-	Urutan         int       `json:"urutan"`
+	SoalID       uuid.UUID `json:"soal_id"`
+	Pertanyaan   string    `json:"pertanyaan"`
+	OpsiA        string    `json:"opsi_a"`
+	OpsiB        string    `json:"opsi_b"`
+	OpsiC        string    `json:"opsi_c"`
+	OpsiD        string    `json:"opsi_d"`
+	OpsiE        string    `json:"opsi_e"`
+	JawabanBenar Jawaban   `json:"jawaban_benar"`
+	JawabanSiswa *string   `json:"jawaban_siswa,omitempty"`
+	IsBenar      *bool     `json:"is_benar,omitempty"`
+	PoinDapat    int16     `json:"poin_dapat"`
+	PoinMaksimal int16     `json:"poin_maksimal"`
+	Urutan       int       `json:"urutan"`
 }
 
 // ReviewResult is the full review payload.
@@ -327,12 +329,12 @@ func (s *HasilService) ListSiswaHasil(ctx context.Context, babID, siswaID uuid.U
 
 // CancelResult is the response payload after soft-cancel.
 type CancelResult struct {
-	HasilID    uuid.UUID   `json:"hasil_id"`
-	BabID      uuid.UUID   `json:"bab_id"`
-	SiswaID    uuid.UUID   `json:"siswa_id"`
-	Status     HasilStatus `json:"status"`
-	AttemptNo  int16       `json:"attempt_no"`
-	CancelledAt time.Time  `json:"cancelled_at"`
+	HasilID     uuid.UUID   `json:"hasil_id"`
+	BabID       uuid.UUID   `json:"bab_id"`
+	SiswaID     uuid.UUID   `json:"siswa_id"`
+	Status      HasilStatus `json:"status"`
+	AttemptNo   int16       `json:"attempt_no"`
+	CancelledAt time.Time   `json:"cancelled_at"`
 }
 
 // Cancel soft-cancels an ulangan attempt for remedial reset (locked #76).
@@ -405,8 +407,8 @@ func (s *HasilService) Cancel(ctx context.Context, hasilID, callerID uuid.UUID, 
 		HasilID: hasil.ID,
 		Action:  "ulangan_bab_cancelled",
 		Meta: marshalMeta(map[string]any{
-			"prev_status": prevStatus,
-			"reason":      "remedial",
+			"prev_status":  prevStatus,
+			"reason":       "remedial",
 			"cancelled_by": callerID.String(),
 			"cancelled_at": now.UTC().Format(time.RFC3339Nano),
 		}),
@@ -439,7 +441,9 @@ type SiswaRekap struct {
 	SiswaID         uuid.UUID  `json:"siswa_id"`
 	SiswaName       string     `json:"siswa_name"`
 	SiswaEmail      string     `json:"siswa_email"`
-	AttemptCount    int        `json:"attempt_count"`     // excluding dibatalkan
+	RombelID        *uuid.UUID `json:"rombel_id,omitempty"`
+	RombelNama      string     `json:"rombel_nama,omitempty"`
+	AttemptCount    int        `json:"attempt_count"` // excluding dibatalkan
 	CancelledCount  int        `json:"cancelled_count"`
 	NilaiTerbaik    *float64   `json:"nilai_terbaik,omitempty"`
 	NilaiTerakhir   *float64   `json:"nilai_terakhir,omitempty"`
@@ -462,6 +466,10 @@ func (s *HasilService) Rekap(ctx context.Context, babID, callerID uuid.UUID, cal
 	b, err := s.findBabAndOwnership(ctx, babID, callerID, callerRole)
 	if err != nil {
 		return nil, err
+	}
+	k, err := s.kelas.FindByID(ctx, b.KelasID)
+	if err != nil {
+		return nil, fmt.Errorf("soalbab rekap kelas-load: %w", err)
 	}
 
 	rows, err := s.repo.ListHasilByBab(ctx, b.ID, HasilListFilter{Mode: HasilModeUlangan})
@@ -513,6 +521,15 @@ func (s *HasilService) Rekap(ctx context.Context, babID, callerID uuid.UUID, cal
 		}
 	}
 
+	rombelBySiswa := make(map[uuid.UUID]RombelLookupRow)
+	rombelRows, err := s.repo.ListActiveRombelBySiswa(ctx, siswaOrder, k.SekolahID)
+	if err != nil {
+		return nil, fmt.Errorf("soalbab rekap rombel lookup: %w", err)
+	}
+	for _, rr := range rombelRows {
+		rombelBySiswa[rr.SiswaID] = rr
+	}
+
 	// Hydrate names via userLookup (best-effort — kalau nil, kosongkan).
 	out := &RekapResult{BabID: b.ID, Items: make([]SiswaRekap, 0, len(siswaOrder))}
 	for _, sid := range siswaOrder {
@@ -536,6 +553,11 @@ func (s *HasilService) Rekap(ctx context.Context, babID, callerID uuid.UUID, cal
 				row.SiswaName = u.Name
 				row.SiswaEmail = u.Email
 			}
+		}
+		if rr, ok := rombelBySiswa[sid]; ok {
+			id := rr.RombelID
+			row.RombelID = &id
+			row.RombelNama = rr.RombelNama
 		}
 		out.Items = append(out.Items, row)
 	}
@@ -667,21 +689,21 @@ type AttemptItemImage struct {
 // jawaban_benar (locked #76 — siswa cuma boleh tau correct answer setelah
 // finish via /review yang gated).
 type AttemptItem struct {
-	SoalID         uuid.UUID          `json:"soal_id"`
-	Pertanyaan     string             `json:"pertanyaan"`
-	OpsiA          string             `json:"opsi_a"`
-	OpsiB          string             `json:"opsi_b"`
-	OpsiC          string             `json:"opsi_c"`
-	OpsiD          string             `json:"opsi_d"`
-	OpsiE          string             `json:"opsi_e"`
-	Mode           Mode               `json:"mode"`
-	Poin           int16              `json:"poin"`
-	Urutan         int                `json:"urutan"`
-	JawabanSiswa   *string            `json:"jawaban_siswa,omitempty"`
+	SoalID       uuid.UUID `json:"soal_id"`
+	Pertanyaan   string    `json:"pertanyaan"`
+	OpsiA        string    `json:"opsi_a"`
+	OpsiB        string    `json:"opsi_b"`
+	OpsiC        string    `json:"opsi_c"`
+	OpsiD        string    `json:"opsi_d"`
+	OpsiE        string    `json:"opsi_e"`
+	Mode         Mode      `json:"mode"`
+	Poin         int16     `json:"poin"`
+	Urutan       int       `json:"urutan"`
+	JawabanSiswa *string   `json:"jawaban_siswa,omitempty"`
 	// IsBenar is hadir untuk latihan (immediate feedback per locked #81),
 	// nil untuk ulangan (delayed grade sampai submit).
-	IsBenar        *bool              `json:"is_benar,omitempty"`
-	Images         []AttemptItemImage `json:"images,omitempty"`
+	IsBenar *bool              `json:"is_benar,omitempty"`
+	Images  []AttemptItemImage `json:"images,omitempty"`
 }
 
 // ItemsResult is the live-attempt payload returned by GET items endpoint.
