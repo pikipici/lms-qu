@@ -12,7 +12,7 @@
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Loader2, RotateCcw, Trash2 } from 'lucide-react';
+import { Clock, Download, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import {
@@ -192,6 +192,13 @@ export function RekapHasilUjianTable({
     return matchesRombel && matchesSearch;
   });
   const hasFilter = normalizedSearch.length > 0 || rombelFilter !== '__all__';
+  const completedFilteredItems = filteredItems.filter((item) => item.status_terakhir === 'selesai');
+  const selectedRombelName =
+    rombelFilter === '__all__'
+      ? 'semua-rombel'
+      : rombelFilter === '__none__'
+        ? 'tanpa-rombel'
+        : rombelOptions.find((item) => item.id === rombelFilter)?.nama ?? 'rombel';
 
   return (
     <div className="space-y-2">
@@ -305,7 +312,7 @@ export function RekapHasilUjianTable({
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
+          <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_220px_auto_auto] md:items-end">
             <label className="space-y-1">
               <Label>Cari siswa</Label>
               <Input
@@ -342,7 +349,19 @@ export function RekapHasilUjianTable({
                 Reset filter
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => exportCompletedUjianCsv(completedFilteredItems, selectedRombelName)}
+              disabled={completedFilteredItems.length === 0}
+            >
+              <Download className="size-4" />
+              Export CSV
+            </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Export CSV mengikuti filter aktif dan hanya berisi siswa dengan status selesai ({completedFilteredItems.length} siswa).
+          </p>
 
           {filteredItems.length === 0 ? (
             <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -397,6 +416,55 @@ function formatDateTime(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+}
+
+function exportCompletedUjianCsv(items: SiswaRekap[], rombelName: string) {
+  const headers = [
+    'Nama Siswa',
+    'Email',
+    'Rombel',
+    'Status Terakhir',
+    'Attempt',
+    'Cancel',
+    'Nilai Terbaik',
+    'Nilai Terakhir',
+    'Mulai Terakhir',
+  ];
+  const rows = items.map((item) => [
+    item.siswa_name || item.siswa_id,
+    item.siswa_email,
+    item.rombel_nama || 'Tanpa rombel',
+    item.status_terakhir || '',
+    String(item.attempt_count),
+    String(item.cancelled_count),
+    item.nilai_terbaik != null ? item.nilai_terbaik.toFixed(2) : '',
+    item.nilai_terakhir != null ? item.nilai_terakhir.toFixed(2) : '',
+    item.mulai_terakhir_at ? formatDateTime(item.mulai_terakhir_at) : '',
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\r\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rekap-ujian-${slugifyFilename(rombelName)}-selesai.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function csvCell(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function slugifyFilename(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'rombel';
 }
 
 function SusulanPill({
