@@ -57,14 +57,14 @@ export default function AdminUjianCleanupPage() {
   });
 
   const kelasItems = kelasQuery.data?.items ?? [];
+  const firstKelasID = kelasItems[0]?.id;
   const selectedKelas = kelasItems.find((kelas) => kelas.id === kelasID) ?? null;
 
   React.useEffect(() => {
-    const firstKelasID = kelasItems[0]?.id;
     if (!kelasID && firstKelasID) {
       setKelasID(firstKelasID);
     }
-  }, [kelasID, kelasItems]);
+  }, [kelasID, firstKelasID]);
 
   const ujianQueryKey = React.useMemo(
     () => ['admin', 'ujian-cleanup', 'kelas', kelasID, 'ujian'] as const,
