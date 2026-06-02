@@ -32,6 +32,10 @@ type updateRequest struct {
 	Nama      string `json:"nama"`
 	Deskripsi string `json:"deskripsi"`
 }
+type moveMemberRequest struct {
+	SiswaID    string `json:"siswa_id"`
+	ToRombelID string `json:"to_rombel_id"`
+}
 
 func (h *Handler) ListBySekolah(c *fiber.Ctx) error {
 	sekolahID, err := uuid.Parse(c.Params("sekolah_id"))
@@ -74,6 +78,38 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		return mapErr(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"rombel": row})
+}
+
+func (h *Handler) ListMembers(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return rombelError(c, fiber.StatusBadRequest, "invalid id", "invalid_id")
+	}
+	rows, err := h.svc.ListMembers(c.UserContext(), id)
+	if err != nil {
+		slog.Error("rombel members list failed", slog.String("err", err.Error()))
+		return rombelError(c, fiber.StatusInternalServerError, "internal server error", "internal")
+	}
+	return c.JSON(fiber.Map{"items": rows})
+}
+
+func (h *Handler) MoveMember(c *fiber.Ctx) error {
+	var req moveMemberRequest
+	if err := c.BodyParser(&req); err != nil {
+		return rombelError(c, fiber.StatusBadRequest, "invalid request body", "invalid_body")
+	}
+	siswaID, err := uuid.Parse(req.SiswaID)
+	if err != nil {
+		return rombelError(c, fiber.StatusBadRequest, "invalid siswa id", "invalid_siswa_id")
+	}
+	toRombelID, err := uuid.Parse(req.ToRombelID)
+	if err != nil {
+		return rombelError(c, fiber.StatusBadRequest, "invalid rombel id", "invalid_rombel_id")
+	}
+	if err := h.svc.MoveMember(c.UserContext(), toRombelID, siswaID); err != nil {
+		return mapErr(c, err)
+	}
+	return c.JSON(fiber.Map{"status": "ok"})
 }
 
 func (h *Handler) Update(c *fiber.Ctx) error {
@@ -138,6 +174,8 @@ func mapErr(c *fiber.Ctx, err error) error {
 		return rombelError(c, fiber.StatusConflict, "rombel version conflict", "version_conflict")
 	case errors.Is(err, ErrNotEmpty):
 		return rombelError(c, fiber.StatusConflict, "rombel is not empty", "rombel_not_empty")
+	case errors.Is(err, ErrInvalidSiswa):
+		return rombelError(c, fiber.StatusBadRequest, "user is not an active siswa", "invalid_siswa")
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return rombelError(c, fiber.StatusNotFound, "rombel not found", "not_found")
 	case strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "SQLSTATE 23505"):

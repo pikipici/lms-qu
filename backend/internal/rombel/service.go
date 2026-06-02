@@ -12,6 +12,7 @@ import (
 var (
 	ErrInvalidInput    = errors.New("rombel: invalid input")
 	ErrAlreadyArchived = errors.New("rombel: already archived")
+	ErrInvalidSiswa    = errors.New("rombel: invalid siswa")
 )
 
 type Service struct{ repo *Repo }
@@ -45,6 +46,10 @@ func (s *Service) ListPublicBySekolah(ctx context.Context, sekolahID uuid.UUID) 
 	return s.repo.ListPublicBySekolah(ctx, sekolahID)
 }
 
+func (s *Service) ListMembers(ctx context.Context, rombelID uuid.UUID) ([]Member, error) {
+	return s.repo.ListMembers(ctx, rombelID)
+}
+
 func (s *Service) Create(ctx context.Context, sekolahID uuid.UUID, in CreateInput) (*Rombel, error) {
 	nama := strings.TrimSpace(in.Nama)
 	if nama == "" {
@@ -73,6 +78,10 @@ func (s *Service) Archive(ctx context.Context, id uuid.UUID) (*Rombel, error) {
 }
 func (s *Service) DeleteIfEmpty(ctx context.Context, id uuid.UUID) error {
 	return s.repo.DeleteIfEmpty(ctx, id)
+}
+
+func (s *Service) MoveMember(ctx context.Context, toRombelID, siswaID uuid.UUID) error {
+	return s.repo.MoveMembership(ctx, toRombelID, siswaID, "admin")
 }
 
 func normalize(limit, offset int) (int, int) {

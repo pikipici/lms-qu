@@ -23,6 +23,7 @@ func (Rombel) TableName() string { return "rombels" }
 
 type Membership struct {
 	RombelID  uuid.UUID  `gorm:"type:uuid;primaryKey" json:"rombel_id"`
+	SekolahID uuid.UUID  `gorm:"type:uuid;not null" json:"sekolah_id"`
 	SiswaID   uuid.UUID  `gorm:"type:uuid;primaryKey" json:"siswa_id"`
 	Status    string     `gorm:"not null;default:active" json:"status"`
 	JoinedVia string     `gorm:"not null;default:self_registration" json:"joined_via"`
@@ -33,3 +34,12 @@ type Membership struct {
 }
 
 func (Membership) TableName() string { return "rombel_memberships" }
+
+type Member struct {
+	SiswaID   uuid.UUID `json:"siswa_id"`
+	Nama      string    `json:"nama"`
+	Email     string    `json:"email"`
+	RombelID  uuid.UUID `json:"rombel_id"`
+	JoinedVia string    `json:"joined_via"`
+	JoinedAt  time.Time `json:"joined_at"`
+}

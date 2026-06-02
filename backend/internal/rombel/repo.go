@@ -31,6 +31,16 @@ func (r *Repo) ListBySekolah(ctx context.Context, sekolahID uuid.UUID, includeAr
 	return rows, total, err
 }
 
+func (r *Repo) ListMembers(ctx context.Context, rombelID uuid.UUID) ([]Member, error) {
+	rows := make([]Member, 0)
+	err := r.db.WithContext(ctx).Table("rombel_memberships rm").
+		Select("rm.siswa_id, u.name AS nama, u.email, rm.rombel_id, rm.joined_via, rm.joined_at").
+		Joins("JOIN users u ON u.id = rm.siswa_id").
+		Where("rm.rombel_id = ? AND rm.status = 'active'", rombelID).
+		Order("u.name ASC, u.email ASC").Scan(&rows).Error
+	return rows, err
+}
+
 func (r *Repo) ListPublicBySekolah(ctx context.Context, sekolahID uuid.UUID) ([]Rombel, error) {
 	rows := make([]Rombel, 0)
 	err := r.db.WithContext(ctx).Table("rombels r").
@@ -104,10 +114,37 @@ func (r *Repo) DeleteIfEmpty(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *Repo) UpsertMembership(ctx context.Context, rombelID, siswaID uuid.UUID, joinedVia string) error {
-	m := &Membership{RombelID: rombelID, SiswaID: siswaID, Status: "active", JoinedVia: joinedVia}
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return r.upsertMembershipTx(tx, rombelID, siswaID, joinedVia)
+	})
+}
+
+func (r *Repo) MoveMembership(ctx context.Context, toRombelID, siswaID uuid.UUID, joinedVia string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return r.upsertMembershipTx(tx, toRombelID, siswaID, joinedVia)
+	})
+}
+
+func (r *Repo) upsertMembershipTx(tx *gorm.DB, rombelID, siswaID uuid.UUID, joinedVia string) error {
+	var rb Rombel
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND archived_at IS NULL AND active = true", rombelID).First(&rb).Error; err != nil {
+		return err
+	}
+	var role string
+	if err := tx.Table("users").Select("role").Where("id = ?", siswaID).Scan(&role).Error; err != nil {
+		return err
+	}
+	if role != "siswa" {
+		return ErrInvalidSiswa
+	}
+	if err := tx.Table("rombel_memberships").Where("sekolah_id = ? AND siswa_id = ? AND status = 'active' AND rombel_id <> ?", rb.SekolahID, siswaID, rombelID).
+		Updates(map[string]any{"status": "removed", "removed_at": gorm.Expr("now()"), "updated_at": gorm.Expr("now()")}).Error; err != nil {
+		return err
+	}
+	m := &Membership{RombelID: rombelID, SekolahID: rb.SekolahID, SiswaID: siswaID, Status: "active", JoinedVia: joinedVia}
+	return tx.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "rombel_id"}, {Name: "siswa_id"}},
-		DoUpdates: clause.Assignments(map[string]any{"status": "active", "joined_at": gorm.Expr("now()"), "joined_via": joinedVia, "removed_at": nil}),
+		DoUpdates: clause.Assignments(map[string]any{"sekolah_id": rb.SekolahID, "status": "active", "joined_at": gorm.Expr("now()"), "joined_via": joinedVia, "removed_at": nil}),
 	}).Create(m).Error
 }
 

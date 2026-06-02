@@ -2,10 +2,10 @@
 
 import * as React from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Edit, Plus, Search, Trash2 } from 'lucide-react';
+import { Archive, Edit, MoveRight, Plus, Search, Trash2 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
-import { archiveRombel, createRombel, deleteRombel, listRombels, updateRombel, type Rombel } from '@/lib/rombel-api';
+import { archiveRombel, createRombel, deleteRombel, listRombelMembers, listRombels, moveRombelMember, updateRombel, type Rombel, type RombelMember } from '@/lib/rombel-api';
 import {
   createSekolah,
   deleteSekolah,
@@ -15,6 +15,7 @@ import {
 } from '@/lib/sekolah-api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -52,6 +53,7 @@ function RombelSection({ sekolah }: { sekolah: Sekolah }) {
   const [nama, setNama] = React.useState('');
   const [editing, setEditing] = React.useState<Rombel | null>(null);
   const [editNama, setEditNama] = React.useState('');
+  const [movingFrom, setMovingFrom] = React.useState<Rombel | null>(null);
 
   const rombel = useQuery({
     queryKey: ['admin-rombel', sekolah.id],
@@ -153,6 +155,7 @@ function RombelSection({ sekolah }: { sekolah: Sekolah }) {
               ) : (
                 <>
                   <Button size="sm" variant="outline" onClick={() => { setEditing(item); setEditNama(item.nama); }}><Edit className="mr-2 size-4" />Edit</Button>
+                  <Button size="sm" variant="outline" onClick={() => setMovingFrom(item)}><MoveRight className="mr-2 size-4" />Pindah siswa</Button>
                   <Button size="sm" variant="outline" onClick={() => archive.mutate(item.id)} disabled={archive.isPending}><Archive className="mr-2 size-4" />Arsipkan</Button>
                   <Button size="sm" variant="destructive" onClick={() => removeRombel.mutate(item.id)} disabled={removeRombel.isPending}><Trash2 className="mr-2 size-4" />Hapus</Button>
                 </>
@@ -163,7 +166,121 @@ function RombelSection({ sekolah }: { sekolah: Sekolah }) {
         {rombel.isLoading ? <p className="text-sm text-muted-foreground">Memuat rombel...</p> : null}
         {!rombel.isLoading && rombel.data?.items.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada rombel untuk sekolah ini.</p> : null}
       </div>
+      <MoveRombelMemberDialog
+        open={Boolean(movingFrom)}
+        from={movingFrom}
+        rombels={rombel.data?.items ?? []}
+        onOpenChange={(open) => {
+          if (!open) setMovingFrom(null);
+        }}
+        onMoved={() => {
+          setMovingFrom(null);
+          invalidate();
+        }}
+      />
     </div>
+  );
+}
+
+function MoveRombelMemberDialog({
+  open,
+  from,
+  rombels,
+  onOpenChange,
+  onMoved,
+}: {
+  open: boolean;
+  from: Rombel | null;
+  rombels: Rombel[];
+  onOpenChange: (open: boolean) => void;
+  onMoved: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [selectedSiswa, setSelectedSiswa] = React.useState('');
+  const [targetRombel, setTargetRombel] = React.useState('');
+
+  React.useEffect(() => {
+    setSelectedSiswa('');
+    setTargetRombel('');
+  }, [from?.id]);
+
+  const members = useQuery({
+    queryKey: ['admin-rombel-members', from?.id],
+    queryFn: () => listRombelMembers(from!.id),
+    enabled: open && Boolean(from?.id),
+  });
+
+  const move = useMutation({
+    mutationFn: () => moveRombelMember({ siswa_id: selectedSiswa, to_rombel_id: targetRombel }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-rombel-members'] });
+      toast({ title: 'Siswa dipindahkan' });
+      onMoved();
+    },
+    onError: (err) => {
+      const message = err instanceof ApiError ? err.message : 'Gagal memindahkan siswa';
+      toast({ title: 'Gagal memindahkan siswa', description: message, variant: 'destructive' });
+    },
+  });
+
+  const memberItems = members.data?.items ?? [];
+  const targetOptions = rombels.filter((item) => item.id !== from?.id && item.active && !item.archived_at);
+  const canSubmit = Boolean(selectedSiswa && targetRombel) && !move.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Pindah siswa dari {from?.nama ?? 'rombel'}</DialogTitle>
+          <DialogDescription>
+            Memindahkan siswa akan menonaktifkan rombel lama di sekolah yang sama dan mengaktifkan rombel tujuan.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="move-siswa">Siswa</Label>
+            <select
+              id="move-siswa"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+              value={selectedSiswa}
+              onChange={(e) => setSelectedSiswa(e.target.value)}
+              disabled={members.isLoading || memberItems.length === 0}
+            >
+              <option value="">{members.isLoading ? 'Memuat siswa...' : 'Pilih siswa'}</option>
+              {memberItems.map((member: RombelMember) => (
+                <option key={member.siswa_id} value={member.siswa_id}>
+                  {member.nama || member.email} ({member.email})
+                </option>
+              ))}
+            </select>
+            {!members.isLoading && memberItems.length === 0 ? <p className="text-xs text-muted-foreground">Rombel ini belum punya siswa aktif.</p> : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="move-target">Rombel tujuan</Label>
+            <select
+              id="move-target"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+              value={targetRombel}
+              onChange={(e) => setTargetRombel(e.target.value)}
+              disabled={targetOptions.length === 0}
+            >
+              <option value="">Pilih rombel tujuan</option>
+              {targetOptions.map((item) => (
+                <option key={item.id} value={item.id}>{item.nama}</option>
+              ))}
+            </select>
+            {targetOptions.length === 0 ? <p className="text-xs text-muted-foreground">Tambahkan rombel lain dulu untuk memindahkan siswa.</p> : null}
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
+          <Button type="button" disabled={!canSubmit} onClick={() => move.mutate()}>
+            {move.isPending ? 'Memindahkan...' : 'Pindahkan'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

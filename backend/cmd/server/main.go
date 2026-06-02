@@ -323,6 +323,8 @@ func mountRoutes(rootCtx context.Context, app *fiber.App, cfg *config.Config, gd
 	adminSekolah.Delete("/:id", sekolahHandler.Delete)
 	adminSekolah.Get("/:sekolah_id/rombels", rombelHandler.ListBySekolah)
 	adminSekolah.Post("/:sekolah_id/rombels", rombelHandler.Create)
+	adminGroup.Get("/rombels/:id/members", rombelHandler.ListMembers)
+	adminGroup.Post("/rombels/members/move", rombelHandler.MoveMember)
 	adminGroup.Patch("/rombels/:id", rombelHandler.Update)
 	adminGroup.Post("/rombels/:id/archive", rombelHandler.Archive)
 	adminGroup.Delete("/rombels/:id", rombelHandler.Delete)

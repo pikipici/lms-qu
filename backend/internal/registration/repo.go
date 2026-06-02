@@ -121,10 +121,13 @@ func (r *Repo) RegisterSiswa(ctx context.Context, user *auth.User, sekolahID uui
 			req.Status = RequestApproved
 			req.DecidedAt = &now
 			if rb != nil {
-				membership := map[string]any{"rombel_id": rb.ID, "siswa_id": user.ID, "status": "active", "joined_via": "self_registration", "joined_at": now}
+				if err := deactivateOtherRombels(tx, rb.SekolahID, user.ID, rb.ID); err != nil {
+					return "", err
+				}
+				membership := map[string]any{"rombel_id": rb.ID, "sekolah_id": rb.SekolahID, "siswa_id": user.ID, "status": "active", "joined_via": "self_registration", "joined_at": now}
 				if err := tx.Table("rombel_memberships").Clauses(clause.OnConflict{
 					Columns:   []clause.Column{{Name: "rombel_id"}, {Name: "siswa_id"}},
-					DoUpdates: clause.Assignments(map[string]any{"status": "active", "joined_at": now, "joined_via": "self_registration", "removed_at": nil}),
+					DoUpdates: clause.Assignments(map[string]any{"sekolah_id": rb.SekolahID, "status": "active", "joined_at": now, "joined_via": "self_registration", "removed_at": nil}),
 				}).Create(membership).Error; err != nil {
 					return "", err
 				}
@@ -204,10 +207,17 @@ func (r *Repo) Approve(ctx context.Context, requestID, actorID uuid.UUID, guruID
 		}
 		now := time.Now()
 		if req.RombelID != nil {
-			membership := map[string]any{"rombel_id": *req.RombelID, "siswa_id": req.SiswaID, "status": "active", "joined_via": "admin", "joined_at": now}
+			var rb rombelRegistration
+			if err := tx.Table("rombels").Select("id, nama, sekolah_id").Where("id = ? AND archived_at IS NULL AND active = true", *req.RombelID).First(&rb).Error; err != nil {
+				return err
+			}
+			if err := deactivateOtherRombels(tx, rb.SekolahID, req.SiswaID, rb.ID); err != nil {
+				return err
+			}
+			membership := map[string]any{"rombel_id": rb.ID, "sekolah_id": rb.SekolahID, "siswa_id": req.SiswaID, "status": "active", "joined_via": "admin", "joined_at": now}
 			if err := tx.Table("rombel_memberships").Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "rombel_id"}, {Name: "siswa_id"}},
-				DoUpdates: clause.Assignments(map[string]any{"status": "active", "joined_at": now, "joined_via": "admin", "removed_at": nil}),
+				DoUpdates: clause.Assignments(map[string]any{"sekolah_id": rb.SekolahID, "status": "active", "joined_at": now, "joined_via": "admin", "removed_at": nil}),
 			}).Create(membership).Error; err != nil {
 				return err
 			}
@@ -252,6 +262,12 @@ func (r *Repo) Reject(ctx context.Context, requestID, actorID uuid.UUID, reason 
 		}
 		return tx.Model(&JoinRequest{}).Where("id = ?", requestID).Updates(updates).Error
 	})
+}
+
+func deactivateOtherRombels(tx *gorm.DB, sekolahID, siswaID, keepRombelID uuid.UUID) error {
+	return tx.Table("rombel_memberships").
+		Where("sekolah_id = ? AND siswa_id = ? AND status = 'active' AND rombel_id <> ?", sekolahID, siswaID, keepRombelID).
+		Updates(map[string]any{"status": "removed", "removed_at": gorm.Expr("now()"), "updated_at": gorm.Expr("now()")}).Error
 }
 
 var (
