@@ -435,18 +435,19 @@ func (s *HasilService) Cancel(ctx context.Context, hasilID, callerID uuid.UUID, 
 
 // SiswaRekap is one row in rekap dashboard — per-siswa aggregate.
 type SiswaRekap struct {
-	SiswaID         uuid.UUID  `json:"siswa_id"`
-	SiswaName       string     `json:"siswa_name"`
-	SiswaEmail      string     `json:"siswa_email"`
-	RombelID        *uuid.UUID `json:"rombel_id,omitempty"`
-	RombelNama      string     `json:"rombel_nama,omitempty"`
-	AttemptCount    int        `json:"attempt_count"` // excl. dibatalkan
-	CancelledCount  int        `json:"cancelled_count"`
-	NilaiTerbaik    *float64   `json:"nilai_terbaik,omitempty"`
-	NilaiTerakhir   *float64   `json:"nilai_terakhir,omitempty"`
-	StatusTerakhir  string     `json:"status_terakhir,omitempty"`
-	HasilTerakhirID *uuid.UUID `json:"hasil_terakhir_id,omitempty"`
-	MulaiTerakhirAt *time.Time `json:"mulai_terakhir_at,omitempty"`
+	SiswaID           uuid.UUID  `json:"siswa_id"`
+	SiswaName         string     `json:"siswa_name"`
+	SiswaEmail        string     `json:"siswa_email"`
+	RombelID          *uuid.UUID `json:"rombel_id,omitempty"`
+	RombelNama        string     `json:"rombel_nama,omitempty"`
+	AttemptCount      int        `json:"attempt_count"` // excl. dibatalkan
+	CancelledCount    int        `json:"cancelled_count"`
+	NilaiTerbaik      *float64   `json:"nilai_terbaik,omitempty"`
+	NilaiTerakhir     *float64   `json:"nilai_terakhir,omitempty"`
+	StatusTerakhir    string     `json:"status_terakhir,omitempty"`
+	HasilTerakhirID   *uuid.UUID `json:"hasil_terakhir_id,omitempty"`
+	MulaiTerakhirAt   *time.Time `json:"mulai_terakhir_at,omitempty"`
+	SelesaiTerakhirAt *time.Time `json:"selesai_terakhir_at,omitempty"`
 }
 
 // RekapResult is the response payload for rekap dashboard.
@@ -490,6 +491,7 @@ func (s *HasilService) Rekap(ctx context.Context, ujianID, callerID uuid.UUID, c
 		best, last                   *float64
 		lastStatus                   string
 		lastMulai                    time.Time
+		lastSelesai                  time.Time
 		lastID                       uuid.UUID
 	}
 	bySiswa := make(map[uuid.UUID]*acc)
@@ -513,6 +515,9 @@ func (s *HasilService) Rekap(ctx context.Context, ujianID, callerID uuid.UUID, c
 				v := *r.NilaiTotal
 				a.best = &v
 			}
+		}
+		if r.Status == HasilSelesai && r.SelesaiAt != nil && (a.lastSelesai.IsZero() || r.SelesaiAt.After(a.lastSelesai)) {
+			a.lastSelesai = *r.SelesaiAt
 		}
 		// last_*: most-recent mulai_at regardless of status
 		if a.lastMulai.IsZero() || r.MulaiAt.After(a.lastMulai) {
@@ -553,6 +558,10 @@ func (s *HasilService) Rekap(ctx context.Context, ujianID, callerID uuid.UUID, c
 			row.MulaiTerakhirAt = &t
 			id := a.lastID
 			row.HasilTerakhirID = &id
+		}
+		if !a.lastSelesai.IsZero() {
+			t := a.lastSelesai
+			row.SelesaiTerakhirAt = &t
 		}
 		// Hydrate siswa name/email; nil userLookup → empty (degrade).
 		if s.users != nil {

@@ -69,6 +69,8 @@ export function RekapHasilUjianTable({
   const [susulanReason, setSusulanReason] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [rombelFilter, setRombelFilter] = React.useState('__all__');
+  const [selesaiFrom, setSelesaiFrom] = React.useState('');
+  const [selesaiTo, setSelesaiTo] = React.useState('');
 
   const enrollmentQuery = useQuery({
     queryKey: ['guru', 'kelas', kelasID, 'enrollments', 'ujian-susulan'],
@@ -191,8 +193,11 @@ export function RekapHasilUjianTable({
     const matchesSearch = normalizedSearch ? haystack.includes(normalizedSearch) : true;
     return matchesRombel && matchesSearch;
   });
-  const hasFilter = normalizedSearch.length > 0 || rombelFilter !== '__all__';
-  const completedFilteredItems = filteredItems.filter((item) => item.status_terakhir === 'selesai');
+  const hasDateFilter = selesaiFrom.length > 0 || selesaiTo.length > 0;
+  const hasFilter = normalizedSearch.length > 0 || rombelFilter !== '__all__' || hasDateFilter;
+  const completedFilteredItems = filteredItems.filter(
+    (item) => item.status_terakhir === 'selesai' && isWithinSelesaiDateFilter(item, selesaiFrom, selesaiTo),
+  );
   const selectedRombelName =
     rombelFilter === '__all__'
       ? 'semua-rombel'
@@ -312,7 +317,7 @@ export function RekapHasilUjianTable({
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_220px_auto_auto] md:items-end">
+          <div className="grid gap-2 rounded-md border bg-muted/20 p-3 md:grid-cols-[minmax(0,1fr)_180px_160px_160px_auto_auto] md:items-end">
             <label className="space-y-1">
               <Label>Cari siswa</Label>
               <Input
@@ -337,6 +342,22 @@ export function RekapHasilUjianTable({
                 <option value="__none__">Tanpa rombel</option>
               </select>
             </label>
+            <label className="space-y-1">
+              <Label>Selesai dari</Label>
+              <Input
+                type="date"
+                value={selesaiFrom}
+                onChange={(event) => setSelesaiFrom(event.target.value)}
+              />
+            </label>
+            <label className="space-y-1">
+              <Label>Selesai sampai</Label>
+              <Input
+                type="date"
+                value={selesaiTo}
+                onChange={(event) => setSelesaiTo(event.target.value)}
+              />
+            </label>
             {hasFilter && (
               <Button
                 type="button"
@@ -344,6 +365,8 @@ export function RekapHasilUjianTable({
                 onClick={() => {
                   setSearch('');
                   setRombelFilter('__all__');
+                  setSelesaiFrom('');
+                  setSelesaiTo('');
                 }}
               >
                 Reset filter
@@ -360,7 +383,7 @@ export function RekapHasilUjianTable({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Export CSV mengikuti filter aktif dan hanya berisi siswa dengan status selesai ({completedFilteredItems.length} siswa).
+            Export CSV mengikuti filter aktif dan hanya berisi siswa dengan status selesai ({completedFilteredItems.length} siswa). Filter tanggal memakai waktu selesai attempt terakhir.
           </p>
 
           {filteredItems.length === 0 ? (
@@ -429,6 +452,7 @@ function exportCompletedUjianCsv(items: SiswaRekap[], rombelName: string) {
     'Nilai Terbaik',
     'Nilai Terakhir',
     'Mulai Terakhir',
+    'Selesai Terakhir',
   ];
   const rows = items.map((item) => [
     item.siswa_name || item.siswa_id,
@@ -440,6 +464,7 @@ function exportCompletedUjianCsv(items: SiswaRekap[], rombelName: string) {
     item.nilai_terbaik != null ? item.nilai_terbaik.toFixed(2) : '',
     item.nilai_terakhir != null ? item.nilai_terakhir.toFixed(2) : '',
     item.mulai_terakhir_at ? formatDateTime(item.mulai_terakhir_at) : '',
+    item.selesai_terakhir_at ? formatDateTime(item.selesai_terakhir_at) : '',
   ]);
   const csv = [headers, ...rows]
     .map((row) => row.map(csvCell).join(','))
@@ -457,6 +482,22 @@ function exportCompletedUjianCsv(items: SiswaRekap[], rombelName: string) {
 
 function csvCell(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+function isWithinSelesaiDateFilter(item: SiswaRekap, from: string, to: string) {
+  if (!from && !to) return true;
+  if (!item.selesai_terakhir_at) return false;
+
+  const selesaiAt = new Date(item.selesai_terakhir_at).getTime();
+  if (from) {
+    const fromAt = new Date(`${from}T00:00:00`).getTime();
+    if (selesaiAt < fromAt) return false;
+  }
+  if (to) {
+    const toAt = new Date(`${to}T23:59:59.999`).getTime();
+    if (selesaiAt > toAt) return false;
+  }
+  return true;
 }
 
 function slugifyFilename(value: string) {

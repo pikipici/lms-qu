@@ -128,6 +128,7 @@ export interface SiswaRekap {
   status_terakhir?: string;
   hasil_terakhir_id?: string | null;
   mulai_terakhir_at?: string | null;
+  selesai_terakhir_at?: string | null;
 }
 
 export interface RekapHasilUjian {
