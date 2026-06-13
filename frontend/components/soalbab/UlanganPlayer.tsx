@@ -535,7 +535,9 @@ function SoalCard({ item, index, autosaveErrMsg, onChoose, disabled }: SoalCardP
       </div>
 
       <ul className="mt-3 space-y-2">
-        {OPSI_LIST.map(({ key, label }) => {
+        {OPSI_LIST.filter(({ key }) => {
+          return opsiText(item, key) || imageURLForSlot(item, key);
+        }).map(({ key, label }) => {
           const text = opsiText(item, key);
           const slotImg = imageURLForSlot(item, key);
           const checked = item.jawaban_siswa === key;
