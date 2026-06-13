@@ -88,6 +88,7 @@ type CreateInput struct {
 	Mapel      string
 	Tingkat    string
 	Topik      string
+	Tags       []string
 	Pertanyaan string
 	OpsiA      string
 	OpsiB      string
@@ -105,11 +106,17 @@ func (s *Service) Create(ctx context.Context, callerID uuid.UUID, callerRole str
 		return nil, ErrForbidden
 	}
 
+	tags, err := normalizeTags(in.Tags)
+	if err != nil {
+		return nil, err
+	}
+
 	soal := &BankSoal{
 		OwnerGuruID: callerID,
 		Mapel:       strings.TrimSpace(in.Mapel),
 		Tingkat:     strings.TrimSpace(in.Tingkat),
 		Topik:       strings.TrimSpace(in.Topik),
+		Tags:        tags,
 		Pertanyaan:  strings.TrimRight(in.Pertanyaan, " \t\r\n"),
 		OpsiA:       in.OpsiA,
 		OpsiB:       in.OpsiB,
@@ -136,6 +143,7 @@ func (s *Service) Create(ctx context.Context, callerID uuid.UUID, callerRole str
 		"mapel":   soal.Mapel,
 		"tingkat": soal.Tingkat,
 		"topik":   soal.Topik,
+		"tags":    []string(soal.Tags),
 		"jawaban": string(soal.Jawaban),
 		"poin":    soal.Poin,
 	})
@@ -149,6 +157,7 @@ type ListInput struct {
 	Mapel   string
 	Tingkat string
 	Topik   string
+	Tags    []string
 	Limit   int
 	Offset  int
 }
@@ -167,10 +176,15 @@ func (s *Service) List(ctx context.Context, callerID uuid.UUID, callerRole strin
 	if !canWriteBank(callerRole) {
 		return nil, ErrForbidden
 	}
+	tags, err := normalizeTags(in.Tags)
+	if err != nil {
+		return nil, err
+	}
 	f := ListFilter{
 		Mapel:   strings.TrimSpace(in.Mapel),
 		Tingkat: strings.TrimSpace(in.Tingkat),
 		Topik:   strings.TrimSpace(in.Topik),
+		Tags:    tags,
 		Limit:   in.Limit,
 		Offset:  in.Offset,
 	}
@@ -213,6 +227,7 @@ type UpdateInput struct {
 	Mapel           *string
 	Tingkat         *string
 	Topik           *string
+	Tags            *[]string
 	Pertanyaan      *string
 	OpsiA           *string
 	OpsiB           *string
@@ -265,6 +280,16 @@ func (s *Service) Update(ctx context.Context, id, callerID uuid.UUID, callerRole
 		if v != merged.Topik {
 			merged.Topik = v
 			fields["topik"] = v
+		}
+	}
+	if in.Tags != nil {
+		v, err := normalizeTags(*in.Tags)
+		if err != nil {
+			return nil, err
+		}
+		if !tagsEqual(v, merged.Tags) {
+			merged.Tags = v
+			fields["tags"] = v
 		}
 	}
 	if in.Pertanyaan != nil {

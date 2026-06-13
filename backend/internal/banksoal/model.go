@@ -72,6 +72,7 @@ type BankSoal struct {
 	Mapel               string     `gorm:"not null;default:''" json:"mapel"`
 	Tingkat             string     `gorm:"not null;default:''" json:"tingkat"`
 	Topik               string     `gorm:"not null;default:''" json:"topik"`
+	Tags                Tags       `gorm:"type:text[];not null;default:'{}'" json:"tags"`
 	Pertanyaan          string     `gorm:"not null;default:''" json:"pertanyaan"`
 	PertanyaanObjectKey *string    `gorm:"column:pertanyaan_object_key" json:"pertanyaan_object_key,omitempty"`
 	OpsiA               string     `gorm:"not null;default:'';column:opsi_a" json:"opsi_a"`

@@ -40,10 +40,28 @@ type ListFilter struct {
 	Tingkat string
 	// Topik, when non-empty, narrows by topik (substring match).
 	Topik string
+	// Tags, when non-empty, narrows by any matching free-form tag.
+	Tags Tags
 	// Limit caps result count. <=0 → no cap.
 	Limit int
 	// Offset skips first N rows.
 	Offset int
+}
+
+func applyListFilter(q *gorm.DB, f ListFilter) *gorm.DB {
+	if f.Mapel != "" {
+		q = q.Where("mapel = ?", f.Mapel)
+	}
+	if f.Tingkat != "" {
+		q = q.Where("tingkat = ?", f.Tingkat)
+	}
+	if f.Topik != "" {
+		q = q.Where("topik ILIKE ?", "%"+f.Topik+"%")
+	}
+	if len(f.Tags) > 0 {
+		q = q.Where("tags && ?::text[]", tagsArrayLiteral(f.Tags))
+	}
+	return q
 }
 
 // CreateSoal inserts a new bank_soal row.
@@ -80,15 +98,7 @@ func (r *Repo) FindSoalByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (
 func (r *Repo) ListByOwner(ctx context.Context, guruID uuid.UUID, f ListFilter) ([]BankSoal, error) {
 	q := r.db.WithContext(ctx).Model(&BankSoal{}).
 		Where("owner_guru_id = ? AND deleted_at IS NULL", guruID)
-	if f.Mapel != "" {
-		q = q.Where("mapel = ?", f.Mapel)
-	}
-	if f.Tingkat != "" {
-		q = q.Where("tingkat = ?", f.Tingkat)
-	}
-	if f.Topik != "" {
-		q = q.Where("topik ILIKE ?", "%"+f.Topik+"%")
-	}
+	q = applyListFilter(q, f)
 	q = q.Order("created_at DESC, id DESC")
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit)
@@ -108,15 +118,7 @@ func (r *Repo) ListByOwner(ctx context.Context, guruID uuid.UUID, f ListFilter) 
 func (r *Repo) CountByOwner(ctx context.Context, guruID uuid.UUID, f ListFilter) (int64, error) {
 	q := r.db.WithContext(ctx).Model(&BankSoal{}).
 		Where("owner_guru_id = ? AND deleted_at IS NULL", guruID)
-	if f.Mapel != "" {
-		q = q.Where("mapel = ?", f.Mapel)
-	}
-	if f.Tingkat != "" {
-		q = q.Where("tingkat = ?", f.Tingkat)
-	}
-	if f.Topik != "" {
-		q = q.Where("topik ILIKE ?", "%"+f.Topik+"%")
-	}
+	q = applyListFilter(q, f)
 	var n int64
 	if err := q.Count(&n).Error; err != nil {
 		return 0, err
@@ -131,15 +133,7 @@ func (r *Repo) CountByOwner(ctx context.Context, guruID uuid.UUID, f ListFilter)
 func (r *Repo) ListIDsByOwnerFilter(ctx context.Context, guruID uuid.UUID, f ListFilter) ([]uuid.UUID, error) {
 	q := r.db.WithContext(ctx).Model(&BankSoal{}).
 		Where("owner_guru_id = ? AND deleted_at IS NULL", guruID)
-	if f.Mapel != "" {
-		q = q.Where("mapel = ?", f.Mapel)
-	}
-	if f.Tingkat != "" {
-		q = q.Where("tingkat = ?", f.Tingkat)
-	}
-	if f.Topik != "" {
-		q = q.Where("topik ILIKE ?", "%"+f.Topik+"%")
-	}
+	q = applyListFilter(q, f)
 	q = q.Order("created_at DESC, id DESC")
 	var ids []uuid.UUID
 	if err := q.Pluck("id", &ids).Error; err != nil {

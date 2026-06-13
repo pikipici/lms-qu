@@ -79,9 +79,10 @@ type sourceRequest struct {
 }
 
 type filterDTO struct {
-	Mapel   string `json:"mapel,omitempty"`
-	Tingkat string `json:"tingkat,omitempty"`
-	Topik   string `json:"topik,omitempty"`
+	Mapel   string   `json:"mapel,omitempty"`
+	Tingkat string   `json:"tingkat,omitempty"`
+	Topik   string   `json:"topik,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 // parseSource decodes a sourceRequest into the service-side SourceInput.
@@ -111,6 +112,7 @@ func parseSource(req *sourceRequest) (*SourceInput, error) {
 				Mapel:   req.Filter.Mapel,
 				Tingkat: req.Filter.Tingkat,
 				Topik:   req.Filter.Topik,
+				Tags:    req.Filter.Tags,
 			}
 		}
 		return &SourceInput{Random: &RandomSourceConfig{

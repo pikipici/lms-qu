@@ -379,6 +379,7 @@ func (s *FlowService) buildPoolUnderTx(ctx context.Context, tx *gorm.DB, u *Ujia
 			Mapel:   cfg.Filter.Mapel,
 			Tingkat: cfg.Filter.Tingkat,
 			Topik:   cfg.Filter.Topik,
+			Tags:    banksoal.NormalizeTags(cfg.Filter.Tags),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("ujian start random pool: %w", err)

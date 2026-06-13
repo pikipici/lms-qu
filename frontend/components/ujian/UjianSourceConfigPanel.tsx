@@ -103,6 +103,16 @@ export function UjianSourceConfigPanel({
     for (const s of allSoal) if (s.tingkat) set.add(s.tingkat);
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
   }, [allSoal]);
+  const allTopik = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allSoal) if (s.topik) set.add(s.topik);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [allSoal]);
+  const allTags = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allSoal) for (const tag of s.tags ?? []) set.add(tag);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [allSoal]);
 
   const previewMutation = useMutation({
     mutationFn: (cfg: UjianSourceConfig) => {
@@ -195,6 +205,8 @@ export function UjianSourceConfigPanel({
           allSoal={allSoal}
           allMapel={allMapel}
           allTingkat={allTingkat}
+          allTopik={allTopik}
+          allTags={allTags}
           masterLoading={masterQuery.isPending}
           masterError={masterQuery.isError}
           selectedIDs={
@@ -209,6 +221,8 @@ export function UjianSourceConfigPanel({
         <RandomSourcePanel
           allMapel={allMapel}
           allTingkat={allTingkat}
+          allTopik={allTopik}
+          allTags={allTags}
           masterLoading={masterQuery.isPending}
           value={
             value?.mode === 'random'
@@ -280,6 +294,8 @@ function ManualSourcePanel({
   allSoal,
   allMapel,
   allTingkat,
+  allTopik,
+  allTags,
   masterLoading,
   masterError,
   selectedIDs,
@@ -289,6 +305,8 @@ function ManualSourcePanel({
   allSoal: BankSoal[];
   allMapel: string[];
   allTingkat: string[];
+  allTopik: string[];
+  allTags: string[];
   masterLoading: boolean;
   masterError: boolean;
   selectedIDs: string[];
@@ -298,6 +316,7 @@ function ManualSourcePanel({
   const [mapelFilter, setMapelFilter] = React.useState('');
   const [tingkatFilter, setTingkatFilter] = React.useState('');
   const [topikQuery, setTopikQuery] = React.useState('');
+  const [tagFilter, setTagFilter] = React.useState('');
 
   const selectedSet = React.useMemo(
     () => new Set(selectedIDs),
@@ -312,9 +331,10 @@ function ManualSourcePanel({
         const q = topikQuery.toLowerCase();
         if (!s.topik?.toLowerCase().includes(q)) return false;
       }
+      if (tagFilter && !(s.tags ?? []).includes(tagFilter)) return false;
       return true;
     });
-  }, [allSoal, mapelFilter, tingkatFilter, topikQuery]);
+  }, [allSoal, mapelFilter, tingkatFilter, topikQuery, tagFilter]);
 
   function toggle(id: string) {
     if (disabled) return;
@@ -348,43 +368,48 @@ function ManualSourcePanel({
   return (
     <div className="space-y-2">
       {/* Filter */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,10rem)_auto] lg:items-center">
-        <select
-          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-          value={mapelFilter}
-          onChange={(e) => setMapelFilter(e.target.value)}
+      <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+        <TagChipRow
+          label="Mapel"
+          options={allMapel}
+          active={mapelFilter}
+          onChange={setMapelFilter}
           disabled={disabled || masterLoading}
-        >
-          <option value="">Semua mapel</option>
-          {allMapel.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-        <select
-          className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-          value={tingkatFilter}
-          onChange={(e) => setTingkatFilter(e.target.value)}
-          disabled={disabled || masterLoading}
-        >
-          <option value="">Semua tingkat</option>
-          {allTingkat.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <Input
-          placeholder="Cari topik…"
-          value={topikQuery}
-          onChange={(e) => setTopikQuery(e.target.value)}
-          disabled={disabled || masterLoading}
-          className="h-8 w-full text-xs"
         />
-        <span className="text-xs text-muted-foreground lg:ml-auto lg:whitespace-nowrap">
-          {selectedIDs.length} dipilih · {filtered.length} terlihat
-        </span>
+        <TagChipRow
+          label="Tingkat"
+          options={allTingkat}
+          active={tingkatFilter}
+          onChange={setTingkatFilter}
+          disabled={disabled || masterLoading}
+        />
+        <TagChipRow
+          label="Topik"
+          options={allTopik.slice(0, 18)}
+          active={allTopik.includes(topikQuery) ? topikQuery : ''}
+          onChange={setTopikQuery}
+          disabled={disabled || masterLoading}
+        />
+        <TagChipRow
+          label="Tags"
+          options={allTags.slice(0, 32)}
+          active={tagFilter}
+          onChange={setTagFilter}
+          emptyHint="(belum ada tags bebas)"
+          disabled={disabled || masterLoading}
+        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            placeholder="Cari topik bebas..."
+            value={topikQuery}
+            onChange={(e) => setTopikQuery(e.target.value)}
+            disabled={disabled || masterLoading}
+            className="h-8 w-full text-xs sm:max-w-xs"
+          />
+          <span className="text-xs text-muted-foreground sm:ml-auto sm:whitespace-nowrap">
+            {selectedIDs.length} dipilih · {filtered.length} terlihat
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -457,11 +482,72 @@ function ManualSourcePanel({
   );
 }
 
+function TagChipRow({
+  label,
+  options,
+  active,
+  onChange,
+  emptyHint = 'belum ada tag',
+  disabled,
+}: {
+  label: string;
+  options: string[];
+  active: string;
+  onChange: (value: string) => void;
+  emptyHint?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange('')}
+        disabled={disabled}
+        className={cn(
+          'rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-50',
+          active === ''
+            ? 'border-primary bg-primary/10 font-medium text-foreground'
+            : 'border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground',
+        )}
+      >
+        Semua
+      </button>
+      {options.length === 0 ? (
+        <span className="text-xs italic text-muted-foreground">
+          {emptyHint}
+        </span>
+      ) : (
+        options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            disabled={disabled}
+            className={cn(
+              'rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-50',
+              active === option
+                ? 'border-primary bg-primary/10 font-medium text-foreground'
+                : 'border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground',
+            )}
+          >
+            {option}
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
 // ---------- Random mode ----------
 
 function RandomSourcePanel({
   allMapel,
   allTingkat,
+  allTopik,
+  allTags,
   masterLoading,
   value,
   onChange,
@@ -469,10 +555,12 @@ function RandomSourcePanel({
 }: {
   allMapel: string[];
   allTingkat: string[];
+  allTopik: string[];
+  allTags: string[];
   masterLoading: boolean;
   value: {
     mode: 'random';
-    filter?: { mapel?: string; tingkat?: string; topik?: string };
+    filter?: { mapel?: string; tingkat?: string; topik?: string; tags?: string[] };
     jumlah_soal: number;
   };
   onChange: (cfg: UjianSourceConfig) => void;
@@ -480,10 +568,12 @@ function RandomSourcePanel({
 }) {
   const filter = value.filter ?? {};
 
-  function patchFilter(patch: Partial<{ mapel?: string; tingkat?: string; topik?: string }>) {
+  function patchFilter(patch: Partial<{ mapel?: string; tingkat?: string; topik?: string; tags?: string[] }>) {
+    const nextFilter = { ...filter, ...patch };
+    if (nextFilter.tags && nextFilter.tags.length === 0) delete nextFilter.tags;
     onChange({
       mode: 'random',
-      filter: { ...filter, ...patch },
+      filter: nextFilter,
       jumlah_soal: value.jumlah_soal,
     });
   }
@@ -498,6 +588,37 @@ function RandomSourcePanel({
 
   return (
     <div className="space-y-3">
+      <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+        <TagChipRow
+          label="Mapel"
+          options={allMapel}
+          active={filter.mapel ?? ''}
+          onChange={(next) => patchFilter({ mapel: next || undefined })}
+          disabled={disabled || masterLoading}
+        />
+        <TagChipRow
+          label="Tingkat"
+          options={allTingkat}
+          active={filter.tingkat ?? ''}
+          onChange={(next) => patchFilter({ tingkat: next || undefined })}
+          disabled={disabled || masterLoading}
+        />
+        <TagChipRow
+          label="Topik"
+          options={allTopik.slice(0, 18)}
+          active={allTopik.includes(filter.topik ?? '') ? filter.topik ?? '' : ''}
+          onChange={(next) => patchFilter({ topik: next || undefined })}
+          disabled={disabled || masterLoading}
+        />
+        <TagChipRow
+          label="Tags"
+          options={allTags.slice(0, 32)}
+          active={filter.tags?.[0] ?? ''}
+          onChange={(next) => patchFilter({ tags: next ? [next] : undefined })}
+          emptyHint="(belum ada tags bebas)"
+          disabled={disabled || masterLoading}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="space-y-1">
           <Label className="text-xs">Mapel</Label>

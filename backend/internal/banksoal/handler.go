@@ -64,36 +64,52 @@ const DefaultListLimit = 50
 const MaxListLimit = 200
 
 type createRequest struct {
-	Mapel      string  `json:"mapel"`
-	Tingkat    string  `json:"tingkat"`
-	Topik      string  `json:"topik"`
-	Pertanyaan string  `json:"pertanyaan"`
-	OpsiA      string  `json:"opsi_a"`
-	OpsiB      string  `json:"opsi_b"`
-	OpsiC      string  `json:"opsi_c"`
-	OpsiD      string  `json:"opsi_d"`
-	OpsiE      string  `json:"opsi_e"`
-	Jawaban    Jawaban `json:"jawaban"`
-	Poin       int16   `json:"poin"`
+	Mapel      string   `json:"mapel"`
+	Tingkat    string   `json:"tingkat"`
+	Topik      string   `json:"topik"`
+	Tags       []string `json:"tags"`
+	Pertanyaan string   `json:"pertanyaan"`
+	OpsiA      string   `json:"opsi_a"`
+	OpsiB      string   `json:"opsi_b"`
+	OpsiC      string   `json:"opsi_c"`
+	OpsiD      string   `json:"opsi_d"`
+	OpsiE      string   `json:"opsi_e"`
+	Jawaban    Jawaban  `json:"jawaban"`
+	Poin       int16    `json:"poin"`
 }
 
 type updateRequest struct {
-	Version    int      `json:"version"`
-	Mapel      *string  `json:"mapel"`
-	Tingkat    *string  `json:"tingkat"`
-	Topik      *string  `json:"topik"`
-	Pertanyaan *string  `json:"pertanyaan"`
-	OpsiA      *string  `json:"opsi_a"`
-	OpsiB      *string  `json:"opsi_b"`
-	OpsiC      *string  `json:"opsi_c"`
-	OpsiD      *string  `json:"opsi_d"`
-	OpsiE      *string  `json:"opsi_e"`
-	Jawaban    *Jawaban `json:"jawaban"`
-	Poin       *int16   `json:"poin"`
+	Version    int       `json:"version"`
+	Mapel      *string   `json:"mapel"`
+	Tingkat    *string   `json:"tingkat"`
+	Topik      *string   `json:"topik"`
+	Tags       *[]string `json:"tags"`
+	Pertanyaan *string   `json:"pertanyaan"`
+	OpsiA      *string   `json:"opsi_a"`
+	OpsiB      *string   `json:"opsi_b"`
+	OpsiC      *string   `json:"opsi_c"`
+	OpsiD      *string   `json:"opsi_d"`
+	OpsiE      *string   `json:"opsi_e"`
+	Jawaban    *Jawaban  `json:"jawaban"`
+	Poin       *int16    `json:"poin"`
 }
 
 type deleteRequest struct {
 	Version int `json:"version"`
+}
+
+func parseTagsQuery(c *fiber.Ctx) []string {
+	values := make([]string, 0)
+	for _, key := range []string{"tag", "tags"} {
+		for _, raw := range c.Context().QueryArgs().PeekMulti(key) {
+			for _, part := range strings.Split(string(raw), ",") {
+				if v := strings.TrimSpace(part); v != "" {
+					values = append(values, v)
+				}
+			}
+		}
+	}
+	return values
 }
 
 // Create handles POST /api/v1/bank-soal.
@@ -113,6 +129,7 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		Mapel:      req.Mapel,
 		Tingkat:    req.Tingkat,
 		Topik:      req.Topik,
+		Tags:       req.Tags,
 		Pertanyaan: req.Pertanyaan,
 		OpsiA:      req.OpsiA, OpsiB: req.OpsiB,
 		OpsiC: req.OpsiC, OpsiD: req.OpsiD, OpsiE: req.OpsiE,
@@ -145,6 +162,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		Mapel:   strings.TrimSpace(c.Query("mapel")),
 		Tingkat: strings.TrimSpace(c.Query("tingkat")),
 		Topik:   strings.TrimSpace(c.Query("topik")),
+		Tags:    parseTagsQuery(c),
 		Limit:   DefaultListLimit,
 		Offset:  0,
 	}
@@ -222,6 +240,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		Mapel:           req.Mapel,
 		Tingkat:         req.Tingkat,
 		Topik:           req.Topik,
+		Tags:            req.Tags,
 		Pertanyaan:      req.Pertanyaan,
 		OpsiA:           req.OpsiA, OpsiB: req.OpsiB,
 		OpsiC: req.OpsiC, OpsiD: req.OpsiD, OpsiE: req.OpsiE,

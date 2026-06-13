@@ -18,7 +18,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Trash2, Upload } from 'lucide-react';
+import { Loader2, Trash2, Upload, X } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import {
@@ -82,6 +82,7 @@ interface FormState {
   mapel: string;
   tingkat: string;
   topik: string;
+  tags: string[];
   pertanyaan: string;
   opsi_a: string;
   opsi_b: string;
@@ -97,6 +98,7 @@ function initialFromSoal(s?: BankSoal | null): FormState {
     mapel: s?.mapel ?? '',
     tingkat: s?.tingkat ?? '',
     topik: s?.topik ?? '',
+    tags: s?.tags ?? [],
     pertanyaan: s?.pertanyaan ?? '',
     opsi_a: s?.opsi_a ?? '',
     opsi_b: s?.opsi_b ?? '',
@@ -203,6 +205,7 @@ export function BankSoalEditDialog({
           mapel: form.mapel,
           tingkat: form.tingkat,
           topik: form.topik,
+          tags: form.tags,
           pertanyaan: form.pertanyaan,
           opsi_a: form.opsi_a,
           opsi_b: form.opsi_b,
@@ -217,6 +220,7 @@ export function BankSoalEditDialog({
         mapel: form.mapel,
         tingkat: form.tingkat,
         topik: form.topik,
+        tags: form.tags,
         pertanyaan: form.pertanyaan,
         opsi_a: form.opsi_a,
         opsi_b: form.opsi_b,
@@ -332,6 +336,18 @@ export function BankSoalEditDialog({
                 <p className="text-xs text-destructive">{errors.topik}</p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-1.5 rounded-md border bg-muted/20 p-3">
+            <Label>Tags bebas</Label>
+            <TagInput
+              value={form.tags}
+              onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+              disabled={mutation.isPending}
+            />
+            <p className="text-xs text-muted-foreground">
+              Multi-tags untuk pencarian cepat, misalnya hots, remedial, grafik, analisis-data.
+            </p>
           </div>
 
           {/* Pertanyaan */}
@@ -470,6 +486,87 @@ export function BankSoalEditDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function normalizeTagInput(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, '-').replace(/^[-_]+|[-_]+$/g, '');
+}
+
+function TagInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+}) {
+  const [input, setInput] = React.useState('');
+
+  function add(raw: string) {
+    const next = normalizeTagInput(raw);
+    if (!next || value.includes(next) || value.length >= 20) return;
+    onChange([...value, next].sort((a, b) => a.localeCompare(b, 'id')));
+  }
+
+  function remove(tag: string) {
+    onChange(value.filter((item) => item !== tag));
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border bg-background px-2 py-1.5">
+        {value.map((tag) => (
+          <span
+            key={tag}
+            className="inline-flex items-center gap-1 rounded-full border bg-primary/5 px-2 py-0.5 text-xs font-medium"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => remove(tag)}
+              disabled={disabled}
+              className="rounded-full text-muted-foreground hover:text-foreground disabled:opacity-50"
+              aria-label={`Hapus tag ${tag}`}
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+              e.preventDefault();
+              add(input);
+              setInput('');
+            }
+            if (e.key === 'Backspace' && input === '' && value.length > 0) {
+              remove(value[value.length - 1]!);
+            }
+          }}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData('text');
+            if (!text.includes(',')) return;
+            e.preventDefault();
+            for (const part of text.split(',')) add(part);
+            setInput('');
+          }}
+          onBlur={() => {
+            add(input);
+            setInput('');
+          }}
+          disabled={disabled || value.length >= 20}
+          placeholder={value.length === 0 ? 'Tambah tag lalu Enter' : 'Tambah tag'}
+          className="min-w-[9rem] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+        />
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {value.length}/20 tag. Tag otomatis dinormalisasi ke huruf kecil.
+      </p>
+    </div>
   );
 }
 

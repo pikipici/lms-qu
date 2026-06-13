@@ -33,6 +33,7 @@ export interface UjianRandomFilter {
   mapel?: string;
   tingkat?: string;
   topik?: string;
+  tags?: string[];
 }
 
 /**

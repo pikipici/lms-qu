@@ -123,9 +123,10 @@ type ManualSourceConfig struct {
 
 // RandomFilter narrows BankSoal pool for SourceMode=random.
 type RandomFilter struct {
-	Mapel   string `json:"mapel,omitempty"`
-	Tingkat string `json:"tingkat,omitempty"`
-	Topik   string `json:"topik,omitempty"`
+	Mapel   string   `json:"mapel,omitempty"`
+	Tingkat string   `json:"tingkat,omitempty"`
+	Topik   string   `json:"topik,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 // RandomSourceConfig is the persisted shape for SourceMode=random.

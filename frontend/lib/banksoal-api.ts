@@ -48,6 +48,7 @@ export interface BankSoal {
   mapel: string;
   tingkat: string;
   topik: string;
+  tags: string[];
   pertanyaan: string;
   pertanyaan_object_key?: string;
   opsi_a: string;
@@ -79,6 +80,7 @@ export interface ListBankSoalOptions {
   mapel?: string;
   tingkat?: string;
   topik?: string;
+  tags?: string[];
   limit?: number;
   offset?: number;
 }
@@ -87,6 +89,7 @@ export interface CreateBankSoalInput {
   mapel?: string;
   tingkat?: string;
   topik?: string;
+  tags?: string[];
   pertanyaan: string;
   opsi_a: string;
   opsi_b: string;
@@ -102,6 +105,7 @@ export interface UpdateBankSoalInput {
   mapel?: string;
   tingkat?: string;
   topik?: string;
+  tags?: string[];
   pertanyaan?: string;
   opsi_a?: string;
   opsi_b?: string;
@@ -148,6 +152,7 @@ export async function listBankSoal(
   if (opts.mapel) q.set('mapel', opts.mapel);
   if (opts.tingkat) q.set('tingkat', opts.tingkat);
   if (opts.topik) q.set('topik', opts.topik);
+  if (opts.tags?.length) q.set('tags', opts.tags.join(','));
   if (typeof opts.limit === 'number' && opts.limit > 0) {
     q.set('limit', String(opts.limit));
   }

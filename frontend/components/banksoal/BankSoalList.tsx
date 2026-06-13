@@ -78,13 +78,14 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
   const [mapelFilter, setMapelFilter] = React.useState<string>('');
   const [tingkatFilter, setTingkatFilter] = React.useState<string>('');
   const [topikFilter, setTopikFilter] = React.useState<string>('');
+  const [tagFilter, setTagFilter] = React.useState<string>('');
   const [topikInput, setTopikInput] = React.useState<string>('');
   const [page, setPage] = React.useState(0);
 
   // Reset page tiap filter berubah.
   React.useEffect(() => {
     setPage(0);
-  }, [mapelFilter, tingkatFilter, topikFilter]);
+  }, [mapelFilter, tingkatFilter, topikFilter, tagFilter]);
 
   const offset = page * PAGE_SIZE;
 
@@ -122,6 +123,22 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
   }, [masterQuery.data]);
 
+  const allTopik = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const s of masterQuery.data?.items ?? []) {
+      if (s.topik) set.add(s.topik);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [masterQuery.data]);
+
+  const allTags = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const s of masterQuery.data?.items ?? []) {
+      for (const tag of s.tags ?? []) set.add(tag);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [masterQuery.data]);
+
   // Filtered query — driver for the visible list.
   const queryKey = React.useMemo(
     () =>
@@ -129,9 +146,9 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
         'guru',
         'bank-soal',
         'list',
-        { mapel: mapelFilter, tingkat: tingkatFilter, topik: topikFilter, offset },
+        { mapel: mapelFilter, tingkat: tingkatFilter, topik: topikFilter, tag: tagFilter, offset },
       ] as const,
-    [mapelFilter, tingkatFilter, topikFilter, offset],
+    [mapelFilter, tingkatFilter, topikFilter, tagFilter, offset],
   );
 
   const invalidateKeys = React.useMemo(
@@ -150,6 +167,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
         mapel: mapelFilter || undefined,
         tingkat: tingkatFilter || undefined,
         topik: topikFilter || undefined,
+        tags: tagFilter ? [tagFilter] : undefined,
         limit: PAGE_SIZE,
         offset,
       }),
@@ -184,7 +202,13 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
   });
 
   const hasFilter =
-    !!mapelFilter || !!tingkatFilter || !!topikFilter;
+    !!mapelFilter || !!tingkatFilter || !!topikFilter || !!tagFilter;
+  const activeTags = [
+    mapelFilter ? { label: 'Mapel', value: mapelFilter } : null,
+    tingkatFilter ? { label: 'Tingkat', value: tingkatFilter } : null,
+    topikFilter ? { label: 'Topik', value: topikFilter } : null,
+    tagFilter ? { label: 'Tag', value: tagFilter } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   return (
     <Card>
@@ -236,9 +260,26 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
             onChange={setTingkatFilter}
             emptyHint="(belum ada tag tingkat)"
           />
+          <FilterChipRow
+            label="Topik"
+            options={allTopik.slice(0, 24)}
+            active={allTopik.includes(topikFilter) ? topikFilter : ''}
+            onChange={(value) => {
+              setTopikFilter(value);
+              setTopikInput(value);
+            }}
+            emptyHint="(belum ada tag topik)"
+          />
+          <FilterChipRow
+            label="Tags"
+            options={allTags.slice(0, 32)}
+            active={tagFilter}
+            onChange={setTagFilter}
+            emptyHint="(belum ada tags bebas)"
+          />
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">
-              Topik
+              Cari
             </span>
             <div className="relative min-w-0 flex-1 sm:min-w-[14rem] sm:max-w-md">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -252,7 +293,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
                   }
                 }}
                 onBlur={() => setTopikFilter(topikInput.trim())}
-                placeholder="Cari topik (mis. aljabar)"
+                placeholder="Cari topik bebas (mis. aljabar)"
                 className="h-8 pl-7 pr-8 text-xs"
               />
               {topikInput && (
@@ -269,6 +310,19 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
                 </button>
               )}
             </div>
+            {activeTags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                Aktif:
+                {activeTags.map((tag) => (
+                  <span
+                    key={`${tag.label}-${tag.value}`}
+                    className="rounded-full border bg-primary/5 px-2 py-0.5 font-medium text-foreground"
+                  >
+                    {tag.label}: {tag.value}
+                  </span>
+                ))}
+              </div>
+            )}
             {hasFilter && (
               <Button
                 size="sm"
@@ -278,6 +332,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
                   setMapelFilter('');
                   setTingkatFilter('');
                   setTopikFilter('');
+                  setTagFilter('');
                   setTopikInput('');
                 }}
                 className="h-7 text-xs"
@@ -491,6 +546,7 @@ function SoalRow({
   if (soal.mapel) tagBadges.push({ label: 'Mapel', value: soal.mapel });
   if (soal.tingkat) tagBadges.push({ label: 'Tingkat', value: soal.tingkat });
   if (soal.topik) tagBadges.push({ label: 'Topik', value: soal.topik });
+  for (const tag of soal.tags ?? []) tagBadges.push({ label: 'Tag', value: tag });
 
   return (
     <li className="rounded-md border bg-background p-3">
