@@ -78,6 +78,7 @@ type BulkCreateInput struct {
 	Mapel   string
 	Tingkat string
 	Topik   string
+	Tags    Tags
 }
 
 // BulkLineError reports one line-level failure with stable reason code +
@@ -113,6 +114,7 @@ func (s *Service) BulkCreate(ctx context.Context, callerID uuid.UUID, callerRole
 	mapel := strings.TrimSpace(in.Mapel)
 	tingkat := strings.TrimSpace(in.Tingkat)
 	topik := strings.TrimSpace(in.Topik)
+	tags := NormalizeTags([]string(in.Tags))
 	if len(mapel) > MaxTagBytes {
 		return nil, fmt.Errorf("%w: mapel exceeds %d bytes", ErrInvalidInput, MaxTagBytes)
 	}
@@ -141,7 +143,7 @@ func (s *Service) BulkCreate(ctx context.Context, callerID uuid.UUID, callerRole
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		soal, reason := parseBulkLine(ln.Raw, callerID, mapel, tingkat, topik)
+		soal, reason := parseBulkLine(ln.Raw, callerID, mapel, tingkat, topik, tags)
 		if reason != "" {
 			result.Errors = append(result.Errors, BulkLineError{
 				Line:   ln.Number,
@@ -200,7 +202,7 @@ func splitBulkLines(body string) []bulkLine {
 // or a zero BankSoal + non-empty reason code (failed).
 //
 // Caller is responsible for skipping blank/comment lines BEFORE calling.
-func parseBulkLine(raw string, callerID uuid.UUID, mapel, tingkat, topik string) (BankSoal, string) {
+func parseBulkLine(raw string, callerID uuid.UUID, mapel, tingkat, topik string, tags Tags) (BankSoal, string) {
 	cols := splitEscapedPipe(raw)
 	if len(cols) != 8 {
 		return BankSoal{}, ReasonInvalidColumns
@@ -268,6 +270,7 @@ func parseBulkLine(raw string, callerID uuid.UUID, mapel, tingkat, topik string)
 		Mapel:       mapel,
 		Tingkat:     tingkat,
 		Topik:       topik,
+		Tags:        tags,
 		Pertanyaan:  pertanyaan,
 		OpsiA:       opsiA,
 		OpsiB:       opsiB,

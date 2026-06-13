@@ -132,6 +132,7 @@ export interface BankSoalBulkInput {
   mapel?: string;
   tingkat?: string;
   topik?: string;
+  tags?: string[];
 }
 
 export interface BankSoalImageUploadResponse {

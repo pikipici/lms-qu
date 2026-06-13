@@ -119,6 +119,7 @@ export interface BankSoalEditDialogProps {
   defaultMapel?: string;
   defaultTingkat?: string;
   defaultTopik?: string;
+  defaultTags?: string[];
   invalidateKeys: readonly (readonly unknown[])[];
 }
 
@@ -129,6 +130,7 @@ export function BankSoalEditDialog({
   defaultMapel,
   defaultTingkat,
   defaultTopik,
+  defaultTags,
   invalidateKeys,
 }: BankSoalEditDialogProps) {
   const isEdit = !!soal;
@@ -143,6 +145,7 @@ export function BankSoalEditDialog({
         mapel: defaultMapel ?? base.mapel,
         tingkat: defaultTingkat ?? base.tingkat,
         topik: defaultTopik ?? base.topik,
+        tags: defaultTags ?? base.tags,
       };
     }
     return base;
@@ -163,11 +166,12 @@ export function BankSoalEditDialog({
           mapel: defaultMapel ?? base.mapel,
           tingkat: defaultTingkat ?? base.tingkat,
           topik: defaultTopik ?? base.topik,
+          tags: defaultTags ?? base.tags,
         });
       }
       setErrors({});
     }
-  }, [open, soal, defaultMapel, defaultTingkat, defaultTopik]);
+  }, [open, soal, defaultMapel, defaultTingkat, defaultTopik, defaultTags]);
 
   function validate(): boolean {
     const e: Partial<Record<keyof FormState, string>> = {};

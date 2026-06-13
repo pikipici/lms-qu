@@ -34,10 +34,11 @@ import (
 )
 
 type bulkRequest struct {
-	Rows    string `json:"rows"`
-	Mapel   string `json:"mapel"`
-	Tingkat string `json:"tingkat"`
-	Topik   string `json:"topik"`
+	Rows    string   `json:"rows"`
+	Mapel   string   `json:"mapel"`
+	Tingkat string   `json:"tingkat"`
+	Topik   string   `json:"topik"`
+	Tags    []string `json:"tags"`
 }
 
 // BulkCreate handles POST /api/v1/bank-soal/bulk.
@@ -58,6 +59,7 @@ func (h *Handler) BulkCreate(c *fiber.Ctx) error {
 		Mapel:   strings.TrimSpace(req.Mapel),
 		Tingkat: strings.TrimSpace(req.Tingkat),
 		Topik:   strings.TrimSpace(req.Topik),
+		Tags:    NormalizeTags(req.Tags),
 	}
 
 	res, err := h.svc.BulkCreate(c.UserContext(), callerID, role, in,

@@ -453,6 +453,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
         defaultMapel={mapelFilter || undefined}
         defaultTingkat={tingkatFilter || undefined}
         defaultTopik={topikFilter || undefined}
+        defaultTags={tagFilter.length > 0 ? tagFilter : undefined}
         invalidateKeys={invalidateKeys}
       />
       {editing && (
@@ -472,6 +473,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
         defaultMapel={mapelFilter || undefined}
         defaultTingkat={tingkatFilter || undefined}
         defaultTopik={topikFilter || undefined}
+        defaultTags={tagFilter.length > 0 ? tagFilter : undefined}
         invalidateKeys={invalidateKeys}
       />
     </Card>

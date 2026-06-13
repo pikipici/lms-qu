@@ -53,10 +53,11 @@ const SAMPLE = [
 export interface BankSoalBulkPasteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Default mapel/tingkat/topik dari filter aktif di parent. */
+  /** Default mapel/tingkat/topik/tags dari filter aktif di parent. */
   defaultMapel?: string;
   defaultTingkat?: string;
   defaultTopik?: string;
+  defaultTags?: string[];
   invalidateKeys: readonly (readonly unknown[])[];
 }
 
@@ -72,6 +73,7 @@ export function BankSoalBulkPasteDialog({
   defaultMapel,
   defaultTingkat,
   defaultTopik,
+  defaultTags,
   invalidateKeys,
 }: BankSoalBulkPasteDialogProps) {
   const { toast } = useToast();
@@ -80,6 +82,7 @@ export function BankSoalBulkPasteDialog({
   const [mapel, setMapel] = React.useState(defaultMapel ?? '');
   const [tingkat, setTingkat] = React.useState(defaultTingkat ?? '');
   const [topik, setTopik] = React.useState(defaultTopik ?? '');
+  const [tagsInput, setTagsInput] = React.useState('');
   const [result, setResult] = React.useState<BankSoalBulkResponse | null>(null);
 
   React.useEffect(() => {
@@ -89,8 +92,9 @@ export function BankSoalBulkPasteDialog({
       setMapel(defaultMapel ?? '');
       setTingkat(defaultTingkat ?? '');
       setTopik(defaultTopik ?? '');
+      setTagsInput((defaultTags ?? []).join(', '));
     }
-  }, [open, defaultMapel, defaultTingkat, defaultTopik]);
+  }, [open, defaultMapel, defaultTingkat, defaultTopik, defaultTags]);
 
   const dataLines = React.useMemo(() => countDataLines(raw), [raw]);
 
@@ -101,6 +105,10 @@ export function BankSoalBulkPasteDialog({
         mapel: mapel.trim() || undefined,
         tingkat: tingkat.trim() || undefined,
         topik: topik.trim() || undefined,
+        tags: tagsInput
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
       }),
     onSuccess: (res) => {
       setResult(res);
@@ -185,6 +193,22 @@ export function BankSoalBulkPasteDialog({
                 disabled={mutation.isPending}
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="bulkTags" className="text-xs">
+              Tags (pisahkan dengan koma)
+            </Label>
+            <Input
+              id="bulkTags"
+              placeholder="hots, remedial, grafik"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              disabled={mutation.isPending}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Tag bebas dipisahkan koma, akan dinormalisasi otomatis. Di-apply ke semua soal.
+            </p>
           </div>
 
           <div className="rounded-md border bg-muted/40 p-3">
