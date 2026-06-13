@@ -78,7 +78,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
   const [mapelFilter, setMapelFilter] = React.useState<string>('');
   const [tingkatFilter, setTingkatFilter] = React.useState<string>('');
   const [topikFilter, setTopikFilter] = React.useState<string>('');
-  const [tagFilter, setTagFilter] = React.useState<string>('');
+  const [tagFilter, setTagFilter] = React.useState<string[]>([]);
   const [topikInput, setTopikInput] = React.useState<string>('');
   const [page, setPage] = React.useState(0);
 
@@ -146,7 +146,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
         'guru',
         'bank-soal',
         'list',
-        { mapel: mapelFilter, tingkat: tingkatFilter, topik: topikFilter, tag: tagFilter, offset },
+        { mapel: mapelFilter, tingkat: tingkatFilter, topik: topikFilter, tags: tagFilter.join(','), offset },
       ] as const,
     [mapelFilter, tingkatFilter, topikFilter, tagFilter, offset],
   );
@@ -167,7 +167,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
         mapel: mapelFilter || undefined,
         tingkat: tingkatFilter || undefined,
         topik: topikFilter || undefined,
-        tags: tagFilter ? [tagFilter] : undefined,
+        tags: tagFilter.length > 0 ? tagFilter : undefined,
         limit: PAGE_SIZE,
         offset,
       }),
@@ -202,12 +202,12 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
   });
 
   const hasFilter =
-    !!mapelFilter || !!tingkatFilter || !!topikFilter || !!tagFilter;
+    !!mapelFilter || !!tingkatFilter || !!topikFilter || tagFilter.length > 0;
   const activeTags = [
     mapelFilter ? { label: 'Mapel', value: mapelFilter } : null,
     tingkatFilter ? { label: 'Tingkat', value: tingkatFilter } : null,
     topikFilter ? { label: 'Topik', value: topikFilter } : null,
-    tagFilter ? { label: 'Tag', value: tagFilter } : null,
+    ...tagFilter.map((t) => ({ label: 'Tag', value: t })),
   ].filter(Boolean) as { label: string; value: string }[];
 
   return (
@@ -270,13 +270,39 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
             }}
             emptyHint="(belum ada tag topik)"
           />
-          <FilterChipRow
-            label="Tags"
-            options={allTags.slice(0, 32)}
-            active={tagFilter}
-            onChange={setTagFilter}
-            emptyHint="(belum ada tags bebas)"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">
+              Tags
+            </span>
+            {allTags.length === 0 ? (
+              <span className="text-xs text-muted-foreground italic">
+                (belum ada tags bebas)
+              </span>
+            ) : (
+              allTags.slice(0, 32).map((opt) => {
+                const active = tagFilter.includes(opt);
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() =>
+                      setTagFilter((prev) =>
+                        active ? prev.filter((t) => t !== opt) : [...prev, opt],
+                      )
+                    }
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs transition-colors',
+                      active
+                        ? 'border-primary bg-primary/10 font-medium text-foreground'
+                        : 'border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground',
+                    )}
+                  >
+                    {opt}
+                  </button>
+                );
+              })
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">
               Cari
@@ -332,7 +358,7 @@ export function BankSoalList({ disabled }: BankSoalListProps) {
                   setMapelFilter('');
                   setTingkatFilter('');
                   setTopikFilter('');
-                  setTagFilter('');
+                  setTagFilter([]);
                   setTopikInput('');
                 }}
                 className="h-7 text-xs"
