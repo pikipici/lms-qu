@@ -1024,7 +1024,7 @@ const TABS: { key: TabKey; label: string; Icon: React.ComponentType<{ className?
   { key: 'pengaturan', label: 'Pengaturan', Icon: Settings },
   { key: 'siswa', label: 'Siswa', Icon: Users },
   { key: 'tugas', label: 'Tugas', Icon: ClipboardList },
-  { key: 'ujian', label: 'Ulangan', Icon: GraduationCap },
+  { key: 'ujian', label: 'Ujian', Icon: GraduationCap },
   { key: 'pengumuman', label: 'Pengumuman', Icon: Megaphone },
   { key: 'chat', label: 'Chat Siswa', Icon: MessageCircle },
 ];
